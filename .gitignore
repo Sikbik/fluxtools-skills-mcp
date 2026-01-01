@@ -1,0 +1,36 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor junk
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Env / local config
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node (repo-wide)
+**/node_modules/
+**/.npm-cache/
+
+# flux-mcp build output (generated)
+flux-mcp/dist/
+
+# Packaged skill artifacts (generated)
+dist/*.skill
+

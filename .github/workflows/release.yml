@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build + attach flux-cloud.skill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: flux-mcp/package-lock.json
+      - name: Build flux-mcp
+        working-directory: flux-mcp
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Package flux-cloud.skill
+        run: python3 scripts/package_skill.py codex/flux-cloud dist
+
+      - name: Create GitHub release + upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/flux-cloud.skill

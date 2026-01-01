@@ -1,0 +1,6983 @@
+{
+  "generatedAt": "2026-01-01T17:19:08.612Z",
+  "sourceCommit": "6faa537d4b9793fade68a6fd0daeddc39d96c0cb",
+  "sourceFile": "ZelBack/src/routes.js",
+  "routeCount": 465,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/daemon/help/:command?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "1 hour",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "accept both help/command and ?command=getinfo. If ommited, default help will be displayed. Other calls works in similar way",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 62
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getinfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 65
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getfluxnodestatus",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "60 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 68
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getzelnodestatus",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "60 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 71
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listfluxnodes/:filter?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 74
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listzelnodes/:filter?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 77
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/viewdeterministicfluxnodelist/:filter?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 80
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/viewdeterministiczelnodelist/:filter?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 83
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getfluxnodecount",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 86
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getzelnodecount",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 89
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getdoslist",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 92
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getstartlist",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 95
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/fluxnodecurrentwinner",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 98
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getbestblockhash",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 101
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblock/:hashheight?/:verbosity?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 104
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblockchaininfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 107
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblockcount",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 110
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblockdeltas/:hash?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 113
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblockhashes/:high?/:low?/:noorphans?/:logicaltimes?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 116
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblockhash/:index?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 119
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblockheader/:hash?/:verbose?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 122
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getchaintips",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 125
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getdifficulty",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 128
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getmempoolinfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 131
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getrawmempool/:verbose?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 134
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/gettxout/:txid?/:n?/:includemempool?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 137
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/gettxoutproof/:txids?/:blockhash?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "comma separated list of txids. For example: /gettxoutproof/abc,efg,asd/blockhash",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 140
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/gettxoutsetinfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 143
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/verifytxoutproof/:proof?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 146
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getspentinfo/:txid?/:index?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 149
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblocksubsidy/:height?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 152
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getblocktemplate/:jsonrequestobject?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 155
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getlocalsolps",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 158
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getmininginfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 161
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getnetworkhashps/:blocks?/:height?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 164
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getnetworksolps/:blocks?/:height?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 167
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getconnectioncount",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 170
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getdeprecationinfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 173
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getnettotals",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 176
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getnetworkinfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 179
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getpeerinfo",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 182
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listbanned",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 185
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/createrawtransaction/:transactions?/:addresses?/:locktime?/:expiryheight?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 188
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/decoderawtransaction/:hexstring?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 191
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/decodescript/:hex?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 194
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/fundrawtransaction/:hexstring?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 197
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getrawtransaction/:txid?/:verbose?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 200
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/sendrawtransaction/:hexstring?/:allowhighfees?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 203
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/createmultisig/:n?/:keys?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 206
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/estimatefee/:nblocks?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 209
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/estimatepriority/:nblocks?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 212
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/validateaddress/:fluxaddress?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 215
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/verifymessage/:fluxaddress?/:signature?/:message?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 218
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/gettransaction/:txid?/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 221
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zvalidateaddress/:zaddr?",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 224
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getbenchmarks",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 227
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getbenchstatus",
+      "category": "daemon",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 230
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/id/loginphrase",
+      "category": "id",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 234
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/id/emergencyphrase",
+      "category": "id",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 237
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/loginphrase",
+      "category": "zelid",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 240
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/emergencyphrase",
+      "category": "zelid",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 243
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/nodetier",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 247
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/info",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "60 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 250
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/timezone",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 253
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/version",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 256
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/nodejsversions",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 259
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/ip",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 262
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/staticip",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 265
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/geolocation",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 268
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/zelid",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "DEPERCATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 271
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/id",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 274
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/fluxids",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 277
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/pgp",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 280
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/kadena",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 283
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/routerip",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "1 day",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 286
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/blockedports",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "1 day",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 289
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/apiport",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "1 day",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 292
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/blockedrepositories",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "1 day",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 295
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/marketplaceurl",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "1 day",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 298
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/restart",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 301
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/dosstate",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 304
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/connectedpeers",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 307
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/connectedpeersinfo",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 310
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/incomingconnections",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 313
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/incomingconnectionsinfo",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 316
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/flux/checkfluxavailability/:ip?/:port?",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 319
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "POST",
+      "path": "/flux/checkappavailability",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 322
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "POST",
+      "path": "/flux/keepupnpportsopen",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 325
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/listrunningapps",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "5 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 330
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/listallapps",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 333
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/listappsimages",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 336
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/installedapps/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 339
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/availableapps",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 342
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxusage",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 345
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appsresources",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 348
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/registrationinformation",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 351
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/temporarymessages/:hash?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "5 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 354
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/permanentmessages/:hash?/:owner?/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "2 minutes",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 357
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/globalappsspecifications/:hash?/:owner?/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 360
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/latestspecificationversion",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "5 minutes",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 363
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/updatetolatestspecs/:appname",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 366
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appspecifications/:appname/:decrypt?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 369
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appowner/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 372
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/apporiginalowner/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 375
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/messagescount/:appowner?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 378
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/hashes",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 381
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/location/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 384
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/locations",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 387
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/installinglocation/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 390
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/installinglocations",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 393
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/installingerrorslocation/:appname?",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 396
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/installingerrorslocations",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 399
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "POST",
+      "path": "/apps/calculateprice",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "returns price in flux for both new registration of app and update of app",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 402
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "POST",
+      "path": "/apps/calculatefiatandfluxprice",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "returns price in usd and flux for both new registration of app and update of app",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 405
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/whitelistedrepositories",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 408
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "POST",
+      "path": "/apps/verifyappregistrationspecifications",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "returns formatted app specifications",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 411
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "POST",
+      "path": "/apps/verifyappupdatespecifications",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "returns formatted app specifications",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 414
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/deploymentinformation",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 417
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/enterprisenodes",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 420
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/apps/getappspecsusdprice",
+      "category": "apps",
+      "access": "GET PUBLIC methods",
+      "cache": "30 minutes",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 423
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/allutxos",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "app.get('/explorer/allutxos', (req, res) => {",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 427
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/alladdresseswithtransactions",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "app.get('/explorer/alladdresseswithtransactions', (req, res) => {",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 430
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/alladdresses",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "app.get('/explorer/alladdresses', (req, res) => {",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 433
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/utxo/:address?",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 437
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/transactions/:address?",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 440
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/balance/:address?",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 443
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/scannedheight",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 446
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/fusion/coinbase/all",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "app.get('/explorer/fusion/coinbase/all', cache('30 seconds'), (req, res) => {",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 449
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/fusion/coinbase/:address?",
+      "category": "explorer",
+      "access": "GET PUBLIC methods",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "deprecated",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 452
+      },
+      "accessSectionLine": 61
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/prioritisetransaction/:txid?/:prioritydelta?/:feedelta?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 457
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/submitblock/:hexdata?/:jsonparametersobject?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 460
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/id/loggedsessions",
+      "category": "id",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 464
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/id/logoutcurrentsession",
+      "category": "id",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 467
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/id/logoutallsessions",
+      "category": "id",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 470
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/loggedsessions",
+      "category": "zelid",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 473
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/logoutcurrentsession",
+      "category": "zelid",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 476
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/logoutallsessions",
+      "category": "zelid",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 479
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/getstatus",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 483
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/help/:command?",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - User level",
+      "cache": "1 hour",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 486
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/getbenchmarks",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 489
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/getinfo",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 492
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/meta",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 496
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/deviceid",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 499
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/health",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 502
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/browse/:current?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 505
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/connections",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 508
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/debug/:enable?/:disable?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 511
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/discovery/:device?/:addr?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 514
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/error/clear",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 517
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/error/:message?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 520
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/log/:since?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 523
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/logtxt/:since?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 526
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/paths",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 529
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/pause/:device?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 532
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/ping",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 535
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/reset/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 538
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/restart",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 541
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/resume/:device?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 544
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/shutdown",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 547
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/status",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 550
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/upgrade",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 553
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/system/version",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 556
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 559
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/restart-required",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 562
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/folders/:id?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 565
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/devices/:id?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 568
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/defaults/folder",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 571
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/defaults/device",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 574
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/defaults/ignores",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 577
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/options",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 580
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/ldap",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 583
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/config/gui",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 586
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/stats/device",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 589
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/stats/folder",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 592
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/cluster/pending/devices",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 595
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/cluster/pending/folders",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 598
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/folder/errors/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 601
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/folder/versions/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 604
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/browse/:folder?/:levels?/:prefix?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 607
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/completion/:folder?/:device?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 610
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/file/:folder?/:file?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 613
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/ignores/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 616
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/localchanged/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 619
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/need/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 622
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/remoteneed/:folder?/:device?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 625
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/db/status/:folder?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 628
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/events/disk",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 631
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/events/:events?/:since?/:limit?/:timeout?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 634
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/svc/random/string/:length?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 637
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/svc/report",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 640
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/svc/:deviceid?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 643
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/peercompletion",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 646
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/httpmetrics",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 649
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/cpuprof",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 652
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/heapprof",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 655
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/support",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 658
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/file",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 661
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/backup/getvolumedataofcomponent/:appname?/:component?/:multiplier?/:decimal?/:fields?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 666
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/backup/getremotefilesize/:fileurl?/:multiplier?/:decimal?/:number?/:appname?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 669
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/backup/getlocalbackuplist/:path?/:multiplier?/:decimal?/:number?/:appname?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 672
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/backup/removebackupfile/:filepath?/:appname?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 675
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/backup/downloadlocalfile/:filepath?/:appname?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 678
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "POST",
+      "path": "/apps/appendbackuptask",
+      "category": "apps",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 681
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "POST",
+      "path": "/apps/appendrestoretask",
+      "category": "apps",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 685
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "POST",
+      "path": "/ioutils/fileupload/:type?/:appname?/:component?/:folder?/:filename?",
+      "category": "ioutils",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 689
+      },
+      "accessSectionLine": 456
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/stop",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 694
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/reindex",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 697
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/createfluxnodekey",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 700
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/createzelnodekey",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 703
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listfluxnodeconf/:filter?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 706
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listzelnodeconf/:filter?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 709
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getfluxnodeoutputs",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 712
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getzelnodeoutputs",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 715
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/startfluxnode/:set?/:lockwallet?/:alias?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 718
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/startzelnode/:set?/:lockwallet?/:alias?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 721
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/startdeterministicfluxnode/:alias?/:lockwallet?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 724
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/startdeterministiczelnode/:alias?/:lockwallet?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 727
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/verifychain/:checklevel?/:numblocks?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 730
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/addnode/:node?/:command?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 733
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/clearbanned",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 736
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/disconnectnode/:node?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 739
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getaddednodeinfo/:dns?/:node?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 742
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/setban/:ip?/:command?/:bantime?/:absolute?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 745
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/signrawtransaction/:hexstring?/:prevtxs?/:privatekeys?/:sighashtype?/:branchid?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 748
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/addmultisigaddress/:n?/:keysobject?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 751
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/backupwallet/:destination?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 754
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/dumpprivkey/:taddr?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 757
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getbalance/:minconf?/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 760
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getnewaddress",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 763
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getrawchangeaddress",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 766
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getreceivedbyaddress/:fluxaddress?/:minconf?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 769
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getunconfirmedbalance",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 772
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getwalletinfo",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 775
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/importaddress/:address?/:label?/:rescan?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 778
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/importprivkey/:fluxprivkey?/:label?/:rescan?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 781
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/importwallet/:filename?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 784
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/keypoolrefill/:newsize?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 787
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listaddressgroupings",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 790
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listlockunspent",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 793
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listreceivedbyaddress/:minconf?/:includeempty?/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 796
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listsinceblock/:blockhash?/:targetconfirmations?/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 799
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listtransactions/:count?/:from?/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 802
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/listunspent/:minconf?/:maxconf?/:addresses?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 805
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/lockunspent/:unlock?/:transactions?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 808
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/rescanblockchain/:startheight?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 811
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/sendfrom/:tofluxaddress?/:amount?/:minconf?/:comment?/:commentto?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 814
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/sendmany/:amounts?/:minconf?/:comment?/:substractfeefromamount?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 817
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/sendtoaddress/:fluxaddress?/:amount?/:comment?/:commentto?/:substractfeefromamount?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 820
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/settxfee/:amount?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 823
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/signmessage/:taddr?/:message?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 826
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zexportkey/:zaddr?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 829
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zexportviewingkey/:zaddr?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 832
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zgetbalance/:address?/:minconf?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 835
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zgetmigrationstatus",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 838
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zgetnewaddress/:type?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 841
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zgetoperationresult/:operationid?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 844
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zgetoperationstatus/:operationid?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 847
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zgettotalbalance/:minconf?/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 850
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zimportkey/:zkey?/:rescan?/:startheight?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 853
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zimportviewingkey/:vkey?/:rescan?/:startheight?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 856
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zimportwallet/:filename?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 859
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zlistaddresses/:includewatchonly?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 862
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zlistoperationids",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 865
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zlistreceivedbyaddress/:address?/:minconf?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 868
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zlistunspent/:minconf?/:maxonf?/:includewatchonly?/:addresses?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 871
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zmergetoaddress/:fromaddresses?/:toaddress?/:fee?/:transparentlimit?/:shieldedlimit?/:memo?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 874
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zsendmany/:fromaddress?/:amounts?/:minconf?/:fee?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 877
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zsetmigration/:enabled?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 880
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zshieldcoinbase/:fromaddress?/:toaddress?/:fee?/:limit?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 883
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zcrawjoinsplit/:rawtx?/:inputs?/:outputs?/:vpubold?/:vpubnew?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 886
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zcrawkeygen",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 889
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zcrawreceive/:zcsecretkey?/:encryptednote?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 892
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zcsamplejoinsplit",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 895
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getaddresstxids/:address?/:start?/:end?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 898
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getaddressbalance/:address?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 901
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getaddressdeltas/:address?/:start?/:end?/:chaininfo?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 904
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getaddressutxos/:address?/:chaininfo?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 907
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/getaddressmempool/:address?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 910
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/id/loggedusers",
+      "category": "id",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 914
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/id/activeloginphrases",
+      "category": "id",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 917
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/id/logoutallusers",
+      "category": "id",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 920
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/loggedusers",
+      "category": "zelid",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 923
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/activeloginphrases",
+      "category": "zelid",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 926
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/zelid/logoutallusers",
+      "category": "zelid",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 929
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/flux/adjustkadena/:account?/:chainid?",
+      "category": "flux",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "note this essentially rebuilds flux use with caution!",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 933
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/flux/adjustrouterip/:routerip?",
+      "category": "flux",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "note this essentially rebuilds flux use with caution!",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 936
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "POST",
+      "path": "/flux/adjustblockedports",
+      "category": "flux",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "note this essentially rebuilds flux use with caution!",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 939
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/flux/adjustapiport/:apiport?",
+      "category": "flux",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "note this essentially rebuilds flux use with caution!",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 942
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "POST",
+      "path": "/flux/adjustblockedrepositories",
+      "category": "flux",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "note this essentially rebuilds flux use with caution!",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 945
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/flux/reindexdaemon",
+      "category": "flux",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 948
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/signfluxnodetransaction/:hexstring?",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 952
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/signzelnodetransaction/:hexstring?",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 955
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/stop",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - Fluxnode Owner",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 958
+      },
+      "accessSectionLine": 693
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/start",
+      "category": "daemon",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 963
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/restart",
+      "category": "daemon",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 966
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/ping",
+      "category": "daemon",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "we do not want this to be issued by anyone.",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 969
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/zcbenchmark/:benchmarktype?/:samplecount?",
+      "category": "daemon",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 972
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/startbenchmark",
+      "category": "daemon",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 975
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/daemon/stopbenchmark",
+      "category": "daemon",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 978
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/startbenchmark",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 982
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/restartbenchmark",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 985
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/startdaemon",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 988
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/restartdaemon",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 991
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/entermaster",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 994
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/enterdevelopment",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 997
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/updateflux",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "method shall be called only if flux version is obsolete.",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1000
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/softupdateflux",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "method shall be called only if flux version is obsolete.",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1003
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/softupdatefluxinstall",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "method shall be called only if flux version is obsolete.",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1006
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/hardupdateflux",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "method shall be called only if flux version is obsolete and updatezeflux is not working correctly",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1009
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/rebuildhome",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1012
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/updatedaemon",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "method shall be called only if daemon version is obsolete",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1015
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/updatebenchmark",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "method shall be called only if benchamrk version is obsolete",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1018
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/daemondebug",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1021
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/benchmarkdebug",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1024
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/taildaemondebug",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1027
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/tailbenchmarkdebug",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1030
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/errorlog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1033
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/warnlog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1036
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/debuglog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1039
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/infolog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1042
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/tailerrorlog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1045
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/tailwarnlog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1048
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/taildebuglog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1051
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/tailinfolog",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1054
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/broadcastmessage/:data?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1058
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/broadcastmessagetooutgoing/:data?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1061
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/broadcastmessagetoincoming/:data?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1064
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/addpeer/:ip?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1067
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/removepeer/:ip?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1070
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/addoutgoingpeer/:ip?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1073
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/removeincomingpeer/:ip?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1076
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/allowport/:port?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1079
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/checkcommunication",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1082
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/uptime",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1085
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/systemuptime",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1088
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/backendfolder",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": true,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1091
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/mapport/:port?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1094
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/unmapport/:port?",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1097
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/getmap",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1100
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/getip",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1103
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/getgateway",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1106
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/flux/isarcaneos",
+      "category": "flux",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "1 day",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1109
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/start",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1113
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/restart",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1116
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/restartnodebenchmarks",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1119
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/reindex/:reindexapps?",
+      "category": "explorer",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1123
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/restart",
+      "category": "explorer",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1126
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/stop",
+      "category": "explorer",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1129
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/rescan/:blockheight?/:rescanapps?",
+      "category": "explorer",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1132
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/checkhashes",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1136
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/requestmessage/:hash",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1139
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appstart/:appname?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1142
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appstop/:appname?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1145
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/apprestart/:appname?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1148
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/apppause/:appname?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1151
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appunpause/:appname?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1154
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/apptop/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1157
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/applog/:appname?/:lines?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1160
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/applogpolling/:appname?/:lines?/:since?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1163
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appinspect/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1166
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appstats/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1169
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appmonitor/:appname?/:range?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1172
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appmonitorstream/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1175
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appchanges/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1178
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "POST",
+      "path": "/apps/appexec",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1181
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/appremove/:appname?/:force?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1184
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/installapplocally/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1187
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/testappinstall/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1190
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/createfluxnetwork",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1193
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/rescanglobalappsinformation/:blockheight?/:removelastinformation?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1196
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/reindexglobalappsinformation",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1199
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/reindexglobalappslocation",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1202
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/redeploy/:appname?/:force?/:global?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1205
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/redeploycomponent/:appname?/:component?/:force?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1208
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/reconstructhashes",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1211
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/startmonitoring/:appname?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1214
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/apps/stopmonitoring/:appname?/:deletedata?",
+      "category": "apps",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1217
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/metrics",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "10 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1221
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/metrics/health",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "10 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1224
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/metrics/history/:limit?",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "10 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1227
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/peer/diagnostics",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - FluxTeam",
+      "cache": "10 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1230
+      },
+      "accessSectionLine": 962
+    },
+    {
+      "method": "POST",
+      "path": "/id/verifylogin",
+      "category": "id",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1235
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/id/providesign",
+      "category": "id",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1238
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/id/checkprivilege",
+      "category": "id",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1241
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/zelid/verifylogin",
+      "category": "zelid",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1244
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/zelid/providesign",
+      "category": "zelid",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1247
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/zelid/checkprivilege",
+      "category": "zelid",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1250
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "GET",
+      "path": "/payment/paymentrequest",
+      "category": "payment",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1255
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/payment/verifypayment",
+      "category": "payment",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1258
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/createrawtransaction",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1262
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/decoderawtransaction",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1265
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/decodescript",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1268
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/fundrawtransaction",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1271
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/sendrawtransaction",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1274
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/createmultisig",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1277
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/verifymessage",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1280
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getblockhashes",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1283
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getspentinfo",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1286
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getaddresstxids",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1289
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getaddressbalance",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1292
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getaddressdeltas",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1295
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getaddressutxos",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1298
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/getaddressmempool",
+      "category": "daemon",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1301
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "GET",
+      "path": "/flux/streamchainpreparation",
+      "category": "flux",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1304
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/flux/streamchain",
+      "category": "flux",
+      "access": "POST PUBLIC methods route",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1307
+      },
+      "accessSectionLine": 1234
+    },
+    {
+      "method": "POST",
+      "path": "/id/logoutspecificsession",
+      "category": "id",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "requires the knowledge of a session loginPhrase so users level is sufficient and user cannot logout another user as he does not know the loginPhrase.",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1312
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/zelid/logoutspecificsession",
+      "category": "zelid",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1315
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/submitblock",
+      "category": "daemon",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1319
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/apps/checkdockerexistance",
+      "category": "apps",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1323
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/apps/appregister",
+      "category": "apps",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1326
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/apps/appupdate",
+      "category": "apps",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1329
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/apps/getpublickey",
+      "category": "apps",
+      "access": "POST PROTECTED API - USER LEVEL",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1332
+      },
+      "accessSectionLine": 1311
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/signrawtransaction",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1337
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/addmultisigaddress",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1340
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/sendfrom",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1343
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/sendmany",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1346
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/sendtoaddress",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1349
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/signmessage",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1352
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/zsendmany",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1355
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/zcrawjoinsplit",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1358
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/daemon/zcrawreceive",
+      "category": "daemon",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1361
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/benchmark/signfluxnodetransaction",
+      "category": "benchmark",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1365
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/benchmark/signzelnodetransaction",
+      "category": "benchmark",
+      "access": "POST PROTECTED API - FluxNode owner level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": true,
+      "comment": "DEPRECATED",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1368
+      },
+      "accessSectionLine": 1336
+    },
+    {
+      "method": "POST",
+      "path": "/flux/broadcastmessage",
+      "category": "flux",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1373
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/flux/broadcastmessagetooutgoing",
+      "category": "flux",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1376
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/flux/broadcastmessagetoincoming",
+      "category": "flux",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1379
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/system/error",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1383
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/system/upgrade",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1386
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1389
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/folders",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1392
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/devices",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1395
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/defaults/folder",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1398
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/defaults/device",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1401
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/defaults/ignores",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1404
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/options",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1407
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/gui",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1410
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/config/ldap",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1413
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/cluster/pending/devices",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1416
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/cluster/pending/folders",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1419
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/folder/versions",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1422
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/db/ignores",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1425
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/db/override",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1428
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/db/prio",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1431
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/db/revert",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1434
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/syncthing/db/scan",
+      "category": "syncthing",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1437
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/getfile/:file?/:token?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1442
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/getfolder/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1445
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/createfolder/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1448
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "POST",
+      "path": "/apps/fluxshare/uploadfile/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1451
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/removefile/:file?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1454
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/removefolder/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1457
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/fileexists/:file?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1460
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/stats",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1463
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/sharefile/:file?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1466
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/unsharefile/:file?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1469
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/sharedfiles",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1472
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/rename/:oldpath?/:newname?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1475
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/fluxshare/downloadfolder/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1478
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/getfolderinfo/:appname?/:component?/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1482
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/createfolder/:appname?/:component?/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1485
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/renameobject/:appname?/:component?/:oldpath?/:newname?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1488
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/removeobject/:appname?/:component?/:object?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1491
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/downloadfile/:appname?/:component?/:file?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1494
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/apps/downloadfolder/:appname?/:component?/:folder?",
+      "category": "apps",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1497
+      },
+      "accessSectionLine": 1372
+    },
+    {
+      "method": "GET",
+      "path": "/explorer/issynced",
+      "category": "explorer",
+      "access": "POST PROTECTED API - FluxTeam",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 1500
+      },
+      "accessSectionLine": 1372
+    }
+  ]
+}

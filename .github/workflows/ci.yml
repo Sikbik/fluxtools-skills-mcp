@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-flux-mcp:
+    name: Build (flux-mcp)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flux-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: flux-mcp/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  package-flux-cloud-skill:
+    name: Package (flux-cloud.skill)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python3 scripts/package_skill.py codex/flux-cloud dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flux-cloud.skill
+          path: dist/flux-cloud.skill
