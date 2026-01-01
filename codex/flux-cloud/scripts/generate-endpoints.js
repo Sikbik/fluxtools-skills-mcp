@@ -14,8 +14,8 @@ Usage:
   node scripts/generate-endpoints.js [--ref master] [--also-mcp]
 */
 
-import fs from 'node:fs';
-import path from 'node:path';
+const fs = require('fs');
+const path = require('path');
 
 function usage(exitCode = 1) {
   process.stderr.write('Usage: generate-endpoints.js [--ref master] [--also-mcp]\n');
@@ -183,7 +183,7 @@ async function main() {
     routes,
   };
 
-  const here = path.dirname(new URL(import.meta.url).pathname);
+  const here = __dirname;
   const refsDir = path.resolve(here, '..', 'references');
 
   fs.mkdirSync(refsDir, { recursive: true });
