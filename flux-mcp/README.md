@@ -31,6 +31,8 @@ Run:
 
 ```bash
 FLUX_API_BASE_URL="http://<node-ip>:16127" node dist/index.js
+# or, via the public gateway:
+# FLUX_API_BASE_URL="https://api.runonflux.io" node dist/index.js
 ```
 
 ## Connect from Claude Code
@@ -67,7 +69,9 @@ claude mcp get flux
 
 Environment variables:
 
-- `FLUX_API_BASE_URL` (recommended): `http://<node-ip>:16127`
+- `FLUX_API_BASE_URL`:
+  - direct node API (recommended): `http://<node-ip>:16127`
+  - public gateway: `https://api.runonflux.io`
 - `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
 - `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
 - `FLUX_ENDPOINTS_PATH` (optional): override the bundled endpoints inventory path

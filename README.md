@@ -70,6 +70,8 @@ claude mcp add --transport stdio flux -- \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
+Set `FLUX_API_BASE_URL` to a direct node API (recommended) like `http://<node-ip>:16127`, or the public gateway `https://api.runonflux.io`. (`https://cloud.runonflux.com/` is the UI, not the node API base URL.)
+
 Docs: `flux-mcp/README.md`.
 
 ## Codex skill
