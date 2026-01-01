@@ -172,8 +172,8 @@ function extractHashFromAppMessageResponse(responseBody: any): string | undefine
 }
 
 function requireConfirm(args: any, actionDescription: string) {
-  const confirm = Boolean(args?.confirm);
-  if (!confirm) {
+  const confirm = asOptionalBoolean(args?.confirm) ?? false;
+  if (confirm !== true) {
     throw new Error(`confirm=true is required to run: ${actionDescription}`);
   }
 }
@@ -876,9 +876,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const query = (args as any)?.query;
         const body = (args as any)?.body;
         const zelidauth = (args as any)?.zelidauth;
-        const useStoredZelidauth = (args as any)?.useStoredZelidauth;
-        const timeoutMs = (args as any)?.timeoutMs;
-        const allowMutation = Boolean((args as any)?.allowMutation);
+        const useStoredZelidauth = asOptionalBoolean((args as any)?.useStoredZelidauth);
+        const timeoutMs = asOptionalNumber((args as any)?.timeoutMs);
+        const allowMutation = (asOptionalBoolean((args as any)?.allowMutation) ?? false) === true;
         const responseType = asResponseType((args as any)?.responseType);
         const maxBytes = asOptionalNumber((args as any)?.maxBytes);
 

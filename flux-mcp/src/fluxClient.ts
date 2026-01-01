@@ -173,7 +173,7 @@ export class FluxClient {
     if (!this.baseUrl) throw new Error('Base URL not set. Use flux_set_base_url first.');
 
     const method = (opts?.method ?? (opts?.body === undefined ? 'GET' : 'POST')).toUpperCase();
-    const allowMutation = Boolean(opts?.allowMutation);
+    const allowMutation = opts?.allowMutation === true;
 
     const isMutating = method !== 'GET' || isMutatingGetPath(pathname);
     if (isMutating && !allowMutation) {
