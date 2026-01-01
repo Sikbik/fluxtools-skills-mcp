@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from __future__ import annotations
-
 import argparse
 import os
 import re
@@ -10,12 +8,13 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Dict, Iterator, List, Tuple
 
 
 SKILL_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
-def parse_frontmatter(skill_md_path: Path) -> dict:
+def parse_frontmatter(skill_md_path: Path) -> Dict[str, str]:
     text = skill_md_path.read_text(encoding="utf-8")
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -30,7 +29,7 @@ def parse_frontmatter(skill_md_path: Path) -> dict:
         raise ValueError("SKILL.md YAML frontmatter must be terminated by a second '---' line.")
 
     fm_lines = lines[1:end_index]
-    out: dict[str, str] = {}
+    out: Dict[str, str] = {}
 
     i = 0
     while i < len(fm_lines):
@@ -48,7 +47,7 @@ def parse_frontmatter(skill_md_path: Path) -> dict:
         value = rest.strip()
 
         if value in ("|", ">"):
-            block: list[str] = []
+            block: List[str] = []
             while i < len(fm_lines) and (fm_lines[i].startswith(" ") or fm_lines[i].startswith("\t")):
                 block.append(fm_lines[i].lstrip())
                 i += 1
@@ -66,7 +65,7 @@ def parse_frontmatter(skill_md_path: Path) -> dict:
     return out
 
 
-def validate_skill_dir(skill_dir: Path) -> tuple[str, str]:
+def validate_skill_dir(skill_dir: Path) -> Tuple[str, str]:
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.exists():
         raise ValueError(f"Missing required file: {skill_md}")
@@ -93,7 +92,7 @@ def validate_skill_dir(skill_dir: Path) -> tuple[str, str]:
     return name, description
 
 
-def iter_skill_files(skill_dir: Path):
+def iter_skill_files(skill_dir: Path) -> Iterator[Tuple[Path, Path]]:
     excluded_names = {".DS_Store", "Thumbs.db"}
     for p in sorted(skill_dir.rglob("*")):
         if p.is_dir():
@@ -143,7 +142,7 @@ def package_skill(skill_dir: Path, out_dir: Path) -> Path:
             pass
 
 
-def main(argv: list[str]) -> int:
+def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description="Validate and package a Codex skill into a .skill zip artifact.")
     parser.add_argument("skill_dir", help="Path to the skill folder (must contain SKILL.md).")
     parser.add_argument(
