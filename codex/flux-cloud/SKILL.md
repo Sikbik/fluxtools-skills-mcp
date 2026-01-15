@@ -18,6 +18,18 @@ Source-of-truth code references use the public repo: `https://github.com/RunOnFl
 
 ## Quick health checks
 
+If the MCP server is connected, prefer:
+- `flux_node_health`
+- `flux_auth_diagnose`
+- `flux_app_health_report`
+
+## Standard operating procedure (SOP)
+
+- Prefer dedicated `flux_*` tools over `flux_request`.
+- When a tool returns `resource_link`, read it (MCP `resources/read`) and summarize.
+- If the client UI does not expose MCP resources, use `flux_resource_read` with the same URI.
+- Keep chat output compact: summarize first, then only quote relevant snippets.
+
 ```bash
 API="http://<node-ip>:16127"
 

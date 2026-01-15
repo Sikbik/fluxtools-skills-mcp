@@ -6,11 +6,11 @@ When the Flux MCP server is connected, prefer the dedicated tools first, then fa
 
 These tools encode Flux-specific workflow rules and safety checks:
 
-- Auth/session: `flux_get_login_phrase`, `flux_build_zelidauth`, `flux_set_zelidauth`
+- Auth/session: `flux_get_state`, `flux_set_http_defaults`, `flux_auth_flow`, `flux_auth_diagnose`, `flux_get_login_phrase`, `flux_get_emergency_phrase`, `flux_verify_login`, `flux_check_privilege`, `flux_build_zelidauth`, `flux_set_zelidauth`
 - Node health: `flux_node_health`
 - Register/update flow: `flux_apps_plan_registration`, `flux_apps_register`, `flux_apps_plan_update`, `flux_apps_update`, `flux_apps_get_messages`
 - Lifecycle: `flux_apps_start/stop/restart/redeploy*` (require `confirm=true`)
-- Observability: `flux_apps_logs/inspect/stats/top/monitor`
+- Observability: `flux_logs_tail`, `flux_app_health_report`, `flux_apps_logs/inspect/stats/top/monitor`
 - Exec: `flux_apps_exec` (requires `confirm=true`)
 - Files: `flux_apps_list_folder`, `flux_apps_download_*` (mutations require `confirm=true`)
 

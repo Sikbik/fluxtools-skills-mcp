@@ -87,6 +87,10 @@ Flux uses a header named `zelidauth` containing JSON: `{ zelid, signature, login
    ```bash
    curl -sS http://<node-ip>:16127/id/loginphrase
    ```
+   If that fails due to node health/DOS checks:
+   ```bash
+   curl -sS http://<node-ip>:16127/id/emergencyphrase
+   ```
 2. User signs the phrase in their wallet/tooling.
 3. Send `zelidauth` header:
    ```bash

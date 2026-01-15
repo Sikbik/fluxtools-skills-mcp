@@ -10,6 +10,12 @@ FluxOS node APIs use a request header named `zelidauth` to authenticate user/own
 curl -sS http://<node-ip>:16127/id/loginphrase
 ```
 
+If `/id/loginphrase` fails due to node health/DOS checks, use the emergency phrase endpoint:
+
+```bash
+curl -sS http://<node-ip>:16127/id/emergencyphrase
+```
+
 2) Sign the returned phrase with the **owner ZelID** (wallet-side action).
 
 3) Send requests with the `zelidauth` header:
@@ -18,7 +24,7 @@ curl -sS http://<node-ip>:16127/id/loginphrase
 zelidauth: {"zelid":"<ZELID>","signature":"<SIG>","loginPhrase":"<PHRASE>"}
 ```
 
-Tip: The header value is a JSON string. Whitespace is fine; most clients use a compact JSON string.
+Tip: Most docs show querystring-style `zelidauth` (e.g. `zelid=<ZELID>&signature=<SIG>&loginPhrase=<PHRASE>`), but the backend also accepts a JSON header value (shown above).
 
 ## Validate a login / inspect privilege
 
@@ -26,6 +32,8 @@ These endpoints are useful for debugging auth:
 
 - `POST /id/verifylogin` (returns session + privilege details)
 - `POST /id/checkprivilege` (returns whether the provided auth is acceptable)
+
+Important: these POST endpoints are typically expected as `application/x-www-form-urlencoded` with fields `zelid`, `signature`, and `loginPhrase`.
 
 Deprecated equivalents exist under `/zelid/*`.
 

@@ -25,6 +25,19 @@ Most endpoints respond with:
 { "status": "success", "data": ... }
 ```
 
+Notes:
+
+- For automation, treat `data` as the real payload; `status` is usually `success`/`error`.
+- Some endpoints may return a plain object/array (especially on proxies or older routes). In MCP we normalize by unwrapping when possible.
+
+## Error behavior
+
+Common patterns you’ll see:
+
+- Privilege/auth errors when `zelidauth` is missing or invalid (user/owner/fluxteam).
+- Gateway timeouts (notably `https://api.runonflux.io`) for some auth calls; direct node APIs are more reliable.
+- Large payloads (logs, specs, monitoring) which are unwieldy to print in chat; MCP returns `resource_link` for these.
+
 ## Quick node health
 
 ```bash
@@ -35,7 +48,7 @@ curl -sS http://<node-ip>:16127/flux/isarcaneos
 
 ## Authentication
 
-- Get a login phrase: `GET /id/loginphrase`
+- Get a login phrase: `GET /id/loginphrase` (or `GET /id/emergencyphrase` if loginphrase fails)
 - Sign it with your ZelID
 - Send API calls with:
 
@@ -48,10 +61,26 @@ See: `references/auth-zelidauth.md`.
 Discovery:
 
 ```bash
+# Node-local runtime state (what this node is running)
 curl -sS http://<node-ip>:16127/apps/listrunningapps
 curl -sS http://<node-ip>:16127/apps/listallapps
+
+# Global registry state (apps registered on the network)
+# Use owner to list apps under a ZelID:
+curl -sS "http://<node-ip>:16127/apps/globalappsspecifications?owner=<ZELID>"
+
+# Fetch a specific app spec (from this node’s local view)
 curl -sS http://<node-ip>:16127/apps/appspecifications/<appname>
 ```
+
+## Global vs node-local apps
+
+Flux has two different “app list” concepts:
+
+- Node-local lists (`/apps/listrunningapps`, `/apps/listallapps`): containers/apps running on the specific node you’re talking to.
+- Global registry (`/apps/globalappsspecifications`): apps registered under a ZelID on the network (what most users mean by “my apps”).
+
+In MCP, `flux_apps_list_by_zelid_with_expiry` uses the global registry and computes expiry from chain height.
 
 Spec validation (canonicalization):
 

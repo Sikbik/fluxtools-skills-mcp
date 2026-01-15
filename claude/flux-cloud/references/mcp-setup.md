@@ -50,5 +50,13 @@ Add an MCP server entry (example):
 
 - `flux_get_state`
 - `flux_set_base_url` (if you didn’t set `FLUX_API_BASE_URL`)
-- `flux_get_login_phrase` → sign phrase → `flux_build_zelidauth` → `flux_set_zelidauth`
+- `flux_auth_flow` (plan-only; optionally pass `gatewayBaseUrl`) or `flux_get_login_phrase` (or `flux_get_emergency_phrase`) → sign phrase → `flux_verify_login` → `flux_build_zelidauth` → `flux_set_zelidauth`
+- `flux_auth_diagnose` (preflight)
 - `flux_node_health`
+
+## Working with resource links
+
+Many tools return `resource_link` blocks to keep chat output compact.
+
+- To inspect a resource in clients that support MCP resources, use `resources/read` with the given URI.
+- If your client UI doesn’t expose resources well, use `flux_resource_read` with the same URI.

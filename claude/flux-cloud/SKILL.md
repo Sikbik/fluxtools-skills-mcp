@@ -36,6 +36,13 @@ Setup instructions: `references/mcp-setup.md`.
 - Prefer the dedicated MCP tools for lifecycle and file mutations (they require `confirm=true`).
 - For any generic API call that changes state, require `allowMutation=true`.
 
+## Standard operating procedure (SOP)
+
+- Prefer dedicated `flux_*` tools over `flux_request`.
+- When a tool returns `resource_link`, read it (MCP `resources/read`) and summarize.
+- If the client UI does not expose MCP resources, use `flux_resource_read` with the same URI.
+- Keep chat output compact: summarize first, then only quote relevant snippets.
+
 ## Core workflows (MCP-first)
 
 ### 1) Node health
@@ -44,7 +51,7 @@ Setup instructions: `references/mcp-setup.md`.
 
 ### 2) Get ZelID login phrase and set `zelidauth`
 
-- Use `flux_get_login_phrase` → user signs phrase → use `flux_build_zelidauth` + `flux_set_zelidauth`.
+- Use `flux_auth_flow` for a step-by-step plan (optionally pass `gatewayBaseUrl` to start from `https://api.runonflux.io` and resolve the current node), or do it manually: `flux_get_login_phrase` (or `flux_get_emergency_phrase` if loginphrase fails) → user signs phrase → `flux_verify_login` (recommended) → `flux_build_zelidauth` + `flux_set_zelidauth`.
 
 ### 3) Create a v8 app spec
 
@@ -72,7 +79,7 @@ Reference: `references/register-update.md`.
 ### 6) Operate an app (lifecycle + observability)
 
 - Lifecycle (requires confirmation): `flux_apps_start`, `flux_apps_stop`, `flux_apps_restart`, `flux_apps_redeploy`, `flux_apps_redeploy_component`.
-- Observability: `flux_apps_logs`, `flux_apps_inspect`, `flux_apps_stats`, `flux_apps_top`, `flux_apps_monitor`.
+- Observability: `flux_logs_tail`, `flux_app_health_report`, `flux_apps_logs`, `flux_apps_inspect`, `flux_apps_stats`, `flux_apps_top`, `flux_apps_monitor`.
 
 ### 7) Files (volume browser)
 

@@ -37,6 +37,11 @@ Redeploy:
 
 ## Logs and inspection (require `zelidauth`)
 
+MCP-first (recommended):
+- Use `flux_logs_tail` instead of `flux_apps_logs` for safe tailing.
+- Use `flux_app_health_report` to get a compact summary across inspect/stats/top/monitor/logs.
+
+
 ```bash
 curl -sS -H "zelidauth: $ZELIDAUTH" "$API/apps/applog/<app-or-component>/200"
 curl -sS -H "zelidauth: $ZELIDAUTH" "$API/apps/appinspect/<app-or-component>"

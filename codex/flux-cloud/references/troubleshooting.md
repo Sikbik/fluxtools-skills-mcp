@@ -8,6 +8,9 @@
 - App spec: `GET /apps/appspecifications/<appname>`
 - Logs: `GET /apps/applog/<app-or-component>/200` (requires `zelidauth`)
 
+If you’re using the MCP server, many tools return `resource_link` blocks instead of dumping huge JSON.
+Use MCP `resources/read` (or the wrapper tool `flux_resource_read`) to pull the full payload when needed.
+
 ## Common failures
 
 ### Daemon not synced
