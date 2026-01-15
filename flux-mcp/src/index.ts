@@ -219,6 +219,24 @@ function extractAppIdentity(spec: Record<string, unknown>): { appname?: string; 
   };
 }
 
+function formatDurationSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '-';
+  const s = Math.floor(seconds);
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+
+  if (days > 0) return `~${days}d ${hours}h`;
+  if (hours > 0) return `~${hours}h ${minutes}m`;
+  return `~${minutes}m`;
+}
+
+function estimateSecondsFromBlocks(blocksRemaining: number, secondsPerBlock: number): number {
+  if (!Number.isFinite(blocksRemaining) || !Number.isFinite(secondsPerBlock)) return NaN;
+  if (blocksRemaining <= 0) return 0;
+  return blocksRemaining * secondsPerBlock;
+}
+
 async function pollMessagePropagation(opts: {
   hash: string;
   attempts: number;
@@ -536,6 +554,16 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    name: 'flux_explorer_height_info',
+    description: 'Fetch explorer scanned height and provide best-effort height-to-time conversion hints.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        secondsPerBlock: { type: 'number', description: 'Override seconds per block (default 120)' },
+      },
+    },
+  },
 
   // Generic request (escape hatch)
   {
@@ -649,6 +677,8 @@ export const tools: Tool[] = [
       properties: {
         zelid: { type: 'string', description: 'Owner ZelID. If omitted, uses stored zelidauth.zelid when available.' },
         includeExpired: { type: 'boolean', description: 'Include expired apps (default false).', default: false },
+        estimateTimeRemaining: { type: 'boolean', description: 'If true, includes a best-effort ~time remaining column (default false).', default: false },
+        secondsPerBlock: { type: 'number', description: 'Optional override used when estimateTimeRemaining is true (default 120).' },
         limit: { type: 'number', description: 'Max rows in the table preview (default 50, max 200).', minimum: 1, maximum: 200, default: 50 },
       },
     },
@@ -1749,6 +1779,29 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
       }
 
+      case 'flux_explorer_height_info': {
+        const secondsPerBlockRaw = asOptionalNumber(args['secondsPerBlock']);
+        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 120;
+
+        const scannedHeightRes = await client.request('/explorer/scannedheight');
+        const scanned = unwrapFluxEnvelope<Record<string, unknown>>(scannedHeightRes.data);
+
+        const currentHeightRaw = scanned?.['generalScannedHeight'];
+        const currentHeight = typeof currentHeightRaw === 'number' ? currentHeightRaw : Number(currentHeightRaw);
+        if (!Number.isFinite(currentHeight)) throw new Error('Could not parse explorer scanned height from /explorer/scannedheight');
+
+        const out = {
+          ok: scannedHeightRes.ok,
+          status: scannedHeightRes.status,
+          currentHeight,
+          secondsPerBlock,
+          approxBlocksPerHour: Math.floor((60 * 60) / secondsPerBlock),
+          approxBlocksPerDay: Math.floor((24 * 60 * 60) / secondsPerBlock),
+        };
+
+        return jsonResult(out, { structuredContent: out });
+      }
+
       case 'flux_request': {
         const method = asOptionalString(args['method']);
         const pathname = mustBeString(args['path'], 'path');
@@ -1915,6 +1968,10 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_list_by_zelid_with_expiry': {
         const requestedZelid = asOptionalString(args['zelid']);
         const includeExpired = (asOptionalBoolean(args['includeExpired']) ?? false) === true;
+        const estimateTimeRemaining = (asOptionalBoolean(args['estimateTimeRemaining']) ?? false) === true;
+        const secondsPerBlockRaw = asOptionalNumber(args['secondsPerBlock']);
+        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 120;
+
         const limitRaw = asOptionalNumber(args['limit']) ?? 50;
         const limit = Math.max(1, Math.min(200, Math.floor(limitRaw)));
 
@@ -1995,7 +2052,10 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const filtered = includeExpired ? computed : computed.filter((x) => x.expired !== true);
 
-        const headers = ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Expire Blocks'];
+        const headers = estimateTimeRemaining
+          ? ['App', 'Blocks Left', '~Time Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Expire Blocks']
+          : ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Expire Blocks'];
+
         const rows = filtered.map((x) => {
           const name = typeof x.name === 'string' ? x.name : '-';
           const blocksRemaining = typeof x.blocksRemaining === 'number' ? Math.trunc(x.blocksRemaining) : 0;
@@ -2003,7 +2063,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
           const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
           const expireIn = typeof x.expireIn === 'number' ? Math.trunc(x.expireIn) : '-';
-          return [name, blocksRemaining, expired, expiresAt, updatedAt, expireIn];
+
+          if (!estimateTimeRemaining) return [name, blocksRemaining, expired, expiresAt, updatedAt, expireIn];
+
+          const seconds = estimateSecondsFromBlocks(blocksRemaining, secondsPerBlock);
+          const timeLeft = formatDurationSeconds(seconds);
+          return [name, blocksRemaining, timeLeft, expired, expiresAt, updatedAt, expireIn];
         });
 
         const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });
@@ -2032,7 +2097,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const summary = {
           ok: globalSpecsRes.ok && scannedHeightRes.ok && registrationInfoRes.ok,
           zelid,
-          options: { includeExpired, limit },
+          options: { includeExpired, estimateTimeRemaining, secondsPerBlock, limit },
           count: computed.length,
           shown,
           currentHeight,

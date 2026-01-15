@@ -32,6 +32,7 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_apps_troubleshoot')).toBe(true);
     expect(names.has('flux_apps_register_and_verify')).toBe(true);
     expect(names.has('flux_apps_update_and_verify')).toBe(true);
+    expect(names.has('flux_explorer_height_info')).toBe(true);
   });
 
   it('defines required args for key tools', () => {

@@ -49,6 +49,10 @@ describe.sequential('UX tools', () => {
       });
     }
 
+    if (url === '/explorer/scannedheight') {
+      return json(res, 200, { status: 'success', data: { generalScannedHeight: 12345 } });
+    }
+
     await readBody(req);
     return json(res, 404, { status: 'error', data: 'not found' });
   });
@@ -144,9 +148,16 @@ describe.sequential('UX tools', () => {
 
     expect(r.content[0]?.type).toBe('text');
 
-
     const resourceLink = r.content.find((c) => c.type === 'resource_link');
     expect(resourceLink).toBeTruthy();
+  });
+
+  it('flux_explorer_height_info returns summary', async () => {
+    const r = await callTool('flux_explorer_height_info', {});
+    expect(typeof r.isError).toBe('boolean');
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.secondsPerBlock).toBeTypeOf('number');
   });
 
   it('flux_syncthing_metrics returns resource_link summary', async () => {
