@@ -701,6 +701,8 @@ export const tools: Tool[] = [
         method: { type: 'string', description: 'Daemon method name (e.g. getinfo)' },
         params: { type: 'array', description: 'Positional params array (strings/numbers/bools/null only)' },
         redactTxHex: { type: 'boolean', description: 'If true (default), redacts long hex strings.', default: true },
+        confirm: { type: 'boolean', description: 'Required if allowMutation is true.' },
+        allowMutation: { type: 'boolean', description: 'Must stay false; reserved for future explicit mutation allowlist.' },
       },
       required: ['method'],
     },
@@ -2234,6 +2236,13 @@ export async function callTool(name: string, rawArgs: unknown) {
         const method = validateDaemonMethod(methodInput);
         const params = validateDaemonParams(args['params']);
         const redactTxHex = (asOptionalBoolean(args['redactTxHex']) ?? true) === true;
+        const allowMutation = (asOptionalBoolean(args['allowMutation']) ?? false) === true;
+
+        if (allowMutation) {
+          requireConfirm(args, `daemon/${method}`);
+          const out = { ok: false, status: 'mutation_disabled', method };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
 
         if (!isAllowedDaemonReadOnlyMethod(method)) {
           const out = {

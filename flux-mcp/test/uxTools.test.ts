@@ -211,6 +211,11 @@ describe.sequential('UX tools', () => {
     expect(r.isError).toBe(true);
   });
 
+  it('flux_daemon_call rejects allowMutation even with confirm', async () => {
+    const r = await callTool('flux_daemon_call', { method: 'getinfo', allowMutation: true, confirm: true });
+    expect(r.isError).toBe(true);
+  });
+
   it('flux_daemon_call returns resource_link for allowlisted method', async () => {
     const r = await callTool('flux_daemon_call', { method: 'getinfo', params: [] });
     expect(typeof r.isError).toBe('boolean');
