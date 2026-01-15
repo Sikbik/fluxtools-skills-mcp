@@ -170,4 +170,14 @@ describe.sequential('UX tools', () => {
     const structured = r.structuredContent as Record<string, unknown> | undefined;
     expect(structured?.resourceUri).toBeTypeOf('string');
   });
+
+  it('flux_apps_register_and_verify requires confirm', async () => {
+    const r = await callTool('flux_apps_register_and_verify', { spec: {}, signature: 'sig', timestamp: 1 });
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_apps_update_and_verify requires confirm', async () => {
+    const r = await callTool('flux_apps_update_and_verify', { spec: {}, signature: 'sig', timestamp: 1 });
+    expect(r.isError).toBe(true);
+  });
 });

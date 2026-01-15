@@ -23,9 +23,11 @@ import {
   summarizeByCategory,
 } from './endpoints.js';
 import { renderMarkdownTable } from './markdownTable.js';
-import { unwrapFluxEnvelope } from './fluxEnvelope.js';
+import { isFluxSuccess, unwrapFluxEnvelope } from './fluxEnvelope.js';
 
 type CallToolRequest = { params: { name: string; arguments?: unknown } };
+
+type FluxRequestResult = Awaited<ReturnType<FluxClient['request']>>;
 
 function mustBeString(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string`);
@@ -192,7 +194,98 @@ function extractHashFromAppMessageResponse(responseBody: unknown): string | unde
     if (typeof c === 'string' && c.trim()) return c;
   }
 
+
   return undefined;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function hasNonEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function extractAppIdentity(spec: Record<string, unknown>): { appname?: string; owner?: string } {
+  const name = spec.name;
+  const owner = spec.owner;
+  return {
+    appname: typeof name === 'string' && name.trim() ? name.trim() : undefined,
+    owner: typeof owner === 'string' && owner.trim() ? owner.trim() : undefined,
+  };
+}
+
+async function pollMessagePropagation(opts: {
+  hash: string;
+  attempts: number;
+  intervalMs: number;
+}): Promise<{
+  attemptsUsed: number;
+  temporaryPresent: boolean;
+  permanentPresent: boolean;
+  lastTemporary: unknown;
+  lastPermanent: unknown;
+}> {
+  const attempts = Math.max(1, Math.floor(opts.attempts));
+  const intervalMs = Math.max(0, Math.floor(opts.intervalMs));
+
+  let lastTemporary: unknown = null;
+  let lastPermanent: unknown = null;
+  let temporaryPresent = false;
+  let permanentPresent = false;
+
+  for (let i = 0; i < attempts; i++) {
+    const [temporaryRes, permanentRes] = await Promise.all([
+      client.request(`/apps/temporarymessages/${encodeURIComponent(opts.hash)}`),
+      client.request(`/apps/permanentmessages/${encodeURIComponent(opts.hash)}`),
+    ]);
+
+    if (!temporaryRes.ok || !permanentRes.ok) {
+      return {
+        attemptsUsed: i + 1,
+        temporaryPresent: false,
+        permanentPresent: false,
+        lastTemporary: temporaryRes,
+        lastPermanent: permanentRes,
+      };
+    }
+
+    lastTemporary = temporaryRes;
+    lastPermanent = permanentRes;
+
+    const tempOk = isFluxSuccess(temporaryRes.data);
+    const permOk = isFluxSuccess(permanentRes.data);
+
+    const tempValue = tempOk ? unwrapFluxEnvelope<unknown>(temporaryRes.data) : null;
+    const permValue = permOk ? unwrapFluxEnvelope<unknown>(permanentRes.data) : null;
+
+    temporaryPresent = tempOk && hasNonEmptyValue(tempValue);
+    permanentPresent = permOk && hasNonEmptyValue(permValue);
+
+    if (permanentPresent) {
+      return {
+        attemptsUsed: i + 1,
+        temporaryPresent,
+        permanentPresent,
+        lastTemporary,
+        lastPermanent,
+      };
+    }
+
+    if (i < attempts - 1 && intervalMs > 0) await sleep(intervalMs);
+  }
+
+  return {
+    attemptsUsed: attempts,
+    temporaryPresent,
+    permanentPresent,
+    lastTemporary,
+    lastPermanent,
+  };
 }
 
 function requireConfirm(args: Record<string, unknown>, actionDescription: string) {
@@ -716,20 +809,59 @@ export const tools: Tool[] = [
       required: ['spec', 'signature', 'timestamp'],
     },
   },
-  {
-    name: 'flux_apps_get_messages',
-    description: 'Fetch temporary/permanent messages for a registration/update hash.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        hash: { type: 'string' },
-        kind: { type: 'string', enum: ['temporary', 'permanent', 'both'], description: 'Default both' },
-      },
-      required: ['hash'],
-    },
-  },
+   {
+     name: 'flux_apps_get_messages',
+     description: 'Fetch temporary/permanent messages for a registration/update hash.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         hash: { type: 'string' },
+         kind: { type: 'string', enum: ['temporary', 'permanent', 'both'], description: 'Default both' },
+       },
+       required: ['hash'],
+     },
+   },
+   {
+     name: 'flux_apps_register_and_verify',
+     description: 'Submit app registration and poll for message propagation to permanent messages.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         spec: { type: 'object', additionalProperties: true },
+         signature: { type: 'string', description: 'Owner signature over (type+version+spec+timestamp)' },
+         timestamp: { type: 'number', description: 'Timestamp used to build the message-to-sign (ms epoch)' },
+         verifyFirst: { type: 'boolean', description: 'If true (default), canonicalize spec before submitting' },
+         typeVersion: { type: 'number', description: 'Message type version (default 1)' },
+         attempts: { type: 'number', description: 'Poll attempts (default 10)' },
+         intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
+         verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
+         confirm: { type: 'boolean', description: 'Required to submit registration' },
+       },
+       required: ['spec', 'signature', 'timestamp', 'confirm'],
+     },
+   },
+   {
+     name: 'flux_apps_update_and_verify',
+     description: 'Submit app update and poll for message propagation to permanent messages.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         spec: { type: 'object', additionalProperties: true },
+         signature: { type: 'string', description: 'Owner signature over (type+version+spec+timestamp)' },
+         timestamp: { type: 'number', description: 'Timestamp used to build the message-to-sign (ms epoch)' },
+         verifyFirst: { type: 'boolean', description: 'If true (default), canonicalize spec before submitting' },
+         typeVersion: { type: 'number', description: 'Message type version (default 1)' },
+         attempts: { type: 'number', description: 'Poll attempts (default 10)' },
+         intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
+         verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
+         confirm: { type: 'boolean', description: 'Required to submit update' },
+       },
+       required: ['spec', 'signature', 'timestamp', 'confirm'],
+     },
+   },
+ 
+   // App lifecycle (mutating)
 
-  // App lifecycle (mutating)
   {
     name: 'flux_apps_start',
     description: 'Start an app or component (GET /apps/appstart). Requires confirm=true.',
@@ -2354,38 +2486,147 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
       }
 
-      case 'flux_apps_register': {
-        const specInput = mustBeObject(args['spec'], 'spec');
-        const signature = mustBeString(args['signature'], 'signature');
-        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
-        const verifyFirstRaw = args['verifyFirst'];
-        const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
-        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+       case 'flux_apps_register': {
+         const specInput = mustBeObject(args['spec'], 'spec');
+         const signature = mustBeString(args['signature'], 'signature');
+         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+         const verifyFirstRaw = args['verifyFirst'];
+         const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
+         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+ 
+         const verified = verifyFirst
+           ? await client.request('/apps/verifyappregistrationspecifications', {
+               method: 'POST',
+               body: specInput,
+               allowMutation: true,
+             })
+           : null;
+ 
+         const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+ 
+         const type = 'fluxappregister' as const;
+         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+ 
+         const submit = await client.request('/apps/appregister', {
+           method: 'POST',
+           body: payload,
+           allowMutation: true,
+         });
+ 
+         const hash = extractHashFromAppMessageResponse(submit.data);
+ 
+         return jsonResult({ verified, submit, hash, messageToSign, payload });
+       }
 
-        const verified = verifyFirst
-          ? await client.request('/apps/verifyappregistrationspecifications', {
-              method: 'POST',
-              body: specInput,
-              allowMutation: true,
-            })
-          : null;
+       case 'flux_apps_register_and_verify': {
+         requireConfirm(args, 'apps/appregister');
+         const specInput = mustBeObject(args['spec'], 'spec');
+         const signature = mustBeString(args['signature'], 'signature');
+         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+         const verifyFirstRaw = args['verifyFirst'];
+         const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
+         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+ 
+         const attempts = asOptionalNumber(args['attempts']) ?? 10;
+         const intervalMs = asOptionalNumber(args['intervalMs']) ?? 3000;
+         const verifyGlobal = (asOptionalBoolean(args['verifyGlobal']) ?? true) === true;
+ 
+         const verified = verifyFirst
+           ? await client.request('/apps/verifyappregistrationspecifications', {
+               method: 'POST',
+               body: specInput,
+               allowMutation: true,
+             })
+           : null;
+ 
+         const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+         const { appname, owner } = extractAppIdentity(spec);
+ 
+         const type = 'fluxappregister' as const;
+         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+ 
+         const submit = await client.request('/apps/appregister', {
+           method: 'POST',
+           body: payload,
+           allowMutation: true,
+         });
+ 
+         const hash = extractHashFromAppMessageResponse(submit.data);
+         if (!hash) throw new Error('Could not extract message hash from registration response');
+ 
+         const propagation = await pollMessagePropagation({ hash, attempts, intervalMs });
 
-        const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+         let globalCheck: FluxRequestResult | null = null;
+         let globalPresent: boolean | null = null;
+         if (verifyGlobal && appname) {
+           globalCheck = await client.request('/apps/globalappsspecifications', {
+             query: { appname, owner: owner ?? undefined },
+           });
+           if (globalCheck.ok && isFluxSuccess(globalCheck.data)) {
+             const globalSpecs = unwrapFluxEnvelope<unknown>(globalCheck.data);
+             if (Array.isArray(globalSpecs)) {
+               globalPresent = globalSpecs.some((x) => {
+                 if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+                 const n = (x as Record<string, unknown>).name;
+                 const o = (x as Record<string, unknown>).owner;
+                 const nameOk = typeof n === 'string' && n === appname;
+                 const ownerOk = !owner || (typeof o === 'string' && o === owner);
+                 return nameOk && ownerOk;
+               });
+             } else {
+               globalPresent = hasNonEmptyValue(globalSpecs);
+             }
+           }
+         }
 
-        const type = 'fluxappregister' as const;
-        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-        const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+         const ok = submit.ok && propagation.permanentPresent === true && (globalPresent !== false);
 
-        const submit = await client.request('/apps/appregister', {
-          method: 'POST',
-          body: payload,
-          allowMutation: true,
-        });
+         const link = resourceStore.putJson({
+           kind: 'apps/register_and_verify',
+           name: `Register and verify ${appname ?? hash}`,
+           description: 'Registration submission + propagation checks',
+           value: {
+             appname: appname ?? null,
+             owner: owner ?? null,
+             hash,
+             attempts,
+             intervalMs,
+             verified,
+             submit,
+             propagation,
+             globalCheck,
+             globalPresent,
+           },
+         });
 
-        const hash = extractHashFromAppMessageResponse(submit.data);
+         const summary = {
+           ok,
+           status: ok ? 'verified' : 'pending',
+           appname: appname ?? null,
+           owner: owner ?? null,
+           hash,
+           attemptsUsed: propagation.attemptsUsed,
+           temporaryPresent: propagation.temporaryPresent,
+           permanentPresent: propagation.permanentPresent,
+           globalPresent,
+           resourceUri: link.uri,
+           nextActions: ok
+             ? []
+             : [
+                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                 appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+               ].filter(Boolean),
+         };
 
-        return jsonResult({ verified, submit, hash, messageToSign, payload });
-      }
+         return {
+           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+           structuredContent: summary,
+           isError: !ok,
+         };
+       }
+
 
       case 'flux_apps_plan_update': {
         const specInput = mustBeObject(args['spec'], 'spec');
@@ -2422,38 +2663,147 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
       }
 
-      case 'flux_apps_update': {
-        const specInput = mustBeObject(args['spec'], 'spec');
-        const signature = mustBeString(args['signature'], 'signature');
-        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
-        const verifyFirstRaw = args['verifyFirst'];
-        const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
-        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+       case 'flux_apps_update': {
+         const specInput = mustBeObject(args['spec'], 'spec');
+         const signature = mustBeString(args['signature'], 'signature');
+         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+         const verifyFirstRaw = args['verifyFirst'];
+         const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
+         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+ 
+         const verified = verifyFirst
+           ? await client.request('/apps/verifyappupdatespecifications', {
+               method: 'POST',
+               body: specInput,
+               allowMutation: true,
+             })
+           : null;
+ 
+         const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+ 
+         const type = 'fluxappupdate' as const;
+         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+ 
+         const submit = await client.request('/apps/appupdate', {
+           method: 'POST',
+           body: payload,
+           allowMutation: true,
+         });
+ 
+         const hash = extractHashFromAppMessageResponse(submit.data);
+ 
+         return jsonResult({ verified, submit, hash, messageToSign, payload });
+       }
 
-        const verified = verifyFirst
-          ? await client.request('/apps/verifyappupdatespecifications', {
-              method: 'POST',
-              body: specInput,
-              allowMutation: true,
-            })
-          : null;
+       case 'flux_apps_update_and_verify': {
+         requireConfirm(args, 'apps/appupdate');
+         const specInput = mustBeObject(args['spec'], 'spec');
+         const signature = mustBeString(args['signature'], 'signature');
+         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+         const verifyFirstRaw = args['verifyFirst'];
+         const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
+         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+ 
+         const attempts = asOptionalNumber(args['attempts']) ?? 10;
+         const intervalMs = asOptionalNumber(args['intervalMs']) ?? 3000;
+         const verifyGlobal = (asOptionalBoolean(args['verifyGlobal']) ?? true) === true;
+ 
+         const verified = verifyFirst
+           ? await client.request('/apps/verifyappupdatespecifications', {
+               method: 'POST',
+               body: specInput,
+               allowMutation: true,
+             })
+           : null;
+ 
+         const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+         const { appname, owner } = extractAppIdentity(spec);
+ 
+         const type = 'fluxappupdate' as const;
+         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+ 
+         const submit = await client.request('/apps/appupdate', {
+           method: 'POST',
+           body: payload,
+           allowMutation: true,
+         });
+ 
+         const hash = extractHashFromAppMessageResponse(submit.data);
+         if (!hash) throw new Error('Could not extract message hash from update response');
+ 
+         const propagation = await pollMessagePropagation({ hash, attempts, intervalMs });
 
-        const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+         let globalCheck: FluxRequestResult | null = null;
+         let globalPresent: boolean | null = null;
+         if (verifyGlobal && appname) {
+           globalCheck = await client.request('/apps/globalappsspecifications', {
+             query: { appname, owner: owner ?? undefined },
+           });
+           if (globalCheck.ok && isFluxSuccess(globalCheck.data)) {
+             const globalSpecs = unwrapFluxEnvelope<unknown>(globalCheck.data);
+             if (Array.isArray(globalSpecs)) {
+               globalPresent = globalSpecs.some((x) => {
+                 if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+                 const n = (x as Record<string, unknown>).name;
+                 const o = (x as Record<string, unknown>).owner;
+                 const nameOk = typeof n === 'string' && n === appname;
+                 const ownerOk = !owner || (typeof o === 'string' && o === owner);
+                 return nameOk && ownerOk;
+               });
+             } else {
+               globalPresent = hasNonEmptyValue(globalSpecs);
+             }
+           }
+         }
 
-        const type = 'fluxappupdate' as const;
-        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-        const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+         const ok = submit.ok && propagation.permanentPresent === true && (globalPresent !== false);
 
-        const submit = await client.request('/apps/appupdate', {
-          method: 'POST',
-          body: payload,
-          allowMutation: true,
-        });
+         const link = resourceStore.putJson({
+           kind: 'apps/update_and_verify',
+           name: `Update and verify ${appname ?? hash}`,
+           description: 'Update submission + propagation checks',
+           value: {
+             appname: appname ?? null,
+             owner: owner ?? null,
+             hash,
+             attempts,
+             intervalMs,
+             verified,
+             submit,
+             propagation,
+             globalCheck,
+             globalPresent,
+           },
+         });
 
-        const hash = extractHashFromAppMessageResponse(submit.data);
+         const summary = {
+           ok,
+           status: ok ? 'verified' : 'pending',
+           appname: appname ?? null,
+           owner: owner ?? null,
+           hash,
+           attemptsUsed: propagation.attemptsUsed,
+           temporaryPresent: propagation.temporaryPresent,
+           permanentPresent: propagation.permanentPresent,
+           globalPresent,
+           resourceUri: link.uri,
+           nextActions: ok
+             ? []
+             : [
+                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                 appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+               ].filter(Boolean),
+         };
 
-        return jsonResult({ verified, submit, hash, messageToSign, payload });
-      }
+         return {
+           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+           structuredContent: summary,
+           isError: !ok,
+         };
+       }
+
 
       case 'flux_apps_get_messages': {
         const hash = mustBeString(args['hash'], 'hash');
