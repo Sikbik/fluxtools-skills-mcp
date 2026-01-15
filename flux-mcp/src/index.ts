@@ -23,6 +23,7 @@ import {
   summarizeByCategory,
 } from './endpoints.js';
 import { renderMarkdownTable } from './markdownTable.js';
+import { unwrapFluxEnvelope } from './fluxEnvelope.js';
 
 type CallToolRequest = { params: { name: string; arguments?: unknown } };
 
@@ -169,13 +170,6 @@ function buildSignedPayload(opts: {
   };
 }
 
-function unwrapFluxData<T = unknown>(maybeEnvelope: unknown): T {
-  if (maybeEnvelope && typeof maybeEnvelope === 'object' && !Array.isArray(maybeEnvelope)) {
-    const obj = maybeEnvelope as Record<string, unknown>;
-    if (obj.status === 'success' && 'data' in obj) return obj.data as T;
-  }
-  return maybeEnvelope as T;
-}
 
 function extractHashFromAppMessageResponse(responseBody: unknown): string | undefined {
   if (!responseBody || typeof responseBody !== 'object') return undefined;
@@ -1204,7 +1198,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           return jsonResult(out, { isError: true, structuredContent: out });
         }
 
-        const payload = unwrapFluxData<unknown>(res.data);
+        const payload = unwrapFluxEnvelope<unknown>(res.data);
         const obj = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined;
         const logsValue = obj?.logs ?? obj?.data ?? payload;
 
@@ -1583,7 +1577,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
-        const data = unwrapFluxData<unknown>(res.data);
+        const data = unwrapFluxEnvelope<unknown>(res.data);
         const items = Array.isArray(data)
           ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
           : [];
@@ -1628,7 +1622,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
-        const data = unwrapFluxData<unknown>(res.data);
+        const data = unwrapFluxEnvelope<unknown>(res.data);
         const names: string[] = Array.isArray(data)
           ? data.filter((x): x is string => typeof x === 'string')
           : [];
@@ -1707,9 +1701,9 @@ export async function callTool(name: string, rawArgs: unknown) {
         const scannedHeightRes = await client.request('/explorer/scannedheight');
         const registrationInfoRes = await client.request('/apps/registrationinformation');
 
-        const globalSpecs = unwrapFluxData<unknown[]>(globalSpecsRes.data);
-        const scanned = unwrapFluxData<Record<string, unknown>>(scannedHeightRes.data);
-        const regInfo = unwrapFluxData<Record<string, unknown>>(registrationInfoRes.data);
+        const globalSpecs = unwrapFluxEnvelope<unknown[]>(globalSpecsRes.data);
+        const scanned = unwrapFluxEnvelope<Record<string, unknown>>(scannedHeightRes.data);
+        const regInfo = unwrapFluxEnvelope<Record<string, unknown>>(registrationInfoRes.data);
 
         const currentHeightRaw = scanned?.['generalScannedHeight'];
         const currentHeight = typeof currentHeightRaw === 'number' ? currentHeightRaw : Number(currentHeightRaw);
@@ -2021,7 +2015,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           allowMutation: true,
         });
 
-        const verifiedSpec = unwrapFluxData<Record<string, unknown>>(verified.data);
+        const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
 
         const price = await client.request('/apps/calculateprice', {
           method: 'POST',
@@ -2068,7 +2062,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             })
           : null;
 
-        const spec = verified ? unwrapFluxData<Record<string, unknown>>(verified.data) : specInput;
+        const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
 
         const type = 'fluxappregister' as const;
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
@@ -2096,7 +2090,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           allowMutation: true,
         });
 
-        const verifiedSpec = unwrapFluxData<Record<string, unknown>>(verified.data);
+        const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
 
         const price = await client.request('/apps/calculateprice', {
           method: 'POST',
@@ -2136,7 +2130,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             })
           : null;
 
-        const spec = verified ? unwrapFluxData<Record<string, unknown>>(verified.data) : specInput;
+        const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
 
         const type = 'fluxappupdate' as const;
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
@@ -2588,7 +2582,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
-        const data = unwrapFluxData<unknown>(res.data);
+        const data = unwrapFluxEnvelope<unknown>(res.data);
         const obj = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
         const okValue = obj['ok'];
         const messageValue = obj['message'];
@@ -2635,7 +2629,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
-        const data = unwrapFluxData<unknown>(res.data);
+        const data = unwrapFluxEnvelope<unknown>(res.data);
         const folders = Array.isArray(data)
           ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
           : [];
@@ -2677,7 +2671,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
-        const data = unwrapFluxData<unknown>(res.data);
+        const data = unwrapFluxEnvelope<unknown>(res.data);
         const devices = Array.isArray(data)
           ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
           : [];
