@@ -8,16 +8,22 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { FluxClient } from './fluxClient.js';
 import type { FluxResponseType } from './fluxClient.js';
+
+import { ResourceStore } from './resources.js';
 import {
   loadEndpointInventory,
   searchRoutes,
   summarizeByCategory,
 } from './endpoints.js';
+
+type CallToolRequest = { params: { name: string; arguments?: unknown } };
 
 function mustBeString(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string`);
@@ -70,11 +76,38 @@ function mustBeObject(value: unknown, name: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function jsonResult(data: unknown, isError = false) {
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function jsonResult(
+  data: unknown,
+  opts?: {
+    isError?: boolean;
+    structuredContent?: Record<string, unknown>;
+    contentText?: string;
+  }
+) {
+  const text = opts?.contentText ?? JSON.stringify(data, null, 2);
+
   return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
-    isError,
+    content: [{ type: 'text', text }],
+    structuredContent: opts?.structuredContent,
+    isError: opts?.isError ?? false,
   };
+}
+
+function errorResult(error: unknown, opts?: { tool?: string; hint?: string }) {
+  const message = error instanceof Error ? error.message : String(error);
+  return jsonResult(
+    {
+      error: message,
+      tool: opts?.tool,
+      hint: opts?.hint,
+    },
+    { isError: true }
+  );
 }
 
 function normalizeEnvParams(env: unknown): string[] {
@@ -135,34 +168,30 @@ function buildSignedPayload(opts: {
   };
 }
 
-function unwrapFluxData<T = unknown>(maybeEnvelope: any): T {
-  if (maybeEnvelope && typeof maybeEnvelope === 'object' && maybeEnvelope.status === 'success' && 'data' in maybeEnvelope) {
-    return maybeEnvelope.data as T;
+function unwrapFluxData<T = unknown>(maybeEnvelope: unknown): T {
+  if (maybeEnvelope && typeof maybeEnvelope === 'object' && !Array.isArray(maybeEnvelope)) {
+    const obj = maybeEnvelope as Record<string, unknown>;
+    if (obj.status === 'success' && 'data' in obj) return obj.data as T;
   }
   return maybeEnvelope as T;
 }
 
-function extractHashFromAppMessageResponse(responseBody: any): string | undefined {
-  const body = responseBody;
-  if (!body || typeof body !== 'object') return undefined;
+function extractHashFromAppMessageResponse(responseBody: unknown): string | undefined {
+  if (!responseBody || typeof responseBody !== 'object') return undefined;
 
-  // Standard envelope
-  if (typeof body.data === 'string') return body.data;
+  const body = responseBody as Record<string, unknown>;
 
-  const inner = body.data;
-  if (inner && typeof inner === 'object') {
-    const candidates = [
-      (inner as any).hash,
-      (inner as any).messageHASH,
-      (inner as any).messageHash,
-      (inner as any).id,
-    ];
+  const data = body.data;
+  if (typeof data === 'string') return data;
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const inner = data as Record<string, unknown>;
+    const candidates = [inner.hash, inner.messageHASH, inner.messageHash, inner.id];
     for (const c of candidates) {
       if (typeof c === 'string' && c.trim()) return c;
     }
   }
 
-  // Fallbacks
   const topCandidates = [body.hash, body.messageHASH, body.messageHash, body.id];
   for (const c of topCandidates) {
     if (typeof c === 'string' && c.trim()) return c;
@@ -171,8 +200,8 @@ function extractHashFromAppMessageResponse(responseBody: any): string | undefine
   return undefined;
 }
 
-function requireConfirm(args: any, actionDescription: string) {
-  const confirm = asOptionalBoolean(args?.confirm) ?? false;
+function requireConfirm(args: Record<string, unknown>, actionDescription: string) {
+  const confirm = asOptionalBoolean(args.confirm) ?? false;
   if (confirm !== true) {
     throw new Error(`confirm=true is required to run: ${actionDescription}`);
   }
@@ -198,12 +227,101 @@ const client = new FluxClient({
   zelidauth: process.env.FLUX_ZELIDAUTH,
 });
 
-const tools: Tool[] = [
+const resourceStore = new ResourceStore({
+  ttlMs: Number(process.env.FLUX_MCP_RESOURCE_TTL_MS ?? 10 * 60 * 1000),
+  maxEntries: Number(process.env.FLUX_MCP_RESOURCE_MAX_ENTRIES ?? 200),
+});
+
+export const tools: Tool[] = [
   // Session/auth helpers
   {
     name: 'flux_get_state',
-    description: 'Get current MCP client state (base URL, whether zelidauth is set).',
+    description: 'Get current MCP client state (base URL, whether zelidauth is set, HTTP defaults).',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_resource_prune',
+    description: 'Prune expired dynamic resources or clear them all. Does not affect static resources like flux://inventory/endpoints.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clearAll: { type: 'boolean', description: 'If true, clears all dynamic resources (default false).', default: false },
+      },
+    },
+  },
+  {
+    name: 'flux_resource_read',
+    description: 'Read an MCP resource by URI (wrapper around resources/read), returning contents as text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        uri: { type: 'string', description: 'Resource URI (e.g. flux://inventory/endpoints or flux://resource/...)' },
+      },
+      required: ['uri'],
+    },
+  },
+  {
+    name: 'flux_set_http_defaults',
+    description: 'Set session-level HTTP defaults (timeoutMs, retryCount, retryBackoffMs). Applies to all subsequent calls.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        timeoutMs: { type: 'number', description: 'Default request timeout in ms (default 30000).', minimum: 1, default: 30000 },
+        retryCount: { type: 'number', description: 'Default retry count for safe requests (default 0).', minimum: 0, default: 0 },
+        retryBackoffMs: { type: 'number', description: 'Base backoff in ms between retries (default 250).', minimum: 0, default: 250 },
+      },
+    },
+  },
+  {
+    name: 'flux_auth_flow',
+    description:
+      'Plan a step-by-step auth flow (no network calls). Returns the exact tool calls to run for loginphrase/emergencyphrase -> sign -> (optional resolve gateway -> set base url) -> verifylogin -> set zelidauth.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        useEmergencyPhrase: { type: 'boolean', description: 'If true, prefer /id/emergencyphrase.' },
+        gatewayBaseUrl: {
+          type: 'string',
+          description:
+            'Optional: if provided, include a step to resolve the node behind this gateway and then set baseUrl to the recommended direct node URL.',
+        },
+      },
+    },
+  },
+  {
+    name: 'flux_auth_diagnose',
+    description: 'Run auth + connectivity preflight checks and return actionable next steps (no mutations).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_logs_tail',
+    description: 'Tail recent logs safely using /apps/applogpolling (prefers incremental since).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Flux app name' },
+        lines: { type: 'number', description: 'Max log lines (default 200, max 500).', minimum: 1, maximum: 500, default: 200 },
+        since: {
+          description: 'Optional since token from previous call.',
+          anyOf: [{ type: 'string' }, { type: 'number' }],
+        },
+        maxBytes: { type: 'number', description: 'Max bytes of returned logs (default 65536).', minimum: 1024, maximum: 1048576, default: 65536 },
+      },
+      required: ['appname'],
+    },
+  },
+  {
+    name: 'flux_app_health_report',
+    description: 'Return a compact health/observability summary for an app (inspect/stats/top/monitor/logs).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Flux app name' },
+        logsLines: { type: 'number', description: 'Lines for logs preview (default 100, max 300).', minimum: 1, maximum: 300, default: 100 },
+        monitorRangeMs: { type: 'number', description: 'Range for monitor history in ms (default 600000).', minimum: 1000, maximum: 86400000, default: 600000 },
+      },
+      required: ['appname'],
+    },
   },
   {
     name: 'flux_set_base_url',
@@ -212,6 +330,18 @@ const tools: Tool[] = [
       type: 'object',
       properties: { baseUrl: { type: 'string' } },
       required: ['baseUrl'],
+    },
+  },
+  {
+    name: 'flux_resolve_gateway_node',
+    description:
+      'Resolve the current Flux node IP behind a gateway base URL (e.g. https://api.runonflux.io). Uses /flux/info and the response header `fluxnode` when available.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        gatewayBaseUrl: { type: 'string' },
+      },
+      required: ['gatewayBaseUrl'],
     },
   },
   {
@@ -238,6 +368,37 @@ const tools: Tool[] = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'flux_get_emergency_phrase',
+    description: 'Fetch an emergency login phrase (GET /id/emergencyphrase). Useful if /id/loginphrase fails due to node health checks.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_verify_login',
+    description: 'Verify a signed login phrase and establish a session (POST /id/verifylogin). Does not require confirm/allowMutation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        zelid: { type: 'string' },
+        signature: { type: 'string' },
+        loginPhrase: { type: 'string' },
+      },
+      required: ['zelid', 'signature', 'loginPhrase'],
+    },
+  },
+  {
+    name: 'flux_check_privilege',
+    description: 'Check privilege level for a zelidauth tuple (POST /id/checkprivilege). Does not require confirm/allowMutation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        zelid: { type: 'string' },
+        signature: { type: 'string' },
+        loginPhrase: { type: 'string' },
+      },
+      required: ['zelid', 'signature', 'loginPhrase'],
+    },
+  },
+  {
     name: 'flux_build_zelidauth',
     description: 'Build a zelidauth header JSON string from zelid + signature + loginPhrase.',
     inputSchema: {
@@ -251,7 +412,6 @@ const tools: Tool[] = [
     },
   },
 
-  // Endpoint discovery
   {
     name: 'flux_list_endpoint_categories',
     description: 'List endpoint categories and route counts (from the bundled endpoints inventory).',
@@ -275,7 +435,7 @@ const tools: Tool[] = [
   // Generic request (escape hatch)
   {
     name: 'flux_request',
-    description: 'Call any Flux node API endpoint. Mutating endpoints require allowMutation=true. Use responseType=base64 for file downloads.',
+    description: 'Call any Flux node API endpoint. Mutations are blocked unless allowMutation=true. Prefer dedicated tools for workflows; use responseType=base64 for file downloads.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -335,6 +495,32 @@ const tools: Tool[] = [
     name: 'flux_apps_list_all',
     description: 'List all apps known to the node (GET /apps/listallapps).',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_apps_list_global_specs',
+    description:
+      'List global app specifications (GET /apps/globalappsspecifications). Use owner to list apps registered under a ZelID.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        hash: { type: 'string', description: 'Optional message hash filter' },
+        owner: { type: 'string', description: 'Optional owner ZelID filter' },
+        appname: { type: 'string', description: 'Optional app name filter' },
+      },
+    },
+  },
+  {
+    name: 'flux_apps_list_by_zelid_with_expiry',
+    description:
+      'List globally registered apps for a ZelID with expiration computed from chain height + Flux rules (PON fork adjustment).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        zelid: { type: 'string', description: 'Owner ZelID. If omitted, uses stored zelidauth.zelid when available.' },
+        includeExpired: { type: 'boolean', description: 'Include expired apps (default false).', default: false },
+        limit: { type: 'number', description: 'Max rows in the table preview (default 50, max 200).', minimum: 1, maximum: 200, default: 50 },
+      },
+    },
   },
   {
     name: 'flux_apps_get_spec',
@@ -798,36 +984,432 @@ const tools: Tool[] = [
   },
 ];
 
-const server = new Server(
-  { name: 'flux-mcp', version: '0.3.0' },
-  { capabilities: { tools: {} } }
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+export async function callTool(name: string, rawArgs: unknown) {
+  const args = asRecord(rawArgs);
 
   try {
     switch (name) {
-      // Session/auth helpers
       case 'flux_get_state':
-        return jsonResult({
+        const out = {
           baseUrl: client.getBaseUrl(),
           zelidauth: client.getZelidauthSummary(),
+          httpDefaults: client.getHttpDefaults(),
           endpointsInventory: inventory
             ? { path: endpointsPath, routeCount: inventory.routeCount, generatedAt: inventory.generatedAt }
             : { path: endpointsPath, present: false },
+        };
+        return jsonResult(out, { structuredContent: out });
+
+      case 'flux_resource_prune': {
+        const clearAll = asOptionalBoolean(args['clearAll']) ?? false;
+        if (clearAll) {
+          const result = resourceStore.clearAll();
+          const out = { ok: true, action: 'clearAll', ...result };
+          return jsonResult(out, { structuredContent: out });
+        }
+        const result = resourceStore.pruneNow();
+        const out = { ok: true, action: 'prune', ...result };
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_resource_read': {
+        const uri = mustBeString(args['uri'], 'uri');
+
+        if (uri === 'flux://inventory/endpoints') {
+          const text = JSON.stringify(inventory?.routes ?? [], null, 2);
+          const out = { ok: true, uri, mimeType: 'application/json' };
+          return {
+            content: [{ type: 'text', text }],
+            structuredContent: out,
+            isError: false,
+          };
+        }
+
+        const found = resourceStore.read(uri);
+        if (!found) {
+          const out = { ok: false, error: 'Resource not found', uri };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
+
+        const out = { ok: true, uri: found.uri, mimeType: found.mimeType ?? 'text/plain' };
+        return {
+          content: [{ type: 'text', text: found.text }],
+          structuredContent: out,
+          isError: false,
+        };
+      }
+
+      case 'flux_set_http_defaults': {
+        client.setHttpDefaults({
+          timeoutMs: asOptionalNumber(args['timeoutMs']) ?? undefined,
+          retryCount: asOptionalNumber(args['retryCount']) ?? undefined,
+          retryBackoffMs: asOptionalNumber(args['retryBackoffMs']) ?? undefined,
+        });
+        const out = { ok: true, httpDefaults: client.getHttpDefaults(), note: 'Omitted fields keep their previous values.' };
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_auth_flow': {
+        const useEmergencyPhrase = asOptionalBoolean(args['useEmergencyPhrase']) ?? false;
+        const gatewayBaseUrl = asOptionalString(args['gatewayBaseUrl']);
+
+        const steps: Array<{ tool: string; arguments?: unknown; note: string }> = [];
+
+        if (gatewayBaseUrl) {
+          steps.push({
+            tool: 'flux_set_base_url',
+            arguments: { baseUrl: gatewayBaseUrl },
+            note: 'Use the public gateway as a starting point.',
+          });
+          steps.push({
+            tool: 'flux_resolve_gateway_node',
+            arguments: { gatewayBaseUrl },
+            note: 'Resolve the node behind the gateway and switch to its direct base URL for login.',
+          });
+          steps.push({
+            tool: 'flux_set_base_url',
+            arguments: { baseUrl: 'http://<resolved-node-ip>:16127' },
+            note: 'Set baseUrl to the recommended direct node URL from flux_resolve_gateway_node.',
+          });
+        } else {
+          steps.push({
+            tool: 'flux_set_base_url',
+            arguments: { baseUrl: 'http://<node-ip>:16127' },
+            note: 'Set your node API base URL for this session.',
+          });
+        }
+
+        const phraseTool = useEmergencyPhrase ? 'flux_get_emergency_phrase' : 'flux_get_login_phrase';
+        steps.push({ tool: phraseTool, arguments: {}, note: 'Fetch a login phrase to sign with your ZelID.' });
+        steps.push({
+          tool: 'USER_ACTION',
+          note: 'Sign the returned login phrase with your ZelID wallet/tooling to produce a signature.',
+        });
+        steps.push({
+          tool: 'flux_verify_login',
+          arguments: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' },
+          note: 'Establish a session on the node (recommended).',
+        });
+        steps.push({
+          tool: 'flux_build_zelidauth',
+          arguments: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' },
+          note: 'Build the zelidauth header JSON value.',
+        });
+        steps.push({
+          tool: 'flux_set_zelidauth',
+          arguments: { zelidauth: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' } },
+          note: 'Store zelidauth for subsequent calls.',
+        });
+        steps.push({
+          tool: 'flux_check_privilege',
+          arguments: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' },
+          note: 'Confirm your privilege level (admin/fluxteam/appownerabove).',
         });
 
+        const out = { ok: true, steps };
+
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_auth_diagnose': {
+        const checks: Array<{ name: string; ok: boolean; detail?: unknown }> = [];
+        const nextSteps: string[] = [];
+
+        const baseUrl = client.getBaseUrl();
+        if (!baseUrl) {
+        checks.push({ name: 'baseUrl', ok: false, detail: 'Base URL not set' });
+        nextSteps.push("Run flux_set_base_url with baseUrl='http://<node-ip>:16127'");
+        const out = { ok: false, checks, nextSteps };
+        return jsonResult(out, { isError: false, structuredContent: out });
+
+        }
+        checks.push({ name: 'baseUrl', ok: true, detail: baseUrl });
+
+        const version = await client.request('/flux/version');
+        checks.push({ name: 'flux/version', ok: version.ok, detail: version.data });
+
+        const phrase = await client.request('/id/loginphrase');
+        if (phrase.ok) {
+          checks.push({ name: 'id/loginphrase', ok: true });
+        } else {
+          checks.push({ name: 'id/loginphrase', ok: false, detail: phrase.data });
+          const emergency = await client.request('/id/emergencyphrase');
+          checks.push({ name: 'id/emergencyphrase', ok: emergency.ok, detail: emergency.data });
+          nextSteps.push('If loginphrase fails, use flux_get_emergency_phrase and investigate node health (syncthing/docker/DOS state).');
+        }
+
+        const z = client.getZelidauthSummary();
+        checks.push({ name: 'zelidauth', ok: z.present, detail: z });
+        if (!z.present) {
+          nextSteps.push('Run flux_auth_flow to get the exact login steps.');
+          return jsonResult({ ok: false, checks, nextSteps }, { isError: false, structuredContent: { ok: false, checks, nextSteps } });
+        }
+
+        const raw = client.getZelidauthValue();
+        if (raw) {
+          try {
+            const parsed: unknown = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              const obj = parsed as Record<string, unknown>;
+              const zelid = obj.zelid;
+              const signature = obj.signature;
+              const loginPhrase = obj.loginPhrase;
+              if (typeof zelid === 'string' && typeof signature === 'string' && typeof loginPhrase === 'string') {
+                const priv = await client.request('/id/checkprivilege', {
+                  method: 'POST',
+                  bodyType: 'form',
+                  body: { zelid, signature, loginPhrase },
+                });
+                checks.push({ name: 'id/checkprivilege', ok: priv.ok, detail: priv.data });
+              } else {
+                checks.push({ name: 'id/checkprivilege', ok: false, detail: 'Stored zelidauth is not JSON {zelid,signature,loginPhrase}' });
+              }
+            }
+          } catch {
+            checks.push({ name: 'id/checkprivilege', ok: false, detail: 'Stored zelidauth is not JSON' });
+          }
+        }
+
+        const out = { ok: true, checks, nextSteps };
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_logs_tail': {
+        const appname = mustBeString(args['appname'], 'appname');
+
+        const linesRaw = asOptionalNumber(args['lines']);
+        const linesValue = linesRaw === undefined ? 200 : Math.floor(linesRaw);
+        const lines = Math.min(500, Math.max(1, linesValue));
+
+        const maxBytesRaw = asOptionalNumber(args['maxBytes']);
+        const maxBytesValue = maxBytesRaw === undefined ? 65536 : Math.floor(maxBytesRaw);
+        const maxBytes = Math.min(1024 * 1024, Math.max(1024, maxBytesValue));
+
+        const sinceRaw = args['since'];
+        const since =
+          typeof sinceRaw === 'string' && sinceRaw.trim()
+            ? sinceRaw.trim()
+            : typeof sinceRaw === 'number' && Number.isFinite(sinceRaw)
+              ? String(sinceRaw)
+              : undefined;
+
+        const path = since
+          ? `/apps/applogpolling/${encodeURIComponent(appname)}/${lines}/${encodeURIComponent(since)}`
+          : `/apps/applogpolling/${encodeURIComponent(appname)}/${lines}`;
+
+        const res = await client.request(path);
+        if (!res.ok) {
+          const out = { ok: false, appname, error: res.data };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
+
+        const payload = unwrapFluxData<unknown>(res.data);
+        const obj = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined;
+        const logsValue = obj?.logs ?? obj?.data ?? payload;
+
+        let text = '';
+        if (typeof logsValue === 'string') text = logsValue;
+        else if (Array.isArray(logsValue) && logsValue.every((x) => typeof x === 'string')) text = (logsValue as string[]).join('\n');
+        else text = JSON.stringify(payload, null, 2);
+
+        let truncated = false;
+        if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+          truncated = true;
+          const buffer = Buffer.from(text, 'utf8');
+          text = buffer.subarray(buffer.length - maxBytes).toString('utf8');
+        }
+
+        const linesOut = text.split(/\r?\n/).filter((l) => l.length);
+
+        const nextSince =
+          typeof obj?.sinceTimestamp === 'string'
+            ? obj.sinceTimestamp
+            : typeof obj?.sinceTimestamp === 'number'
+              ? String(obj.sinceTimestamp)
+              : typeof obj?.since === 'string'
+                ? obj.since
+                : undefined;
+
+        const full = {
+          ok: true,
+          appname,
+          truncated,
+          lineCount: linesOut.length,
+          logs: linesOut,
+          next: nextSince ? { since: nextSince } : undefined,
+        };
+
+        const logsText = linesOut.join('\n');
+        const link = resourceStore.putText({
+          kind: 'logs',
+          name: `${appname} logs`,
+          description: 'Full log payload from flux_logs_tail',
+          mimeType: 'text/plain',
+          text: logsText,
+        });
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: true,
+                appname,
+                truncated,
+                lineCount: linesOut.length,
+                next: full.next,
+              }, null, 2),
+            },
+            {
+              type: 'resource_link',
+              uri: link.uri,
+              name: link.name,
+              description: link.description,
+              mimeType: link.mimeType,
+            },
+          ],
+          structuredContent: { ...full, resourceUri: link.uri },
+          isError: false,
+        };
+      }
+
+      case 'flux_app_health_report': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const logsLinesRaw = asOptionalNumber(args['logsLines']);
+        const logsLinesValue = logsLinesRaw === undefined ? 100 : Math.floor(logsLinesRaw);
+        const logsLines = Math.min(300, Math.max(1, logsLinesValue));
+
+        const monitorRangeRaw = asOptionalNumber(args['monitorRangeMs']);
+        const monitorRangeValue = monitorRangeRaw === undefined ? 10 * 60 * 1000 : Math.floor(monitorRangeRaw);
+        const monitorRangeMs = Math.min(24 * 60 * 60 * 1000, Math.max(1000, monitorRangeValue));
+
+        const [inspect, stats, top, monitor, logs] = await Promise.all([
+          client.request(`/apps/appinspect/${encodeURIComponent(appname)}`),
+          client.request(`/apps/appstats/${encodeURIComponent(appname)}`),
+          client.request(`/apps/apptop/${encodeURIComponent(appname)}`),
+          client.request(`/apps/appmonitor/${encodeURIComponent(appname)}/${monitorRangeMs}`),
+          client.request(`/apps/applogpolling/${encodeURIComponent(appname)}/${logsLines}`),
+        ]);
+
+        const inspectLink = resourceStore.putJson({
+          kind: 'app/inspect',
+          name: `${appname} inspect`,
+          description: 'Raw /apps/appinspect response',
+          value: inspect,
+        });
+        const statsLink = resourceStore.putJson({
+          kind: 'app/stats',
+          name: `${appname} stats`,
+          description: 'Raw /apps/appstats response',
+          value: stats,
+        });
+        const topLink = resourceStore.putJson({
+          kind: 'app/top',
+          name: `${appname} top`,
+          description: 'Raw /apps/apptop response',
+          value: top,
+        });
+        const monitorLink = resourceStore.putJson({
+          kind: 'app/monitor',
+          name: `${appname} monitor`,
+          description: 'Raw /apps/appmonitor response',
+          value: monitor,
+        });
+        const logsLink = resourceStore.putJson({
+          kind: 'app/logs',
+          name: `${appname} logs (raw)`,
+          description: 'Raw /apps/applogpolling response',
+          value: logs,
+        });
+
+        const summary = {
+          ok: true,
+          appname,
+          inspect: { ok: inspect.ok, status: inspect.status },
+          stats: { ok: stats.ok, status: stats.status },
+          top: { ok: top.ok, status: top.status },
+          monitor: { ok: monitor.ok, status: monitor.status },
+          logs: { ok: logs.ok, status: logs.status },
+          resources: {
+            inspect: inspectLink.uri,
+            stats: statsLink.uri,
+            top: topLink.uri,
+            monitor: monitorLink.uri,
+            logs: logsLink.uri,
+          },
+          nextSteps: [
+            'Use flux_logs_tail for safe log tailing',
+            'Use flux_apps_redeploy with confirm=true to redeploy',
+            'Use flux_auth_diagnose if any call fails due to auth',
+          ],
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...inspectLink },
+            { type: 'resource_link', ...statsLink },
+            { type: 'resource_link', ...topLink },
+            { type: 'resource_link', ...monitorLink },
+            { type: 'resource_link', ...logsLink },
+          ],
+          structuredContent: summary,
+          isError: false,
+        };
+      }
+
       case 'flux_set_base_url': {
-        const baseUrl = mustBeString((args as any)?.baseUrl, 'baseUrl');
+        const baseUrl = mustBeString(args['baseUrl'], 'baseUrl');
         client.setBaseUrl(baseUrl);
         return jsonResult({ ok: true, baseUrl: client.getBaseUrl() });
       }
 
+      case 'flux_resolve_gateway_node': {
+        const gatewayBaseUrl = mustBeString(args['gatewayBaseUrl'], 'gatewayBaseUrl');
+
+        const prevBase = client.getBaseUrl();
+        try {
+          client.setBaseUrl(gatewayBaseUrl);
+          const info = await client.request('/flux/info', { timeoutMs: 20000 });
+
+          const header = info.headers?.fluxnode;
+          const fluxnode = typeof header === 'string' ? header : undefined;
+
+          const responseData = info.data;
+
+          const ip =
+            responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+              ? (() => {
+                  const envelope = (responseData as Record<string, unknown>).data;
+                  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return undefined;
+
+                  const node = (envelope as Record<string, unknown>).node;
+                  if (!node || typeof node !== 'object' || Array.isArray(node)) return undefined;
+
+                  const status = (node as Record<string, unknown>).status;
+                  if (!status || typeof status !== 'object' || Array.isArray(status)) return undefined;
+
+                  const rawIp = (status as Record<string, unknown>).ip;
+                  return typeof rawIp === 'string' && rawIp.trim() ? rawIp : undefined;
+                })()
+              : undefined;
+
+          const out = {
+            ok: true,
+            gatewayBaseUrl: gatewayBaseUrl.replace(/\/+$/, ''),
+            fluxnode,
+            ip,
+            recommendedBaseUrl: ip ? `http://${ip}:16127` : undefined,
+          };
+
+          return jsonResult(out, { structuredContent: out });
+        } finally {
+          if (prevBase) client.setBaseUrl(prevBase);
+        }
+      }
+
       case 'flux_set_zelidauth': {
-        const value = (args as any)?.zelidauth;
+        const value = args['zelidauth'];
         client.setZelidauth(value);
         return jsonResult({ ok: true, zelidauth: client.getZelidauthSummary() });
       }
@@ -839,17 +1421,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'flux_get_login_phrase':
         return jsonResult(await client.request('/id/loginphrase'));
 
+      case 'flux_get_emergency_phrase':
+        return jsonResult(await client.request('/id/emergencyphrase'));
+
+      case 'flux_verify_login': {
+        const zelid = mustBeString(args['zelid'], 'zelid');
+        const signature = mustBeString(args['signature'], 'signature');
+        const loginPhrase = mustBeString(args['loginPhrase'], 'loginPhrase');
+        return jsonResult(
+          await client.request('/id/verifylogin', {
+            method: 'POST',
+            bodyType: 'form',
+            body: { zelid, signature, loginPhrase },
+          })
+        );
+      }
+
+      case 'flux_check_privilege': {
+        const zelid = mustBeString(args['zelid'], 'zelid');
+        const signature = mustBeString(args['signature'], 'signature');
+        const loginPhrase = mustBeString(args['loginPhrase'], 'loginPhrase');
+         return jsonResult(
+           await client.request('/id/checkprivilege', {
+             method: 'POST',
+             bodyType: 'form',
+             body: { zelid, signature, loginPhrase },
+           })
+         );
+      }
+
       case 'flux_build_zelidauth': {
-        const zelid = mustBeString((args as any)?.zelid, 'zelid');
-        const signature = mustBeString((args as any)?.signature, 'signature');
-        const loginPhrase = mustBeString((args as any)?.loginPhrase, 'loginPhrase');
+        const zelid = mustBeString(args['zelid'], 'zelid');
+        const signature = mustBeString(args['signature'], 'signature');
+        const loginPhrase = mustBeString(args['loginPhrase'], 'loginPhrase');
         const headerValue = JSON.stringify({ zelid, signature, loginPhrase });
         return jsonResult({ zelidauth: headerValue });
       }
 
-      // Endpoint discovery
       case 'flux_list_endpoint_categories': {
-        if (!inventory) return jsonResult({ error: 'Endpoint inventory not found', endpointsPath }, true);
+        if (!inventory) {
+          const out = { error: 'Endpoint inventory not found', endpointsPath };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
         return jsonResult({
           routeCount: inventory.routeCount,
           categories: summarizeByCategory(inventory.routes),
@@ -857,33 +1470,83 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_search_endpoints': {
-        if (!inventory) return jsonResult({ error: 'Endpoint inventory not found', endpointsPath }, true);
-        const query = asOptionalString((args as any)?.query);
-        const category = asOptionalString((args as any)?.category);
-        const access = asOptionalString((args as any)?.access);
-        const method = asOptionalString((args as any)?.method);
-        const limit = (args as any)?.limit;
+        if (!inventory) {
+          const out = { error: 'Endpoint inventory not found', endpointsPath };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
+        const query = asOptionalString(args['query']);
+        const category = asOptionalString(args['category']);
+        const access = asOptionalString(args['access']);
+        const method = asOptionalString(args['method']);
+        const limit = asOptionalNumber(args['limit']);
 
-        return jsonResult({
-          results: searchRoutes(inventory.routes, { query, category, access, method, limit }),
+        const results = searchRoutes(inventory.routes, { query, category, access, method, limit });
+
+        const link = resourceStore.putJson({
+          kind: 'inventory/search',
+          name: 'Endpoint search results',
+          description: 'Full results from flux_search_endpoints',
+          value: { query, category, access, method, limit, results },
         });
+
+        const headers = ['Method', 'Path', 'Access', 'Category', 'Notes'];
+        const rows = results.slice(0, 50).map((r) => [
+          r.method,
+          r.path,
+          r.access,
+          r.category,
+          r.deprecated ? 'DEPRECATED' : r.localOnly ? 'LOCAL-ONLY' : r.cache ? `cache=${r.cache}` : '',
+        ]);
+
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((row) => `| ${row.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const summary = {
+          ok: true,
+          query: query ?? null,
+          category: category ?? null,
+          access: access ?? null,
+          method: method ?? null,
+          count: results.length,
+          shown: rows.length,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: false,
+        };
       }
 
-      // Generic request
       case 'flux_request': {
-        const method = asOptionalString((args as any)?.method);
-        const pathname = mustBeString((args as any)?.path, 'path');
-        const query = (args as any)?.query;
-        const body = (args as any)?.body;
-        const zelidauth = (args as any)?.zelidauth;
-        const useStoredZelidauth = asOptionalBoolean((args as any)?.useStoredZelidauth);
-        const timeoutMs = asOptionalNumber((args as any)?.timeoutMs);
-        const allowMutation = (asOptionalBoolean((args as any)?.allowMutation) ?? false) === true;
-        const responseType = asResponseType((args as any)?.responseType);
-        const maxBytes = asOptionalNumber((args as any)?.maxBytes);
+        const method = asOptionalString(args['method']);
+        const pathname = mustBeString(args['path'], 'path');
+        const queryRaw = args['query'];
+        const body = args['body'];
+        const zelidauth = args['zelidauth'];
+        const useStoredZelidauth = asOptionalBoolean(args['useStoredZelidauth']);
+        const timeoutMs = asOptionalNumber(args['timeoutMs']);
+        const allowMutation = (asOptionalBoolean(args['allowMutation']) ?? false) === true;
+        const responseType = asResponseType(args['responseType']);
+        const maxBytes = asOptionalNumber(args['maxBytes']);
 
-        if (query !== undefined && (!query || typeof query !== 'object' || Array.isArray(query))) {
-          throw new Error('query must be an object when provided');
+        let query: Record<string, unknown> | undefined;
+        if (queryRaw !== undefined) {
+          if (!queryRaw || typeof queryRaw !== 'object' || Array.isArray(queryRaw)) {
+            throw new Error('query must be an object when provided (e.g. {"appname":"myapp"})');
+          }
+          query = queryRaw as Record<string, unknown>;
         }
 
         return jsonResult(
@@ -901,7 +1564,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      // Node / platform
       case 'flux_node_health': {
         const [version, info, isarcaneos] = await Promise.all([
           client.request('/flux/version'),
@@ -911,46 +1573,370 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return jsonResult({ version, info, isarcaneos });
       }
 
-      // App discovery
-      case 'flux_apps_list_running':
-        return jsonResult(await client.request('/apps/listrunningapps'));
+      case 'flux_apps_list_running': {
+        const res = await client.request('/apps/listrunningapps');
+        const link = resourceStore.putJson({
+          kind: 'apps/list_running',
+          name: 'Running apps',
+          description: 'Raw /apps/listrunningapps response',
+          value: res,
+        });
 
-      case 'flux_apps_list_all':
-        return jsonResult(await client.request('/apps/listallapps'));
+        const data = unwrapFluxData<unknown>(res.data);
+        const items = Array.isArray(data)
+          ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const headers = ['App', 'Component', 'Status', 'IP', 'Port'];
+        const rows = items.slice(0, 50).map((x) => {
+          const app = typeof x.app === 'string' ? x.app : typeof x.name === 'string' ? x.name : '-';
+          const component = typeof x.component === 'string' ? x.component : '-';
+          const status = typeof x.status === 'string' ? x.status : '-';
+          const ip = typeof x.ip === 'string' ? x.ip : '-';
+          const port = typeof x.port === 'number' ? String(x.port) : typeof x.port === 'string' ? x.port : '-';
+          return [app, component, status, ip, port];
+        });
+
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          count: items.length,
+          shown: rows.length,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
+
+      case 'flux_apps_list_all': {
+        const res = await client.request('/apps/listallapps');
+        const link = resourceStore.putJson({
+          kind: 'apps/list_all',
+          name: 'All apps',
+          description: 'Raw /apps/listallapps response',
+          value: res,
+        });
+
+        const data = unwrapFluxData<unknown>(res.data);
+        const names: string[] = Array.isArray(data)
+          ? data.filter((x): x is string => typeof x === 'string')
+          : [];
+
+        const headers = ['App'];
+        const rows = names.slice(0, 100).map((n) => [n]);
+
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          count: names.length,
+          shown: rows.length,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
+
+      case 'flux_apps_list_global_specs': {
+        const hash = asOptionalString(args['hash']);
+        const owner = asOptionalString(args['owner']);
+        const appname = asOptionalString(args['appname']);
+
+        const res = await client.request('/apps/globalappsspecifications', {
+          query: {
+            hash,
+            owner,
+            appname,
+          },
+        });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/global_specs',
+          name: 'Global app specifications',
+          description: 'Raw /apps/globalappsspecifications response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          hash: hash ?? null,
+          owner: owner ?? null,
+          appname: appname ?? null,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
+
+      case 'flux_apps_list_by_zelid_with_expiry': {
+        const requestedZelid = asOptionalString(args['zelid']);
+        const includeExpired = (asOptionalBoolean(args['includeExpired']) ?? false) === true;
+        const limitRaw = asOptionalNumber(args['limit']) ?? 50;
+        const limit = Math.max(1, Math.min(200, Math.floor(limitRaw)));
+
+        const stored = client.getZelidauthSummary();
+        const zelid = requestedZelid ?? stored.zelid;
+        if (!zelid) throw new Error('zelid is required (or set FLUX_ZELIDAUTH / flux_set_zelidauth first).');
+
+        const globalSpecsRes = await client.request('/apps/globalappsspecifications', { query: { owner: zelid } });
+        const scannedHeightRes = await client.request('/explorer/scannedheight');
+        const registrationInfoRes = await client.request('/apps/registrationinformation');
+
+        const globalSpecs = unwrapFluxData<unknown[]>(globalSpecsRes.data);
+        const scanned = unwrapFluxData<Record<string, unknown>>(scannedHeightRes.data);
+        const regInfo = unwrapFluxData<Record<string, unknown>>(registrationInfoRes.data);
+
+        const currentHeightRaw = scanned?.['generalScannedHeight'];
+        const currentHeight = typeof currentHeightRaw === 'number' ? currentHeightRaw : Number(currentHeightRaw);
+        if (!Number.isFinite(currentHeight)) throw new Error('Could not parse explorer scanned height from /explorer/scannedheight');
+
+        const blocksLastingRaw = regInfo?.['blocksLasting'];
+        const daemonPONForkRaw = regInfo?.['daemonPONFork'];
+        const blocksLasting = typeof blocksLastingRaw === 'number' ? blocksLastingRaw : Number(blocksLastingRaw);
+        const daemonPONFork = typeof daemonPONForkRaw === 'number' ? daemonPONForkRaw : Number(daemonPONForkRaw);
+
+        if (!Number.isFinite(blocksLasting) || !Number.isFinite(daemonPONFork)) {
+          throw new Error('Could not parse blocksLasting/daemonPONFork from /apps/registrationinformation');
+        }
+
+        const apps = Array.isArray(globalSpecs)
+          ? globalSpecs.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const computed = apps
+          .map((app) => {
+            const name = typeof app['name'] === 'string' ? (app['name'] as string) : null;
+            const owner = typeof app['owner'] === 'string' ? (app['owner'] as string) : null;
+
+            const heightRaw = app['height'];
+            const height = typeof heightRaw === 'number' ? heightRaw : Number(heightRaw);
+
+            const expireRaw = app['expire'];
+            const expire = expireRaw === undefined || expireRaw === null
+              ? null
+              : (typeof expireRaw === 'number' ? expireRaw : Number(expireRaw));
+
+            const defaultExpire = height >= daemonPONFork ? blocksLasting * 4 : blocksLasting;
+            const expireIn = Number.isFinite(expire as number) ? (expire as number) : defaultExpire;
+
+            const originalExpirationHeight = height + expireIn;
+            let expirationHeight = originalExpirationHeight;
+
+            if (height < daemonPONFork && currentHeight >= daemonPONFork && originalExpirationHeight > daemonPONFork) {
+              const blocksAfterFork = originalExpirationHeight - daemonPONFork;
+              expirationHeight = daemonPONFork + blocksAfterFork * 4;
+            }
+
+            const blocksRemaining = expirationHeight - currentHeight;
+
+            return {
+              name,
+              owner,
+              height: Number.isFinite(height) ? height : null,
+              expire: Number.isFinite(expire as number) ? (expire as number) : null,
+              defaultExpire,
+              expireIn,
+              originalExpirationHeight,
+              expirationHeight,
+              currentHeight,
+              blocksRemaining,
+              expired: blocksRemaining < 0,
+            };
+          })
+          .sort((a, b) => {
+            const av = typeof a.blocksRemaining === 'number' ? a.blocksRemaining : 0;
+            const bv = typeof b.blocksRemaining === 'number' ? b.blocksRemaining : 0;
+            return av - bv;
+          });
+
+        const filtered = includeExpired ? computed : computed.filter((x) => x.expired !== true);
+
+        const headers = ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Expire Blocks'];
+        const rows = filtered.slice(0, limit).map((x) => {
+          const name = typeof x.name === 'string' ? x.name : '-';
+          const blocksRemaining = typeof x.blocksRemaining === 'number' ? Math.trunc(x.blocksRemaining) : 0;
+          const expired = x.expired === true ? 'yes' : 'no';
+          const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
+          const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
+          const expireIn = typeof x.expireIn === 'number' ? Math.trunc(x.expireIn) : '-';
+          return [name, String(blocksRemaining), expired, String(expiresAt), String(updatedAt), String(expireIn)];
+        });
+
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const link = resourceStore.putJson({
+          kind: 'apps/by_zelid_with_expiry',
+          name: `Apps for ${zelid} with expiry`,
+          description: 'Computed app expiry list with raw inputs',
+          value: {
+            zelid,
+            options: { includeExpired, limit },
+            currentHeight,
+            blocksLasting,
+            daemonPONFork,
+            apps: computed,
+            filtered,
+            raw: {
+              globalappsspecifications: globalSpecsRes,
+              scannedheight: scannedHeightRes,
+              registrationinformation: registrationInfoRes,
+            },
+          },
+        });
+
+        const preview = filtered.slice(0, limit);
+        const summary = {
+          ok: globalSpecsRes.ok && scannedHeightRes.ok && registrationInfoRes.ok,
+          zelid,
+          options: { includeExpired, limit },
+          count: computed.length,
+          shown: preview.length,
+          currentHeight,
+          blocksLasting,
+          daemonPONFork,
+          preview,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
+      }
 
       case 'flux_apps_get_spec': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const decrypt = asOptionalBoolean((args as any)?.decrypt);
+        const appname = mustBeString(args['appname'], 'appname');
+        const decrypt = asOptionalBoolean(args['decrypt']);
         const path = decrypt === undefined
           ? `/apps/appspecifications/${encodeURIComponent(appname)}`
           : `/apps/appspecifications/${encodeURIComponent(appname)}/${decrypt ? 'true' : 'false'}`;
-        return jsonResult(await client.request(path));
+
+        const res = await client.request(path);
+
+        const link = resourceStore.putJson({
+          kind: 'apps/spec',
+          name: `${appname} spec`,
+          description: 'Raw /apps/appspecifications response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          decrypt: decrypt ?? null,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_get_owner': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
+        const appname = mustBeString(args['appname'], 'appname');
         return jsonResult(await client.request(`/apps/appowner/${encodeURIComponent(appname)}`));
       }
 
-      case 'flux_apps_registration_information':
-        return jsonResult(await client.request('/apps/registrationinformation'));
+      case 'flux_apps_registration_information': {
+        const res = await client.request('/apps/registrationinformation');
+        const link = resourceStore.putJson({
+          kind: 'apps/registration_information',
+          name: 'Registration information',
+          description: 'Raw /apps/registrationinformation response',
+          value: res,
+        });
+        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
 
-      case 'flux_apps_deployment_information':
-        return jsonResult(await client.request('/apps/deploymentinformation'));
+      case 'flux_apps_deployment_information': {
+        const res = await client.request('/apps/deploymentinformation');
+        const link = resourceStore.putJson({
+          kind: 'apps/deployment_information',
+          name: 'Deployment information',
+          description: 'Raw /apps/deploymentinformation response',
+          value: res,
+        });
+        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
 
-      // Spec helpers
       case 'flux_generate_app_spec_v8': {
-        const appName = mustBeString((args as any)?.name, 'name');
-        const owner = mustBeString((args as any)?.owner, 'owner');
-        const repotag = mustBeString((args as any)?.repotag, 'repotag');
+        const appName = mustBeString(args['name'], 'name');
+        const owner = mustBeString(args['owner'], 'owner');
+        const repotag = mustBeString(args['repotag'], 'repotag');
 
-        const appDescription = asOptionalString((args as any)?.appDescription) ?? '';
-        const componentName = asOptionalString((args as any)?.componentName) ?? 'web';
-        const componentDescription = asOptionalString((args as any)?.componentDescription) ?? componentName;
+        const appDescription = asOptionalString(args['appDescription']) ?? '';
+        const componentName = asOptionalString(args['componentName']) ?? 'web';
+        const componentDescription = asOptionalString(args['componentDescription']) ?? componentName;
 
-        const portsRaw = (args as any)?.ports;
-        const containerPortsRaw = (args as any)?.containerPorts;
-        const domainsRaw = (args as any)?.domains;
+        const portsRaw = args['ports'];
+        const containerPortsRaw = args['containerPorts'];
+        const domainsRaw = args['domains'];
 
         const ports = Array.isArray(portsRaw) ? portsRaw.map((p) => Number(p)).filter(Number.isFinite) : [];
         const containerPorts = Array.isArray(containerPortsRaw)
@@ -965,17 +1951,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error('ports, containerPorts, and domains must have the same length');
         }
 
-        const environmentParameters = normalizeEnvParams((args as any)?.environment);
-        const commands = normalizeCommands((args as any)?.commands);
+        const environmentParameters = normalizeEnvParams(args['environment']);
+        const commands = normalizeCommands(args['commands']);
 
-        const containerData = asOptionalString((args as any)?.containerData) ?? '/data';
+        const containerData = asOptionalString(args['containerData']) ?? '/data';
 
-        const cpu = asOptionalNumber((args as any)?.cpu) ?? 1;
-        const ram = asOptionalNumber((args as any)?.ram) ?? 2000;
-        const hdd = asOptionalNumber((args as any)?.hdd) ?? 10;
-        const instances = asOptionalNumber((args as any)?.instances) ?? 3;
-        const staticip = asOptionalBoolean((args as any)?.staticip) ?? false;
-        const enterprise = asOptionalString((args as any)?.enterprise) ?? '';
+        const cpu = asOptionalNumber(args['cpu']) ?? 1;
+        const ram = asOptionalNumber(args['ram']) ?? 2000;
+        const hdd = asOptionalNumber(args['hdd']) ?? 10;
+        const instances = asOptionalNumber(args['instances']) ?? 3;
+        const staticip = asOptionalBoolean(args['staticip']) ?? false;
+        const enterprise = asOptionalString(args['enterprise']) ?? '';
 
         const spec = {
           version: 8,
@@ -1011,9 +1997,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return jsonResult({ spec });
       }
 
-      // Register/update signing workflow
       case 'flux_apps_verify_registration_spec': {
-        const spec = mustBeObject((args as any)?.spec, 'spec');
+        const spec = mustBeObject(args['spec'], 'spec');
         return jsonResult(
           await client.request('/apps/verifyappregistrationspecifications', {
             method: 'POST',
@@ -1024,7 +2009,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_verify_update_spec': {
-        const spec = mustBeObject((args as any)?.spec, 'spec');
+        const spec = mustBeObject(args['spec'], 'spec');
         return jsonResult(
           await client.request('/apps/verifyappupdatespecifications', {
             method: 'POST',
@@ -1035,7 +2020,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_calculate_price': {
-        const spec = mustBeObject((args as any)?.spec, 'spec');
+        const spec = mustBeObject(args['spec'], 'spec');
         return jsonResult(
           await client.request('/apps/calculateprice', {
             method: 'POST',
@@ -1046,9 +2031,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_plan_registration': {
-        const specInput = mustBeObject((args as any)?.spec, 'spec');
-        const timestamp = asOptionalNumber((args as any)?.timestamp) ?? Date.now();
-        const typeVersion = asOptionalNumber((args as any)?.typeVersion) ?? 1;
+        const specInput = mustBeObject(args['spec'], 'spec');
+        const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
+        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
 
         const verified = await client.request('/apps/verifyappregistrationspecifications', {
           method: 'POST',
@@ -1088,11 +2073,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_register': {
-        const specInput = mustBeObject((args as any)?.spec, 'spec');
-        const signature = mustBeString((args as any)?.signature, 'signature');
-        const timestamp = mustBeNumber((args as any)?.timestamp, 'timestamp');
-        const verifyFirst = (args as any)?.verifyFirst === undefined ? true : mustBeBoolean((args as any)?.verifyFirst, 'verifyFirst');
-        const typeVersion = asOptionalNumber((args as any)?.typeVersion) ?? 1;
+        const specInput = mustBeObject(args['spec'], 'spec');
+        const signature = mustBeString(args['signature'], 'signature');
+        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+        const verifyFirstRaw = args['verifyFirst'];
+        const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
+        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
 
         const verified = verifyFirst
           ? await client.request('/apps/verifyappregistrationspecifications', {
@@ -1120,9 +2106,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_plan_update': {
-        const specInput = mustBeObject((args as any)?.spec, 'spec');
-        const timestamp = asOptionalNumber((args as any)?.timestamp) ?? Date.now();
-        const typeVersion = asOptionalNumber((args as any)?.typeVersion) ?? 1;
+        const specInput = mustBeObject(args['spec'], 'spec');
+        const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
+        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
 
         const verified = await client.request('/apps/verifyappupdatespecifications', {
           method: 'POST',
@@ -1155,11 +2141,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_update': {
-        const specInput = mustBeObject((args as any)?.spec, 'spec');
-        const signature = mustBeString((args as any)?.signature, 'signature');
-        const timestamp = mustBeNumber((args as any)?.timestamp, 'timestamp');
-        const verifyFirst = (args as any)?.verifyFirst === undefined ? true : mustBeBoolean((args as any)?.verifyFirst, 'verifyFirst');
-        const typeVersion = asOptionalNumber((args as any)?.typeVersion) ?? 1;
+        const specInput = mustBeObject(args['spec'], 'spec');
+        const signature = mustBeString(args['signature'], 'signature');
+        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+        const verifyFirstRaw = args['verifyFirst'];
+        const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
+        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
 
         const verified = verifyFirst
           ? await client.request('/apps/verifyappupdatespecifications', {
@@ -1187,14 +2174,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_get_messages': {
-        const hash = mustBeString((args as any)?.hash, 'hash');
-        const kind = asOptionalString((args as any)?.kind) ?? 'both';
+        const hash = mustBeString(args['hash'], 'hash');
+        const kind = asOptionalString(args['kind']) ?? 'both';
 
         if (kind === 'temporary') {
-          return jsonResult({ temporary: await client.request(`/apps/temporarymessages/${encodeURIComponent(hash)}`) });
+          const res = await client.request(`/apps/temporarymessages/${encodeURIComponent(hash)}`);
+          const link = resourceStore.putJson({
+            kind: 'apps/messages/temporary',
+            name: `Temporary messages ${hash}`,
+            description: 'Raw /apps/temporarymessages response',
+            value: res,
+          });
+          const summary = { ok: res.ok, status: res.status, kind, hash, resourceUri: link.uri };
+          return {
+            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: summary,
+            isError: !res.ok,
+          };
         }
+
         if (kind === 'permanent') {
-          return jsonResult({ permanent: await client.request(`/apps/permanentmessages/${encodeURIComponent(hash)}`) });
+          const res = await client.request(`/apps/permanentmessages/${encodeURIComponent(hash)}`);
+          const link = resourceStore.putJson({
+            kind: 'apps/messages/permanent',
+            name: `Permanent messages ${hash}`,
+            description: 'Raw /apps/permanentmessages response',
+            value: res,
+          });
+          const summary = { ok: res.ok, status: res.status, kind, hash, resourceUri: link.uri };
+          return {
+            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: summary,
+            isError: !res.ok,
+          };
         }
 
         const [temporary, permanent] = await Promise.all([
@@ -1202,14 +2214,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           client.request(`/apps/permanentmessages/${encodeURIComponent(hash)}`),
         ]);
 
-        return jsonResult({ temporary, permanent });
+        const link = resourceStore.putJson({
+          kind: 'apps/messages/both',
+          name: `Messages ${hash}`,
+          description: 'Raw temporary+permanent message responses',
+          value: { temporary, permanent },
+        });
+
+        const summary = {
+          ok: temporary.ok && permanent.ok,
+          hash,
+          kind,
+          resourceUri: link.uri,
+          temporary: { ok: temporary.ok, status: temporary.status },
+          permanent: { ok: permanent.ok, status: permanent.status },
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
       }
 
-      // App lifecycle (mutating)
       case 'flux_apps_start': {
         requireConfirm(args, 'apps/appstart');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const global = asOptionalBoolean((args as any)?.global);
+        const appname = mustBeString(args['appname'], 'appname');
+        const global = asOptionalBoolean(args['global']);
 
         return jsonResult(
           await client.request('/apps/appstart', {
@@ -1222,8 +2253,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_stop': {
         requireConfirm(args, 'apps/appstop');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const global = asOptionalBoolean((args as any)?.global);
+        const appname = mustBeString(args['appname'], 'appname');
+        const global = asOptionalBoolean(args['global']);
 
         return jsonResult(
           await client.request('/apps/appstop', {
@@ -1236,8 +2267,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_restart': {
         requireConfirm(args, 'apps/apprestart');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const global = asOptionalBoolean((args as any)?.global);
+        const appname = mustBeString(args['appname'], 'appname');
+        const global = asOptionalBoolean(args['global']);
 
         return jsonResult(
           await client.request('/apps/apprestart', {
@@ -1250,9 +2281,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_redeploy': {
         requireConfirm(args, 'apps/redeploy');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const force = asOptionalBoolean((args as any)?.force);
-        const global = asOptionalBoolean((args as any)?.global);
+        const appname = mustBeString(args['appname'], 'appname');
+        const force = asOptionalBoolean(args['force']);
+        const global = asOptionalBoolean(args['global']);
 
         return jsonResult(
           await client.request('/apps/redeploy', {
@@ -1265,9 +2296,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_redeploy_component': {
         requireConfirm(args, 'apps/redeploycomponent');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const force = asOptionalBoolean((args as any)?.force);
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const force = asOptionalBoolean(args['force']);
 
         return jsonResult(
           await client.request('/apps/redeploycomponent', {
@@ -1278,42 +2309,163 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      // App observability
       case 'flux_apps_logs': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const lines = asOptionalString((args as any)?.lines) ?? 'all';
-        return jsonResult(await client.request('/apps/applog', { query: { appname, lines } }));
+        const appname = mustBeString(args['appname'], 'appname');
+        const lines = asOptionalString(args['lines']) ?? 'all';
+
+        const res = await client.request('/apps/applog', { query: { appname, lines } });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/applog',
+          name: `${appname} applog`,
+          description: 'Raw /apps/applog response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          lines,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_inspect': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        return jsonResult(await client.request('/apps/appinspect', { query: { appname } }));
+        const appname = mustBeString(args['appname'], 'appname');
+
+        const res = await client.request('/apps/appinspect', { query: { appname } });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/inspect',
+          name: `${appname} inspect`,
+          description: 'Raw /apps/appinspect response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_stats': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        return jsonResult(await client.request('/apps/appstats', { query: { appname } }));
+        const appname = mustBeString(args['appname'], 'appname');
+
+        const res = await client.request('/apps/appstats', { query: { appname } });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/stats',
+          name: `${appname} stats`,
+          description: 'Raw /apps/appstats response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_top': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        return jsonResult(await client.request('/apps/apptop', { query: { appname } }));
+        const appname = mustBeString(args['appname'], 'appname');
+
+        const res = await client.request('/apps/apptop', { query: { appname } });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/top',
+          name: `${appname} top`,
+          description: 'Raw /apps/apptop response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_monitor': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const range = asOptionalNumber((args as any)?.range);
-        return jsonResult(await client.request('/apps/appmonitor', { query: { appname, range } }));
+        const appname = mustBeString(args['appname'], 'appname');
+        const range = asOptionalNumber(args['range']);
+
+        const res = await client.request('/apps/appmonitor', { query: { appname, range } });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/monitor',
+          name: `${appname} monitor`,
+          description: 'Raw /apps/appmonitor response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          range: range ?? null,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_exec': {
         requireConfirm(args, 'apps/appexec');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const cmd = (args as any)?.cmd;
+        const appname = mustBeString(args['appname'], 'appname');
+        const cmd = args['cmd'];
         if (!Array.isArray(cmd) || cmd.some((c) => typeof c !== 'string')) {
           throw new Error('cmd must be an array of strings');
         }
-        const env = normalizeEnvParams((args as any)?.env);
+        const env = normalizeEnvParams(args['env']);
 
         return jsonResult(
           await client.request('/apps/appexec', {
@@ -1325,19 +2477,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      // Volume browser (files)
       case 'flux_apps_list_folder': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const folder = asOptionalString((args as any)?.folder) ?? '';
-        return jsonResult(await client.request('/apps/getfolderinfo', { query: { appname, component, folder } }));
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const folder = asOptionalString(args['folder']) ?? '';
+
+        const res = await client.request('/apps/getfolderinfo', { query: { appname, component, folder } });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/getfolderinfo',
+          name: `${appname} folder listing`,
+          description: 'Raw /apps/getfolderinfo response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          component,
+          folder,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_download_file': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const file = mustBeString((args as any)?.file, 'file');
-        const maxBytes = asOptionalNumber((args as any)?.maxBytes);
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const file = mustBeString(args['file'], 'file');
+        const maxBytes = asOptionalNumber(args['maxBytes']);
 
         return jsonResult(
           await client.request('/apps/downloadfile', {
@@ -1349,10 +2523,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'flux_apps_download_folder': {
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const folder = mustBeString((args as any)?.folder, 'folder');
-        const maxBytes = asOptionalNumber((args as any)?.maxBytes);
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const folder = mustBeString(args['folder'], 'folder');
+        const maxBytes = asOptionalNumber(args['maxBytes']);
 
         return jsonResult(
           await client.request('/apps/downloadfolder', {
@@ -1365,9 +2539,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_create_folder': {
         requireConfirm(args, 'apps/createfolder');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const folder = mustBeString((args as any)?.folder, 'folder');
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const folder = mustBeString(args['folder'], 'folder');
 
         return jsonResult(
           await client.request('/apps/createfolder', {
@@ -1380,10 +2554,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_rename_object': {
         requireConfirm(args, 'apps/renameobject');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const oldpath = mustBeString((args as any)?.oldpath, 'oldpath');
-        const newname = mustBeString((args as any)?.newname, 'newname');
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const oldpath = mustBeString(args['oldpath'], 'oldpath');
+        const newname = mustBeString(args['newname'], 'newname');
 
         return jsonResult(
           await client.request('/apps/renameobject', {
@@ -1396,9 +2570,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_apps_remove_object': {
         requireConfirm(args, 'apps/removeobject');
-        const appname = mustBeString((args as any)?.appname, 'appname');
-        const component = mustBeString((args as any)?.component, 'component');
-        const object = mustBeString((args as any)?.object, 'object');
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const object = mustBeString(args['object'], 'object');
 
         return jsonResult(
           await client.request('/apps/removeobject', {
@@ -1409,38 +2583,211 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      // Syncthing
-      case 'flux_syncthing_metrics':
-        return jsonResult(await client.request('/syncthing/metrics'));
+      case 'flux_syncthing_metrics': {
+        const res = await client.request('/syncthing/metrics');
+        const link = resourceStore.putJson({
+          kind: 'syncthing/metrics',
+          name: 'Syncthing metrics',
+          description: 'Raw /syncthing/metrics response',
+          value: res,
+        });
+        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
 
-      case 'flux_syncthing_metrics_health':
-        return jsonResult(await client.request('/syncthing/metrics/health'));
+      case 'flux_syncthing_metrics_health': {
+        const res = await client.request('/syncthing/metrics/health');
+        const link = resourceStore.putJson({
+          kind: 'syncthing/metrics/health',
+          name: 'Syncthing metrics health',
+          description: 'Raw /syncthing/metrics/health response',
+          value: res,
+        });
 
-      case 'flux_syncthing_system_status':
-        return jsonResult(await client.request('/syncthing/system/status'));
+        const data = unwrapFluxData<unknown>(res.data);
+        const obj = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+        const okValue = obj['ok'];
+        const messageValue = obj['message'];
 
-      case 'flux_syncthing_list_folders':
-        return jsonResult(await client.request('/syncthing/config/folders'));
+        const headers = ['OK', 'Message'];
+        const rows = [[String(okValue ?? '-'), typeof messageValue === 'string' ? messageValue : '-']];
 
-      case 'flux_syncthing_list_devices':
-        return jsonResult(await client.request('/syncthing/config/devices'));
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
+
+      case 'flux_syncthing_system_status': {
+        const res = await client.request('/syncthing/system/status');
+        const link = resourceStore.putJson({
+          kind: 'syncthing/system/status',
+          name: 'Syncthing system status',
+          description: 'Raw /syncthing/system/status response',
+          value: res,
+        });
+        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
+
+      case 'flux_syncthing_list_folders': {
+        const res = await client.request('/syncthing/config/folders');
+        const link = resourceStore.putJson({
+          kind: 'syncthing/config/folders',
+          name: 'Syncthing folders',
+          description: 'Raw /syncthing/config/folders response',
+          value: res,
+        });
+
+        const data = unwrapFluxData<unknown>(res.data);
+        const folders = Array.isArray(data)
+          ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const headers = ['ID', 'Label', 'Path', 'Type', 'Rescan'];
+        const rows = folders.slice(0, 100).map((f) => {
+          const id = typeof f.id === 'string' ? f.id : '-';
+          const label = typeof f.label === 'string' ? f.label : '-';
+          const path = typeof f.path === 'string' ? f.path : '-';
+          const type = typeof f.type === 'string' ? f.type : '-';
+          const rescan = typeof f.rescanIntervalS === 'number'
+            ? String(f.rescanIntervalS)
+            : typeof f.rescanIntervalS === 'string'
+              ? f.rescanIntervalS
+              : '-';
+          return [id, label, path, type, rescan];
+        });
+
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const summary = { ok: res.ok, status: res.status, count: folders.length, shown: rows.length, resourceUri: link.uri };
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
+
+      case 'flux_syncthing_list_devices': {
+        const res = await client.request('/syncthing/config/devices');
+        const link = resourceStore.putJson({
+          kind: 'syncthing/config/devices',
+          name: 'Syncthing devices',
+          description: 'Raw /syncthing/config/devices response',
+          value: res,
+        });
+
+        const data = unwrapFluxData<unknown>(res.data);
+        const devices = Array.isArray(data)
+          ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const headers = ['Name', 'DeviceID', 'Addresses', 'Introducer', 'Paused'];
+        const rows = devices.slice(0, 100).map((d) => {
+          const name = typeof d.name === 'string' ? d.name : '-';
+          const deviceID = typeof d.deviceID === 'string' ? d.deviceID : '-';
+          const addresses = Array.isArray(d.addresses)
+            ? d.addresses.filter((x): x is string => typeof x === 'string').join(', ')
+            : '-';
+          const introducer = d.introducer === true ? 'yes' : 'no';
+          const paused = d.paused === true ? 'yes' : 'no';
+          return [name, deviceID, addresses, introducer, paused];
+        });
+
+        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
+        const tableLines = [
+          `| ${headers.map(escapeCell).join(' | ')} |`,
+          `| ${headers.map(() => '---').join(' | ')} |`,
+          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
+        ];
+
+        const table = tableLines.join('\n');
+
+        const summary = { ok: res.ok, status: res.status, count: devices.length, shown: rows.length, resourceUri: link.uri };
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
+      }
 
       case 'flux_syncthing_db_browse': {
-        const folder = mustBeString((args as any)?.folder, 'folder');
-        const levels = asOptionalNumber((args as any)?.levels);
-        const prefix = asOptionalString((args as any)?.prefix);
+        const folder = mustBeString(args['folder'], 'folder');
+        const levels = asOptionalNumber(args['levels']);
+        const prefix = asOptionalString(args['prefix']);
 
-        return jsonResult(
-          await client.request(`/syncthing/db/browse/${encodeURIComponent(folder)}`, {
-            query: { levels, prefix },
-          })
-        );
+        const res = await client.request(`/syncthing/db/browse/${encodeURIComponent(folder)}`, {
+          query: { levels, prefix },
+        });
+
+        const link = resourceStore.putJson({
+          kind: 'syncthing/db/browse',
+          name: `Syncthing browse ${folder}`,
+          description: 'Raw /syncthing/db/browse response',
+          value: res,
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          folder,
+          levels: levels ?? null,
+          prefix: prefix ?? null,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_syncthing_db_scan': {
         requireConfirm(args, 'syncthing/db/scan');
-        const folder = mustBeString((args as any)?.folder, 'folder');
-        const sub = asOptionalString((args as any)?.sub);
+        const folder = mustBeString(args['folder'], 'folder');
+        const sub = asOptionalString(args['sub']);
 
         return jsonResult(
           await client.request('/syncthing/db/scan', {
@@ -1453,20 +2800,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'flux_syncthing_restart': {
         requireConfirm(args, 'syncthing/system/restart');
-        return jsonResult(
-          await client.request('/syncthing/system/restart', {
-            method: 'GET',
-            allowMutation: true,
-          })
-        );
+        return jsonResult(await client.request('/syncthing/system/restart'));
       }
 
-      default:
-        return jsonResult({ error: `Unknown tool: ${name}` }, true);
+      default: {
+        const out = { error: `Unknown tool: ${name}` };
+        return jsonResult(out, { isError: true, structuredContent: out });
+      }
     }
-  } catch (err: any) {
-    return jsonResult({ error: err?.message ?? String(err) }, true);
+  } catch (err: unknown) {
+    const hint =
+      name === 'flux_request'
+        ? 'For mutating endpoints, retry with allowMutation=true. For safer workflows, prefer dedicated flux_apps_* tools that require confirm=true.'
+        : undefined;
+    return errorResult(err, { tool: name, hint });
   }
+}
+
+const server = new Server(
+  { name: 'flux-mcp', version: '0.4.0' },
+  { capabilities: { tools: {}, resources: {} } }
+);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  const staticResources = [
+    {
+      uri: 'flux://inventory/endpoints',
+      name: 'Flux endpoints inventory',
+      description: 'Bundled endpoints inventory (generated from Flux routes.js)',
+      mimeType: 'application/json',
+    },
+  ];
+
+  return {
+    resources: [...staticResources, ...resourceStore.list()],
+  };
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params;
+
+  if (uri === 'flux://inventory/endpoints') {
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(inventory?.routes ?? [], null, 2),
+        },
+      ],
+    };
+  }
+
+  const found = resourceStore.read(uri);
+  if (found) return { contents: [found] };
+
+  throw new Error(`Resource not found: ${uri}`);
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
+  const { name, arguments: rawArgs } = request.params;
+  return callTool(name, rawArgs);
 });
 
 async function main() {
@@ -1474,7 +2870,20 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  process.stderr.write(`flux-mcp failed to start: ${err?.message ?? String(err)}\n`);
-  process.exit(1);
-});
+function isDirectInvocation(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try {
+    return path.resolve(argv1) === path.resolve(__filename);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation()) {
+  main().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`flux-mcp failed to start: ${message}\n`);
+    process.exit(1);
+  });
+}

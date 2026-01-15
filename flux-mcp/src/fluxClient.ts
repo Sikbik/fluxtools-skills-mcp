@@ -106,16 +106,39 @@ function isMutatingGetPath(pathname: string): boolean {
   return mutatingPrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
+function isNonMutatingPostPath(method: string, pathname: string): boolean {
+  if (method !== 'POST') return false;
+  const path = pathname.startsWith('/') ? pathname : `/${pathname}`;
+
+  const allowed = ['/id/verifylogin', '/id/checkprivilege'];
+  return allowed.includes(path);
+}
+
 export type ZelidauthValue = string;
 export type FluxResponseType = 'auto' | 'text' | 'base64';
+
+export type FluxHttpDefaults = {
+  timeoutMs: number;
+  retryCount: number;
+  retryBackoffMs: number;
+};
 
 export class FluxClient {
   private baseUrl: string | null;
   private zelidauth: ZelidauthValue | null;
+  private httpDefaults: FluxHttpDefaults;
 
   constructor(opts?: { baseUrl?: string; zelidauth?: unknown }) {
     this.baseUrl = opts?.baseUrl ? normalizeBaseUrl(opts.baseUrl) : null;
     this.zelidauth = null;
+
+    const timeoutMs = Number(process.env.FLUX_HTTP_TIMEOUT_MS ?? '30000');
+    this.httpDefaults = {
+      timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000,
+      retryCount: 0,
+      retryBackoffMs: 250,
+    };
+
     if (opts?.zelidauth !== undefined) this.setZelidauth(opts.zelidauth);
   }
 
@@ -127,8 +150,42 @@ export class FluxClient {
     return this.baseUrl;
   }
 
+  setHttpDefaults(value: Partial<FluxHttpDefaults>) {
+    const next: FluxHttpDefaults = { ...this.httpDefaults };
+
+    if (value.timeoutMs !== undefined) {
+      const v = Number(value.timeoutMs);
+      if (!Number.isFinite(v) || v <= 0) throw new Error('timeoutMs must be a positive number');
+      next.timeoutMs = v;
+    }
+
+    if (value.retryCount !== undefined) {
+      const v = Number(value.retryCount);
+      if (!Number.isFinite(v) || v < 0 || !Number.isInteger(v)) {
+        throw new Error('retryCount must be a non-negative integer');
+      }
+      next.retryCount = v;
+    }
+
+    if (value.retryBackoffMs !== undefined) {
+      const v = Number(value.retryBackoffMs);
+      if (!Number.isFinite(v) || v < 0) throw new Error('retryBackoffMs must be a non-negative number');
+      next.retryBackoffMs = v;
+    }
+
+    this.httpDefaults = next;
+  }
+
+  getHttpDefaults(): FluxHttpDefaults {
+    return { ...this.httpDefaults };
+  }
+
   clearZelidauth() {
     this.zelidauth = null;
+  }
+
+  getZelidauthValue(): string | null {
+    return this.zelidauth;
   }
 
   setZelidauth(value: unknown) {
@@ -146,9 +203,11 @@ export class FluxClient {
   getZelidauthSummary(): { present: boolean; zelid?: string } {
     if (!this.zelidauth) return { present: false };
     try {
-      const parsed = JSON.parse(this.zelidauth) as any;
-      if (parsed && typeof parsed === 'object' && typeof parsed.zelid === 'string') {
-        return { present: true, zelid: parsed.zelid };
+      const parsed: unknown = JSON.parse(this.zelidauth);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const obj = parsed as Record<string, unknown>;
+        const zelid = obj.zelid;
+        if (typeof zelid === 'string') return { present: true, zelid };
       }
     } catch {
       // ignore
@@ -162,6 +221,7 @@ export class FluxClient {
       method?: string;
       query?: Record<string, unknown>;
       body?: unknown;
+      bodyType?: 'json' | 'form';
       zelidauth?: unknown;
       useStoredZelidauth?: boolean;
       timeoutMs?: number;
@@ -175,9 +235,14 @@ export class FluxClient {
     const method = (opts?.method ?? (opts?.body === undefined ? 'GET' : 'POST')).toUpperCase();
     const allowMutation = opts?.allowMutation === true;
 
-    const isMutating = method !== 'GET' || isMutatingGetPath(pathname);
+    const isMutating =
+      (method === 'GET' && isMutatingGetPath(pathname)) ||
+      (method !== 'GET' && !isNonMutatingPostPath(method, pathname));
+
     if (isMutating && !allowMutation) {
-      throw new Error('Refusing mutating request without allowMutation=true');
+      throw new Error(
+        `Refusing mutating request without allowMutation=true. If you are calling flux_request, retry with { allowMutation: true }.`
+      );
     }
 
     const query = opts?.query ?? {};
@@ -201,15 +266,53 @@ export class FluxClient {
       headers.zelidauth = this.zelidauth;
     }
 
-    const body = opts?.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers['content-type'] = 'application/json';
+    const bodyType = opts?.bodyType ?? 'json';
 
-    const timeoutMs = Number(opts?.timeoutMs ?? process.env.FLUX_HTTP_TIMEOUT_MS ?? '30000');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let body: string | undefined;
 
-    try {
-      const res = await fetch(url, { method, headers, body, signal: controller.signal });
+    if (opts?.body !== undefined) {
+      if (bodyType === 'json') {
+        body = JSON.stringify(opts.body);
+        headers['content-type'] = 'application/json';
+      } else if (bodyType === 'form') {
+        if (!opts.body || typeof opts.body !== 'object' || Array.isArray(opts.body)) {
+          throw new Error("Form bodyType requires a plain object body");
+        }
+
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(opts.body as Record<string, unknown>)) {
+          if (value === undefined || value === null) continue;
+          params.set(key, String(value));
+        }
+
+        body = params.toString();
+        headers['content-type'] = 'application/x-www-form-urlencoded';
+      } else {
+        throw new Error(`Unsupported bodyType: ${String(bodyType)}`);
+      }
+    }
+
+    const timeoutMsRaw = opts?.timeoutMs ?? this.httpDefaults.timeoutMs;
+    const timeoutMs = Number(timeoutMsRaw);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new Error('timeoutMs must be a positive number');
+    }
+
+    const canRetry = !isMutating && (method === 'GET' || isNonMutatingPostPath(method, pathname));
+    const maxAttempts = 1 + (canRetry ? this.httpDefaults.retryCount : 0);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const res = await fetch(url, { method, headers, body, signal: controller.signal });
+
+        if (canRetry && attempt < maxAttempts && (res.status === 502 || res.status === 503 || res.status === 504)) {
+          const backoff = this.httpDefaults.retryBackoffMs * attempt;
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
 
       const outHeaders: Record<string, string> = {};
       for (const [k, v] of res.headers.entries()) outHeaders[k.toLowerCase()] = v;
@@ -260,8 +363,29 @@ export class FluxClient {
 
       const data = tryParseJson(text);
       return { url, status: res.status, ok: res.ok, headers: outHeaders, data };
-    } finally {
-      clearTimeout(timeout);
+      } catch (err: unknown) {
+        clearTimeout(timeout);
+
+        if (!canRetry || attempt >= maxAttempts) throw err;
+
+        const message = err instanceof Error ? err.message : String(err);
+        const retryable =
+          err instanceof Error &&
+          (err.name === 'AbortError' ||
+            message.toLowerCase().includes('fetch failed') ||
+            message.toLowerCase().includes('econnreset') ||
+            message.toLowerCase().includes('timed out'));
+
+        if (!retryable) throw err;
+
+        const backoff = this.httpDefaults.retryBackoffMs * attempt;
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        continue;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
+
+    throw new Error('Request failed after retries');
   }
 }

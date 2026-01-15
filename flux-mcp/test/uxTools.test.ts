@@ -1,0 +1,171 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+
+import { callTool } from '../src/index.js';
+
+type Seen = { method: string; url: string };
+
+function readBody(req: IncomingMessage) {
+  return new Promise<string>((resolve) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+  });
+}
+
+function json(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status;
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
+describe.sequential('UX tools', () => {
+  const seen: Seen[] = [];
+
+  const server = createServer(async (req, res) => {
+    const url = req.url ?? '';
+    seen.push({ method: req.method ?? '', url });
+
+    if (url === '/flux/version') {
+      return json(res, 200, { status: 'success', data: { version: 'test' } });
+    }
+
+    if (url === '/id/loginphrase') {
+      return json(res, 500, { status: 'error', data: 'Syncthing is not running properly' });
+    }
+
+    if (url === '/id/emergencyphrase') {
+      return json(res, 200, { status: 'success', data: 'EMERGENCY_PHRASE' });
+    }
+
+    if (url.startsWith('/apps/applogpolling/')) {
+      return json(res, 200, {
+        status: 'success',
+        data: {
+          logs: 'line1\nline2\n',
+          sinceTimestamp: '123',
+        },
+      });
+    }
+
+    await readBody(req);
+    return json(res, 404, { status: 'error', data: 'not found' });
+  });
+
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to bind test server');
+    baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const r = await callTool('flux_set_base_url', { baseUrl });
+    expect(r.isError).not.toBe(true);
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  });
+
+  it('flux_auth_flow returns an ordered plan', async () => {
+    const r = await callTool('flux_auth_flow', {});
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    const steps = payload.steps;
+    expect(Array.isArray(steps)).toBe(true);
+  });
+
+  it('flux_auth_flow includes gateway resolution when gatewayBaseUrl is provided', async () => {
+    const r = await callTool('flux_auth_flow', { gatewayBaseUrl: 'https://api.runonflux.io' });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    const steps = payload.steps as Array<{ tool?: string }>;
+    expect(Array.isArray(steps)).toBe(true);
+    expect(steps.some((s) => s.tool === 'flux_resolve_gateway_node')).toBe(true);
+  });
+
+  it('flux_auth_diagnose detects loginphrase failure and suggests emergencyphrase', async () => {
+    const r = await callTool('flux_auth_diagnose', {});
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(Array.isArray(payload.checks)).toBe(true);
+    expect(Array.isArray(payload.nextSteps)).toBe(true);
+  });
+
+  it('flux_logs_tail calls applogpolling and returns resource_link + structuredContent', async () => {
+    const r = await callTool('flux_logs_tail', { appname: 'myapp', lines: 2 });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink?.type).toBe('resource_link');
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+
+    const next = structured?.next as Record<string, unknown> | undefined;
+    expect(next?.since).toBe('123');
+
+    expect(seen.some((x) => x.url.startsWith('/apps/applogpolling/'))).toBe(true);
+  });
+
+  it('flux_apps_get_spec returns resource_link summary', async () => {
+    const r = await callTool('flux_apps_get_spec', { appname: 'myapp' });
+    expect(r.isError).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+
+  it('flux_apps_logs returns resource_link summary', async () => {
+    const r = await callTool('flux_apps_logs', { appname: 'myapp', lines: '10' });
+    expect(r.isError).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+
+  it('flux_search_endpoints returns table + resource_link', async () => {
+    const r = await callTool('flux_search_endpoints', { query: 'applog', limit: 3 });
+    expect(r.isError).not.toBe(true);
+
+    expect(r.content[0]?.type).toBe('text');
+    expect((r.content[0]?.text ?? '').startsWith('|')).toBe(true);
+
+    const payload = JSON.parse((r.content[1]?.text ?? '{}').trim()) as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.count).toBe('number');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+    if (!resourceLink) throw new Error('expected resource_link');
+    expect(resourceLink.type).toBe('resource_link');
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+
+  it('flux_syncthing_metrics returns resource_link summary', async () => {
+    const r = await callTool('flux_syncthing_metrics', {});
+    expect(r.isError).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+});

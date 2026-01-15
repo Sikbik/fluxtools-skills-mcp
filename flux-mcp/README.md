@@ -17,7 +17,7 @@ FluxOS exposes many endpoints as `GET` routes (including state-changing actions)
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 20
 
 ## Install & build
 
@@ -80,33 +80,55 @@ You can also set base URL and `zelidauth` at runtime via tools.
 
 ## Common workflow: authenticate once
 
+Fastest path is to use the planner tool and follow its steps:
+
+- `flux_auth_flow` (optionally pass `gatewayBaseUrl`)
+
+Manual path:
+
 1) Set the node base URL (if not set via env):
 
 - `flux_set_base_url`
 
 2) Get a login phrase:
 
-- `flux_get_login_phrase`
+- `flux_get_login_phrase` (or `flux_get_emergency_phrase`)
 
-3) User signs the phrase in their wallet, then build + store `zelidauth`:
+3) User signs the phrase in their wallet, then verify + store `zelidauth`:
 
+- `flux_verify_login`
 - `flux_build_zelidauth`
 - `flux_set_zelidauth`
+
+## Resources + large payloads
+
+Many tools return `resource_link` blocks instead of dumping large JSON/log payloads into the chat.
+
+- If your client supports MCP resources, use `resources/read` with the URI.
+- Otherwise, use `flux_resource_read` with the same `uri`.
+- Use `flux_resource_prune` to clear stored dynamic resources.
 
 ## Tool catalog
 
 ### Session + auth
 
-- `flux_get_state` — show base URL + whether `zelidauth` is present.
+- `flux_get_state` — show base URL + whether `zelidauth` is present + HTTP defaults.
 - `flux_set_base_url` — set `http://<node-ip>:16127`.
-- `flux_get_login_phrase` — fetch phrase for ZelID signing.
+- `flux_set_http_defaults` — set timeout/retry defaults.
+- `flux_auth_flow` — plan a step-by-step auth flow.
+- `flux_auth_diagnose` — preflight checks + actionable next steps.
+- `flux_get_login_phrase` / `flux_get_emergency_phrase` — fetch phrase for ZelID signing.
+- `flux_verify_login` — establish a node session.
+- `flux_check_privilege` — confirm privilege level.
 - `flux_build_zelidauth` — create header JSON string.
 - `flux_set_zelidauth` / `flux_clear_zelidauth` — manage stored auth.
+- `flux_resource_read` — read resource URI content.
+- `flux_resource_prune` — prune/clear dynamic resources.
 
 ### Endpoint discovery
 
 - `flux_list_endpoint_categories` — counts by category (daemon/apps/flux/syncthing/etc).
-- `flux_search_endpoints` — keyword search over paths/comments/access.
+- `flux_search_endpoints` — keyword search over paths/comments/access (table + `resource_link`).
 
 ### Generic API caller
 
@@ -126,6 +148,11 @@ You can also set base URL and `zelidauth` at runtime via tools.
 
 - `flux_apps_list_running` — `GET /apps/listrunningapps`.
 - `flux_apps_list_all` — `GET /apps/listallapps`.
+- `flux_apps_list_global_specs` — `GET /apps/globalappsspecifications` (filter by `owner` to list apps registered under a ZelID).
+- `flux_apps_list_by_zelid_with_expiry`
+  - Default behavior uses `zelidauth.zelid` if set.
+  - Options: `includeExpired` (default false), `limit` (default 50, max 200).
+  - Output: Markdown table + JSON summary + `resource_link`.
 - `flux_apps_get_spec` — `GET /apps/appspecifications/<appname>`.
 - `flux_apps_get_owner` — `GET /apps/appowner/<appname>`.
 - `flux_apps_registration_information` — `GET /apps/registrationinformation`.
@@ -182,10 +209,10 @@ Mutating (requires `confirm=true`):
 Read-only:
 
 - `flux_syncthing_metrics`
-- `flux_syncthing_metrics_health`
+- `flux_syncthing_metrics_health` (table + `resource_link`)
 - `flux_syncthing_system_status`
-- `flux_syncthing_list_folders`
-- `flux_syncthing_list_devices`
+- `flux_syncthing_list_folders` (table + `resource_link`)
+- `flux_syncthing_list_devices` (table + `resource_link`)
 - `flux_syncthing_db_browse`
 
 Mutating (requires `confirm=true` and usually admin/fluxteam privileges):
