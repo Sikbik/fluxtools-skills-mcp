@@ -245,14 +245,31 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'flux_resource_read',
-    description: 'Read an MCP resource by URI (wrapper around resources/read), returning contents as text.',
+    name: 'flux_resolve_gateway_node',
+    description: 'Resolve the current Flux node IP behind a gateway base URL (e.g. https://api.runonflux.io). Uses /flux/info and the response header `fluxnode` when available.',
     inputSchema: {
       type: 'object',
       properties: {
-        uri: { type: 'string', description: 'Resource URI (e.g. flux://inventory/endpoints or flux://resource/...)' },
+        gatewayBaseUrl: {
+          type: 'string',
+          description: 'Gateway base URL (e.g. https://api.runonflux.io)',
+        },
       },
-      required: ['uri'],
+      required: ['gatewayBaseUrl'],
+    },
+  },
+  {
+    name: 'flux_set_base_url_from_gateway',
+    description: 'Resolve a gateway to its current node and set baseUrl to the recommended direct node URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        gatewayBaseUrl: {
+          type: 'string',
+          description: 'Gateway base URL (e.g. https://api.runonflux.io)',
+        },
+      },
+      required: ['gatewayBaseUrl'],
     },
   },
   {
@@ -1395,6 +1412,56 @@ export async function callTool(name: string, rawArgs: unknown) {
             fluxnode,
             ip,
             recommendedBaseUrl: ip ? `http://${ip}:16127` : undefined,
+          };
+
+          return jsonResult(out, { structuredContent: out });
+        } finally {
+          if (prevBase) client.setBaseUrl(prevBase);
+        }
+      }
+
+      case 'flux_set_base_url_from_gateway': {
+        const gatewayBaseUrl = mustBeString(args['gatewayBaseUrl'], 'gatewayBaseUrl');
+
+        const prevBase = client.getBaseUrl();
+        try {
+          client.setBaseUrl(gatewayBaseUrl);
+          const info = await client.request('/flux/info', { timeoutMs: 20000 });
+
+          const header = info.headers?.fluxnode;
+          const fluxnode = typeof header === 'string' ? header : undefined;
+
+          const responseData = info.data;
+
+          const ip =
+            responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+              ? (() => {
+                  const envelope = (responseData as Record<string, unknown>).data;
+                  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return undefined;
+
+                  const node = (envelope as Record<string, unknown>).node;
+                  if (!node || typeof node !== 'object' || Array.isArray(node)) return undefined;
+
+                  const status = (node as Record<string, unknown>).status;
+                  if (!status || typeof status !== 'object' || Array.isArray(status)) return undefined;
+
+                  const rawIp = (status as Record<string, unknown>).ip;
+                  return typeof rawIp === 'string' && rawIp.trim() ? rawIp : undefined;
+                })()
+              : undefined;
+
+          const recommendedBaseUrl = ip ? `http://${ip}:16127` : undefined;
+          if (!recommendedBaseUrl) throw new Error('Could not resolve node IP from /flux/info response');
+
+          client.setBaseUrl(recommendedBaseUrl);
+
+          const out = {
+            ok: true,
+            gatewayBaseUrl: gatewayBaseUrl.replace(/\/+$/, ''),
+            fluxnode,
+            ip,
+            recommendedBaseUrl,
+            baseUrl: client.getBaseUrl(),
           };
 
           return jsonResult(out, { structuredContent: out });
