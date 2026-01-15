@@ -2290,6 +2290,100 @@ export async function callTool(name: string, rawArgs: unknown) {
           health = { inspect, stats, top, monitor };
         }
 
+        const runningPayload = unwrapFluxEnvelope<unknown>(runningLocal.data);
+        const running = Array.isArray(runningPayload)
+          ? runningPayload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const matching = running.filter((x) => x.app === appname || x.name === appname);
+
+        const globalValue = global.ok ? unwrapFluxEnvelope<unknown>(global.data) : null;
+        const globalExists = Array.isArray(globalValue)
+          ? globalValue.some((x) => !!x && typeof x === 'object' && !Array.isArray(x) && (x as Record<string, unknown>).name === appname)
+          : hasNonEmptyValue(globalValue);
+
+        const locationValue = location.ok ? unwrapFluxEnvelope<unknown>(location.data) : null;
+        const installingValue = installing.ok ? unwrapFluxEnvelope<unknown>(installing.data) : null;
+        const errorsValue = errors.ok ? unwrapFluxEnvelope<unknown>(errors.data) : null;
+
+        const locationCount = Array.isArray(locationValue) ? locationValue.length : hasNonEmptyValue(locationValue) ? 1 : 0;
+        const installingCount = Array.isArray(installingValue) ? installingValue.length : hasNonEmptyValue(installingValue) ? 1 : 0;
+        const errorsCount = Array.isArray(errorsValue) ? errorsValue.length : hasNonEmptyValue(errorsValue) ? 1 : 0;
+
+        const suspects: { code: string; title: string; severity: 'high' | 'medium' | 'low'; evidence: Record<string, unknown> }[] = [];
+
+        if (!global.ok) {
+          suspects.push({
+            code: 'global_registry_unreachable',
+            title: 'Global registry query failed',
+            severity: 'high',
+            evidence: { status: global.status },
+          });
+        } else if (!globalExists) {
+          suspects.push({
+            code: 'not_in_global_registry',
+            title: 'App not found in global registry',
+            severity: 'high',
+            evidence: {},
+          });
+        }
+
+        if (errorsCount > 0) {
+          suspects.push({
+            code: 'install_errors',
+            title: 'Install errors reported by locations endpoint',
+            severity: 'high',
+            evidence: { errorsCount },
+          });
+        }
+
+        if (installingCount > 0) {
+          suspects.push({
+            code: 'installing_in_progress',
+            title: 'App appears to be installing',
+            severity: 'medium',
+            evidence: { installingCount },
+          });
+        }
+
+        if (locationCount === 0 && globalExists) {
+          suspects.push({
+            code: 'no_locations',
+            title: 'No locations reported for globally registered app',
+            severity: 'high',
+            evidence: {},
+          });
+        }
+
+        if (matching.length === 0 && locationCount > 0) {
+          suspects.push({
+            code: 'not_running_on_node',
+            title: 'App not running on this node (but has locations)',
+            severity: 'low',
+            evidence: { locationCount },
+          });
+        }
+
+        const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        suspects.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+        const nextActions: Array<{ tool: string; arguments: Record<string, unknown> }> = [];
+
+        nextActions.push({ tool: 'flux_apps_get_spec', arguments: { appname } });
+        nextActions.push({ tool: 'flux_apps_get_owner', arguments: { appname } });
+
+        if (!globalExists) {
+          nextActions.push({ tool: 'flux_apps_global_status', arguments: { appname } });
+        }
+
+        if (errorsCount > 0) {
+          nextActions.push({ tool: 'flux_apps_global_status', arguments: { appname, includeExpired: true } });
+        }
+
+        if (deep !== true) {
+          nextActions.push({ tool: 'flux_apps_troubleshoot', arguments: { appname, deep: true } });
+        }
+
         const link = resourceStore.putJson({
           kind: 'apps/troubleshoot',
           name: `Troubleshoot ${appname}`,
@@ -2302,24 +2396,35 @@ export async function callTool(name: string, rawArgs: unknown) {
             errors,
             runningLocal,
             health,
+            derived: {
+              globalExists,
+              locationCount,
+              installingCount,
+              errorsCount,
+              localRunningCount: matching.length,
+              suspects,
+              nextActions,
+            },
           },
         });
 
-        const runningPayload = unwrapFluxEnvelope<unknown>(runningLocal.data);
-        const running = Array.isArray(runningPayload)
-          ? runningPayload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
-          : [];
-
-        const matching = running.filter((x) => x.app === appname || x.name === appname);
+        const ok = global.ok && location.ok && installing.ok && errors.ok && runningLocal.ok;
 
         const summary = {
-          ok: global.ok && location.ok && installing.ok && errors.ok && runningLocal.ok,
+          ok,
+          status: suspects.length ? suspects[0]?.code ?? 'unknown' : ok ? 'ok' : 'unknown',
           appname,
           globalOk: global.ok,
+          globalExists,
           locationOk: location.ok,
+          locationsCount: locationCount,
           installingOk: installing.ok,
+          installingCount,
           errorsOk: errors.ok,
+          errorsCount,
           localRunningCount: matching.length,
+          suspects,
+          nextActions,
           resourceUri: link.uri,
         };
 
@@ -2329,7 +2434,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !summary.ok,
+          isError: !ok,
         };
       }
 

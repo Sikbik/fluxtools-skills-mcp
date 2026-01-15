@@ -171,7 +171,7 @@ describe.sequential('UX tools', () => {
     expect(structured?.resourceUri).toBeTypeOf('string');
   });
 
-  it('flux_apps_troubleshoot returns summary + resource_link', async () => {
+  it('flux_apps_troubleshoot returns summary + suspects + nextActions', async () => {
     const r = await callTool('flux_apps_troubleshoot', { appname: 'myapp' });
     expect(typeof r.isError).toBe('boolean');
 
@@ -180,6 +180,8 @@ describe.sequential('UX tools', () => {
 
     const structured = r.structuredContent as Record<string, unknown> | undefined;
     expect(structured?.resourceUri).toBeTypeOf('string');
+    expect(Array.isArray(structured?.suspects)).toBe(true);
+    expect(Array.isArray(structured?.nextActions)).toBe(true);
   });
 
   it('flux_apps_register_and_verify requires confirm', async () => {
