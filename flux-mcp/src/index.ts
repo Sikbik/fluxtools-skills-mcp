@@ -641,6 +641,20 @@ export const tools: Tool[] = [
       required: ['zelid', 'signature', 'loginPhrase'],
     },
   },
+  {
+    name: 'flux_build_message_to_sign',
+    description: 'Build the canonical message-to-sign string used by Flux app register/update payloads.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['fluxappregister', 'fluxappupdate', 'zelappregister', 'zelappupdate'] },
+        version: { type: 'number' },
+        spec: { type: 'object', additionalProperties: true },
+        timestamp: { type: 'number' },
+      },
+      required: ['type', 'version', 'spec', 'timestamp'],
+    },
+  },
 
   {
     name: 'flux_list_endpoint_categories',
@@ -699,7 +713,7 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {
         method: { type: 'string', description: 'Daemon method name (e.g. getinfo)' },
-        params: { type: 'array', description: 'Positional params array (strings/numbers/bools/null only)' },
+        params: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] }, description: 'Positional params array (strings/numbers/bools/null only)' },
         redactTxHex: { type: 'boolean', description: 'If true (default), redacts long hex strings.', default: true },
         confirm: { type: 'boolean', description: 'Required if allowMutation is true.' },
         allowMutation: { type: 'boolean', description: 'Must stay false; reserved for future explicit mutation allowlist.' },
@@ -875,7 +889,7 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {
         appname: { type: 'string' },
-        backup: { type: 'array', description: 'Array of {component, backup:true/false}' },
+        backup: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Array of {component, backup:true/false}' },
         confirm: { type: 'boolean' },
       },
       required: ['appname', 'backup', 'confirm'],
@@ -888,7 +902,7 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {
         appname: { type: 'string' },
-        restore: { type: 'array', description: 'Array of {component, restore:true/false}' },
+        restore: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Array of {component, restore:true/false}' },
         type: { type: 'string', enum: ['local', 'remote'] },
         confirm: { type: 'boolean' },
       },
@@ -2037,6 +2051,20 @@ export async function callTool(name: string, rawArgs: unknown) {
         const loginPhrase = mustBeString(args['loginPhrase'], 'loginPhrase');
         const headerValue = JSON.stringify({ zelid, signature, loginPhrase });
         return jsonResult({ zelidauth: headerValue });
+      }
+
+      case 'flux_build_message_to_sign': {
+        const type = mustBeString(args['type'], 'type') as 'fluxappregister' | 'fluxappupdate' | 'zelappregister' | 'zelappupdate';
+        if (type !== 'fluxappregister' && type !== 'fluxappupdate' && type !== 'zelappregister' && type !== 'zelappupdate') {
+          throw new Error('type must be one of: fluxappregister, fluxappupdate, zelappregister, zelappupdate');
+        }
+        const version = mustBeNumber(args['version'], 'version');
+        const spec = mustBeObject(args['spec'], 'spec');
+        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+
+        const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
+        const out = { ok: true, type, version, timestamp, messageToSign };
+        return jsonResult(out, { structuredContent: out });
       }
 
       case 'flux_list_endpoint_categories': {
