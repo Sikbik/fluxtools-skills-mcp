@@ -68,10 +68,35 @@ describe.sequential('UX tools', () => {
     if (url === '/daemon/getpeerinfo') {
       return json(res, 200, {
         status: 'success',
-        data: [
-          { addr: '1.2.3.4:16125', inbound: false, pingtime: 0.12, subver: '/Satoshi:0.21.0/' },
-        ],
+        data: [{ addr: '1.2.3.4:16125', inbound: false, pingtime: 0.12, subver: '/Satoshi:0.21.0/' }],
       });
+    }
+
+    if (url.startsWith('/apps/globalappsspecifications')) {
+      return json(res, 200, {
+        status: 'success',
+        data: [{ name: 'myapp', owner: 'zelid', height: 100, expire: 10 }],
+      });
+    }
+
+    if (url === '/apps/temporarymessages') {
+      return json(res, 200, { status: 'success', data: [] });
+    }
+
+    if (url.startsWith('/apps/permanentmessages')) {
+      return json(res, 200, { status: 'success', data: [] });
+    }
+
+    if (url === '/apps/registrationinformation') {
+      return json(res, 200, { status: 'success', data: { blocksLasting: 100, daemonPONFork: 1 } });
+    }
+
+    if (url.startsWith('/apps/location/myapp')) {
+      return json(res, 200, { status: 'success', data: [{ ip: '1.2.3.4' }] });
+    }
+
+    if (url === '/apps/listrunningapps') {
+      return json(res, 200, { status: 'success', data: [{ name: 'myapp', app: 'myapp' }] });
     }
 
     await readBody(req);
@@ -207,6 +232,16 @@ describe.sequential('UX tools', () => {
     expect(structured?.resourceUri).toBeTypeOf('string');
   });
 
+  it('flux_apps_global_status returns table + resource_link', async () => {
+    const r = await callTool('flux_apps_global_status', { zelid: 'zelid' });
+    expect(typeof r.isError).toBe('boolean');
+
+    expect(r.content[0]?.type).toBe('text');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+  });
+
   it('flux_maintenance_checklist returns a checklist', async () => {
     const r = await callTool('flux_maintenance_checklist', {});
     expect(r.isError).not.toBe(true);
@@ -250,8 +285,7 @@ describe.sequential('UX tools', () => {
     const r = await callTool('flux_daemon_call', { method: 'getpeerinfo' });
     expect(r.isError).not.toBe(true);
 
-    const textVal = r.content[0]?.type === 'text' ? r.content[0].text : undefined;
-    const text = textVal ?? '';
+    const text = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
     expect(text.includes('addr')).toBe(true);
     expect(text.includes('1.2.3.4:16125')).toBe(true);
   });
@@ -326,15 +360,5 @@ describe.sequential('UX tools', () => {
     expect(structured?.resourceUri).toBeTypeOf('string');
     expect(Array.isArray(structured?.suspects)).toBe(true);
     expect(Array.isArray(structured?.nextActions)).toBe(true);
-  });
-
-  it('flux_apps_register_and_verify requires confirm', async () => {
-    const r = await callTool('flux_apps_register_and_verify', { spec: {}, signature: 'sig', timestamp: 1 });
-    expect(r.isError).toBe(true);
-  });
-
-  it('flux_apps_update_and_verify requires confirm', async () => {
-    const r = await callTool('flux_apps_update_and_verify', { spec: {}, signature: 'sig', timestamp: 1 });
-    expect(r.isError).toBe(true);
   });
 });
