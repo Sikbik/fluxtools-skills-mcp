@@ -111,11 +111,12 @@ def make_zipinfo(arcname: str, mode: int) -> zipfile.ZipInfo:
     return zi
 
 
-def package_skill(skill_dir: Path, out_dir: Path) -> Path:
+def package_skill(skill_dir: Path, out_dir: Path, out_name: str | None = None) -> Path:
     validate_skill_dir(skill_dir)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{skill_dir.name}.skill"
+    artifact_name = out_name or skill_dir.name
+    out_path = out_dir / f"{artifact_name}.skill"
 
     with tempfile.NamedTemporaryFile(prefix=f"{skill_dir.name}-", suffix=".skill.tmp", dir=out_dir, delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -151,6 +152,11 @@ def main(argv: List[str]) -> int:
         default=".",
         help="Output directory for the .skill artifact (default: current directory).",
     )
+    parser.add_argument(
+        "--out-name",
+        default=None,
+        help="Override the artifact file name (without .skill).",
+    )
     args = parser.parse_args(argv)
 
     skill_dir = Path(args.skill_dir).resolve()
@@ -159,7 +165,7 @@ def main(argv: List[str]) -> int:
     if not skill_dir.exists() or not skill_dir.is_dir():
         raise SystemExit(f"Skill dir not found: {skill_dir}")
 
-    out_path = package_skill(skill_dir, out_dir)
+    out_path = package_skill(skill_dir, out_dir, out_name=args.out_name)
     sys.stdout.write(f"{out_path}\n")
     return 0
 
