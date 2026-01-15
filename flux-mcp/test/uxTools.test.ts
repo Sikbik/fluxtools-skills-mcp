@@ -280,6 +280,16 @@ describe.sequential('UX tools', () => {
     expect(r.isError).toBe(true);
   });
 
+  it('flux_apps_append_backup_task requires confirm', async () => {
+    const r = await callTool('flux_apps_append_backup_task', { appname: 'myapp', backup: [] });
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_apps_append_restore_task requires confirm', async () => {
+    const r = await callTool('flux_apps_append_restore_task', { appname: 'myapp', restore: [], type: 'local' });
+    expect(r.isError).toBe(true);
+  });
+
   it('flux_syncthing_metrics returns resource_link summary', async () => {
     const r = await callTool('flux_syncthing_metrics', {});
     expect(r.isError).toBe(true);

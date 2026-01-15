@@ -868,6 +868,33 @@ export const tools: Tool[] = [
     description: 'Return a guided maintenance checklist with nextActions scaffolds.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'flux_apps_append_backup_task',
+    description: 'Append a backup task to the queue (POST /apps/appendbackuptask). Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string' },
+        backup: { type: 'array', description: 'Array of {component, backup:true/false}' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['appname', 'backup', 'confirm'],
+    },
+  },
+  {
+    name: 'flux_apps_append_restore_task',
+    description: 'Append a restore task to the queue (POST /apps/appendrestoretask). Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string' },
+        restore: { type: 'array', description: 'Array of {component, restore:true/false}' },
+        type: { type: 'string', enum: ['local', 'remote'] },
+        confirm: { type: 'boolean' },
+      },
+      required: ['appname', 'restore', 'type', 'confirm'],
+    },
+  },
 
   // Generic request (escape hatch)
   {
@@ -2504,6 +2531,40 @@ export async function callTool(name: string, rawArgs: unknown) {
           : `/backup/downloadlocalfile/${encodeURIComponent(filepath)}`;
 
         return jsonResult(await client.request(path, { responseType: 'base64', maxBytes, allowMutation: true }));
+      }
+
+      case 'flux_apps_append_backup_task': {
+        requireConfirm(args, 'apps/appendbackuptask');
+        const appname = mustBeString(args['appname'], 'appname');
+        const backup = args['backup'];
+        if (!Array.isArray(backup)) throw new Error('backup must be an array');
+
+        const payload = { appname, backup };
+        return jsonResult(
+          await client.request('/apps/appendbackuptask', {
+            method: 'POST',
+            body: payload,
+            allowMutation: true,
+          })
+        );
+      }
+
+      case 'flux_apps_append_restore_task': {
+        requireConfirm(args, 'apps/appendrestoretask');
+        const appname = mustBeString(args['appname'], 'appname');
+        const restore = args['restore'];
+        if (!Array.isArray(restore)) throw new Error('restore must be an array');
+        const type = mustBeString(args['type'], 'type');
+        if (type !== 'local' && type !== 'remote') throw new Error('type must be one of: local, remote');
+
+        const payload = { appname, restore, type };
+        return jsonResult(
+          await client.request('/apps/appendrestoretask', {
+            method: 'POST',
+            body: payload,
+            allowMutation: true,
+          })
+        );
       }
 
       case 'flux_maintenance_checklist': {
