@@ -22,6 +22,7 @@ import {
   searchRoutes,
   summarizeByCategory,
 } from './endpoints.js';
+import { renderMarkdownTable } from './markdownTable.js';
 
 type CallToolRequest = { params: { name: string; arguments?: unknown } };
 
@@ -1490,7 +1491,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
 
         const headers = ['Method', 'Path', 'Access', 'Category', 'Notes'];
-        const rows = results.slice(0, 50).map((r) => [
+        const rows = results.map((r) => [
           r.method,
           r.path,
           r.access,
@@ -1498,14 +1499,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           r.deprecated ? 'DEPRECATED' : r.localOnly ? 'LOCAL-ONLY' : r.cache ? `cache=${r.cache}` : '',
         ]);
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((row) => `| ${row.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
-
-        const table = tableLines.join('\n');
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 50 });
 
         const summary = {
           ok: true,
@@ -1514,8 +1508,15 @@ export async function callTool(name: string, rawArgs: unknown) {
           access: access ?? null,
           method: method ?? null,
           count: results.length,
-          shown: rows.length,
+          shown,
           resourceUri: link.uri,
+          nextActions: results.slice(0, 5).map((r) => ({
+            tool: 'flux_request',
+            arguments: {
+              method: r.method,
+              path: r.path,
+            },
+          })),
         };
 
         return {
@@ -1588,7 +1589,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           : [];
 
         const headers = ['App', 'Component', 'Status', 'IP', 'Port'];
-        const rows = items.slice(0, 50).map((x) => {
+        const rows = items.map((x) => {
           const app = typeof x.app === 'string' ? x.app : typeof x.name === 'string' ? x.name : '-';
           const component = typeof x.component === 'string' ? x.component : '-';
           const status = typeof x.status === 'string' ? x.status : '-';
@@ -1597,20 +1598,13 @@ export async function callTool(name: string, rawArgs: unknown) {
           return [app, component, status, ip, port];
         });
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
-
-        const table = tableLines.join('\n');
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 50 });
 
         const summary = {
           ok: res.ok,
           status: res.status,
           count: items.length,
-          shown: rows.length,
+          shown,
           resourceUri: link.uri,
         };
 
@@ -1640,22 +1634,15 @@ export async function callTool(name: string, rawArgs: unknown) {
           : [];
 
         const headers = ['App'];
-        const rows = names.slice(0, 100).map((n) => [n]);
+        const rows = names.map((n) => [n]);
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
-
-        const table = tableLines.join('\n');
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 100 });
 
         const summary = {
           ok: res.ok,
           status: res.status,
           count: names.length,
-          shown: rows.length,
+          shown,
           resourceUri: link.uri,
         };
 
@@ -1790,24 +1777,17 @@ export async function callTool(name: string, rawArgs: unknown) {
         const filtered = includeExpired ? computed : computed.filter((x) => x.expired !== true);
 
         const headers = ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Expire Blocks'];
-        const rows = filtered.slice(0, limit).map((x) => {
+        const rows = filtered.map((x) => {
           const name = typeof x.name === 'string' ? x.name : '-';
           const blocksRemaining = typeof x.blocksRemaining === 'number' ? Math.trunc(x.blocksRemaining) : 0;
           const expired = x.expired === true ? 'yes' : 'no';
           const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
           const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
           const expireIn = typeof x.expireIn === 'number' ? Math.trunc(x.expireIn) : '-';
-          return [name, String(blocksRemaining), expired, String(expiresAt), String(updatedAt), String(expireIn)];
+          return [name, blocksRemaining, expired, expiresAt, updatedAt, expireIn];
         });
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
-
-        const table = tableLines.join('\n');
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });
 
         const link = resourceStore.putJson({
           kind: 'apps/by_zelid_with_expiry',
@@ -1835,7 +1815,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           zelid,
           options: { includeExpired, limit },
           count: computed.length,
-          shown: preview.length,
+          shown,
           currentHeight,
           blocksLasting,
           daemonPONFork,
@@ -2616,14 +2596,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const headers = ['OK', 'Message'];
         const rows = [[String(okValue ?? '-'), typeof messageValue === 'string' ? messageValue : '-']];
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
-
-        const table = tableLines.join('\n');
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 1 });
 
         const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
         return {
@@ -2668,29 +2641,22 @@ export async function callTool(name: string, rawArgs: unknown) {
           : [];
 
         const headers = ['ID', 'Label', 'Path', 'Type', 'Rescan'];
-        const rows = folders.slice(0, 100).map((f) => {
+        const rows = folders.map((f) => {
           const id = typeof f.id === 'string' ? f.id : '-';
           const label = typeof f.label === 'string' ? f.label : '-';
-          const path = typeof f.path === 'string' ? f.path : '-';
+          const p = typeof f.path === 'string' ? f.path : '-';
           const type = typeof f.type === 'string' ? f.type : '-';
           const rescan = typeof f.rescanIntervalS === 'number'
             ? String(f.rescanIntervalS)
             : typeof f.rescanIntervalS === 'string'
               ? f.rescanIntervalS
               : '-';
-          return [id, label, path, type, rescan];
+          return [id, label, p, type, rescan];
         });
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 100 });
 
-        const table = tableLines.join('\n');
-
-        const summary = { ok: res.ok, status: res.status, count: folders.length, shown: rows.length, resourceUri: link.uri };
+        const summary = { ok: res.ok, status: res.status, count: folders.length, shown, resourceUri: link.uri };
         return {
           content: [
             { type: 'text', text: table },
@@ -2717,7 +2683,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           : [];
 
         const headers = ['Name', 'DeviceID', 'Addresses', 'Introducer', 'Paused'];
-        const rows = devices.slice(0, 100).map((d) => {
+        const rows = devices.map((d) => {
           const name = typeof d.name === 'string' ? d.name : '-';
           const deviceID = typeof d.deviceID === 'string' ? d.deviceID : '-';
           const addresses = Array.isArray(d.addresses)
@@ -2728,16 +2694,9 @@ export async function callTool(name: string, rawArgs: unknown) {
           return [name, deviceID, addresses, introducer, paused];
         });
 
-        const escapeCell = (v: string) => v.replace(/\|/g, '\\|');
-        const tableLines = [
-          `| ${headers.map(escapeCell).join(' | ')} |`,
-          `| ${headers.map(() => '---').join(' | ')} |`,
-          ...rows.map((r) => `| ${r.map((c) => escapeCell(String(c))).join(' | ')} |`),
-        ];
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 100 });
 
-        const table = tableLines.join('\n');
-
-        const summary = { ok: res.ok, status: res.status, count: devices.length, shown: rows.length, resourceUri: link.uri };
+        const summary = { ok: res.ok, status: res.status, count: devices.length, shown, resourceUri: link.uri };
         return {
           content: [
             { type: 'text', text: table },

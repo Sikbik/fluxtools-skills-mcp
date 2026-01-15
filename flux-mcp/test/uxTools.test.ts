@@ -148,6 +148,7 @@ describe.sequential('UX tools', () => {
     const payload = JSON.parse((r.content[1]?.text ?? '{}').trim()) as Record<string, unknown>;
     expect(payload.ok).toBe(true);
     expect(typeof payload.count).toBe('number');
+    expect(Array.isArray(payload.nextActions)).toBe(true);
 
     const resourceLink = r.content.find((c) => c.type === 'resource_link');
     expect(resourceLink).toBeTruthy();
