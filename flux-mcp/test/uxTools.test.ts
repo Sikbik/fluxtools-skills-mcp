@@ -159,4 +159,15 @@ describe.sequential('UX tools', () => {
     const structured = r.structuredContent as Record<string, unknown> | undefined;
     expect(structured?.resourceUri).toBeTypeOf('string');
   });
+
+  it('flux_apps_troubleshoot returns summary + resource_link', async () => {
+    const r = await callTool('flux_apps_troubleshoot', { appname: 'myapp' });
+    expect(typeof r.isError).toBe('boolean');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+  });
 });

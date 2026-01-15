@@ -29,6 +29,7 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_apps_list_global_specs')).toBe(true);
     expect(names.has('flux_apps_list_by_zelid_with_expiry')).toBe(true);
     expect(names.has('flux_apps_global_status')).toBe(true);
+    expect(names.has('flux_apps_troubleshoot')).toBe(true);
   });
 
   it('defines required args for key tools', () => {

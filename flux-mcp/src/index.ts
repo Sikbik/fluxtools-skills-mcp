@@ -536,6 +536,18 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_apps_troubleshoot',
+    description: 'Guided troubleshooting for an app name: global registry, locations/installing/errors, node-local runtime state, and logs pointers.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Flux app name' },
+        deep: { type: 'boolean', description: 'If true, also attempts app health report endpoints (may require FluxTeam privilege).', default: false },
+      },
+      required: ['appname'],
+    },
+  },
+  {
     name: 'flux_apps_list_by_zelid_with_expiry',
     description:
       'List globally registered apps for a ZelID with expiration computed from chain height + Flux rules (PON fork adjustment).',
@@ -2054,6 +2066,69 @@ export async function callTool(name: string, rawArgs: unknown) {
           content: [
             { type: 'text', text: table },
             { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
+      }
+
+      case 'flux_apps_troubleshoot': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const deep = (asOptionalBoolean(args['deep']) ?? false) === true;
+
+        const global = await client.request('/apps/globalappsspecifications', { query: { appname } });
+        const location = await client.request(`/apps/location/${encodeURIComponent(appname)}`);
+        const installing = await client.request(`/apps/installinglocation/${encodeURIComponent(appname)}`);
+        const errors = await client.request(`/apps/installingerrorslocation/${encodeURIComponent(appname)}`);
+
+        const runningLocal = await client.request('/apps/listrunningapps');
+
+        let health: unknown = null;
+        if (deep) {
+          const inspect = await client.request(`/apps/appinspect/${encodeURIComponent(appname)}`);
+          const stats = await client.request(`/apps/appstats/${encodeURIComponent(appname)}`);
+          const top = await client.request(`/apps/apptop/${encodeURIComponent(appname)}`);
+          const monitor = await client.request(`/apps/appmonitor/${encodeURIComponent(appname)}/600000`);
+          health = { inspect, stats, top, monitor };
+        }
+
+        const link = resourceStore.putJson({
+          kind: 'apps/troubleshoot',
+          name: `Troubleshoot ${appname}`,
+          description: 'App troubleshooting snapshot',
+          value: {
+            appname,
+            global,
+            location,
+            installing,
+            errors,
+            runningLocal,
+            health,
+          },
+        });
+
+        const runningPayload = unwrapFluxEnvelope<unknown>(runningLocal.data);
+        const running = Array.isArray(runningPayload)
+          ? runningPayload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const matching = running.filter((x) => x.app === appname || x.name === appname);
+
+        const summary = {
+          ok: global.ok && location.ok && installing.ok && errors.ok && runningLocal.ok,
+          appname,
+          globalOk: global.ok,
+          locationOk: location.ok,
+          installingOk: installing.ok,
+          errorsOk: errors.ok,
+          localRunningCount: matching.length,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
