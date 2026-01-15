@@ -791,6 +791,76 @@ export const tools: Tool[] = [
       required: ['confirm'],
     },
   },
+  {
+    name: 'flux_backup_get_volume_data',
+    description: 'Fetch backup volume data for an app component (read-only).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string' },
+        component: { type: 'string' },
+        fields: { type: 'string', description: 'Optional fields selector (comma-separated)' },
+        multiplier: { type: 'number', description: 'Optional size multiplier' },
+        decimal: { type: 'number', description: 'Optional decimal precision' },
+      },
+    },
+  },
+  {
+    name: 'flux_backup_get_remote_file_size',
+    description: 'Get remote file size for a URL (read-only).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fileurl: { type: 'string' },
+        appname: { type: 'string' },
+        multiplier: { type: 'number' },
+        decimal: { type: 'number' },
+        number: { type: 'number' },
+      },
+      required: ['fileurl'],
+    },
+  },
+  {
+    name: 'flux_backup_list_local',
+    description: 'List local backup files (read-only).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        appname: { type: 'string' },
+        multiplier: { type: 'number' },
+        decimal: { type: 'number' },
+        number: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'flux_backup_remove_file',
+    description: 'Remove a local backup file. Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filepath: { type: 'string' },
+        appname: { type: 'string' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['filepath', 'confirm'],
+    },
+  },
+  {
+    name: 'flux_backup_download_local_file',
+    description: 'Download a local backup file as base64. Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filepath: { type: 'string' },
+        appname: { type: 'string' },
+        maxBytes: { type: 'number', description: 'Max bytes to download (default 1048576)' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['filepath', 'confirm'],
+    },
+  },
 
   // Generic request (escape hatch)
   {
@@ -2298,6 +2368,112 @@ export async function callTool(name: string, rawArgs: unknown) {
         const path = parts.join('/');
 
         return jsonResult(await client.request(path, { allowMutation: true }));
+      }
+
+      case 'flux_backup_get_volume_data': {
+        const appname = asOptionalString(args['appname']);
+        const component = asOptionalString(args['component']);
+        const multiplier = asOptionalNumber(args['multiplier']);
+        const decimal = asOptionalNumber(args['decimal']);
+        const fields = asOptionalString(args['fields']);
+
+        const parts: string[] = ['/backup/getvolumedataofcomponent'];
+        if (appname !== undefined) parts.push(encodeURIComponent(appname));
+        if (component !== undefined) {
+          if (appname === undefined) parts.push('');
+          parts.push(encodeURIComponent(component));
+        }
+        if (multiplier !== undefined) {
+          while (parts.length < 4) parts.push('');
+          parts.push(String(multiplier));
+        }
+        if (decimal !== undefined) {
+          while (parts.length < 5) parts.push('');
+          parts.push(String(decimal));
+        }
+        if (fields !== undefined) {
+          while (parts.length < 6) parts.push('');
+          parts.push(encodeURIComponent(fields));
+        }
+
+        return jsonResult(await client.request(parts.join('/')));
+      }
+
+      case 'flux_backup_get_remote_file_size': {
+        const fileurl = mustBeString(args['fileurl'], 'fileurl');
+        const appname = asOptionalString(args['appname']);
+        const multiplier = asOptionalNumber(args['multiplier']);
+        const decimal = asOptionalNumber(args['decimal']);
+        const number = asOptionalNumber(args['number']);
+
+        const parts: string[] = ['/backup/getremotefilesize', encodeURIComponent(fileurl)];
+        if (multiplier !== undefined) parts.push(String(multiplier));
+        if (decimal !== undefined) {
+          while (parts.length < 4) parts.push('');
+          parts.push(String(decimal));
+        }
+        if (number !== undefined) {
+          while (parts.length < 5) parts.push('');
+          parts.push(String(number));
+        }
+        if (appname !== undefined) {
+          while (parts.length < 6) parts.push('');
+          parts.push(encodeURIComponent(appname));
+        }
+
+        return jsonResult(await client.request(parts.join('/')));
+      }
+
+      case 'flux_backup_list_local': {
+        const backupPath = asOptionalString(args['path']);
+        const appname = asOptionalString(args['appname']);
+        const multiplier = asOptionalNumber(args['multiplier']);
+        const decimal = asOptionalNumber(args['decimal']);
+        const number = asOptionalNumber(args['number']);
+
+        const parts: string[] = ['/backup/getlocalbackuplist'];
+        if (backupPath !== undefined) parts.push(encodeURIComponent(backupPath));
+        if (multiplier !== undefined) {
+          if (backupPath === undefined) parts.push('');
+          parts.push(String(multiplier));
+        }
+        if (decimal !== undefined) {
+          while (parts.length < 3) parts.push('');
+          parts.push(String(decimal));
+        }
+        if (number !== undefined) {
+          while (parts.length < 4) parts.push('');
+          parts.push(String(number));
+        }
+        if (appname !== undefined) {
+          while (parts.length < 5) parts.push('');
+          parts.push(encodeURIComponent(appname));
+        }
+
+        return jsonResult(await client.request(parts.join('/')));
+      }
+
+      case 'flux_backup_remove_file': {
+        requireConfirm(args, 'backup/removebackupfile');
+        const filepath = mustBeString(args['filepath'], 'filepath');
+        const appname = asOptionalString(args['appname']);
+        const path = appname
+          ? `/backup/removebackupfile/${encodeURIComponent(filepath)}/${encodeURIComponent(appname)}`
+          : `/backup/removebackupfile/${encodeURIComponent(filepath)}`;
+        return jsonResult(await client.request(path, { allowMutation: true }));
+      }
+
+      case 'flux_backup_download_local_file': {
+        requireConfirm(args, 'backup/downloadlocalfile');
+        const filepath = mustBeString(args['filepath'], 'filepath');
+        const appname = asOptionalString(args['appname']);
+        const maxBytes = asOptionalNumber(args['maxBytes']);
+
+        const path = appname
+          ? `/backup/downloadlocalfile/${encodeURIComponent(filepath)}/${encodeURIComponent(appname)}`
+          : `/backup/downloadlocalfile/${encodeURIComponent(filepath)}`;
+
+        return jsonResult(await client.request(path, { responseType: 'base64', maxBytes, allowMutation: true }));
       }
 
       case 'flux_request': {

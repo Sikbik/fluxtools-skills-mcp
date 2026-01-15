@@ -49,6 +49,11 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_explorer_stop')).toBe(true);
     expect(names.has('flux_explorer_reindex')).toBe(true);
     expect(names.has('flux_explorer_rescan')).toBe(true);
+    expect(names.has('flux_backup_get_volume_data')).toBe(true);
+    expect(names.has('flux_backup_get_remote_file_size')).toBe(true);
+    expect(names.has('flux_backup_list_local')).toBe(true);
+    expect(names.has('flux_backup_remove_file')).toBe(true);
+    expect(names.has('flux_backup_download_local_file')).toBe(true);
   });
 
   it('defines required args for key tools', () => {

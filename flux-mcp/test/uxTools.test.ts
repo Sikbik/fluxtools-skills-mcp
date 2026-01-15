@@ -239,6 +239,16 @@ describe.sequential('UX tools', () => {
     expect(r.isError).toBe(true);
   });
 
+  it('flux_backup_remove_file requires confirm', async () => {
+    const r = await callTool('flux_backup_remove_file', { filepath: 'x' });
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_backup_download_local_file requires confirm', async () => {
+    const r = await callTool('flux_backup_download_local_file', { filepath: 'x' });
+    expect(r.isError).toBe(true);
+  });
+
   it('flux_syncthing_metrics returns resource_link summary', async () => {
     const r = await callTool('flux_syncthing_metrics', {});
     expect(r.isError).toBe(true);
