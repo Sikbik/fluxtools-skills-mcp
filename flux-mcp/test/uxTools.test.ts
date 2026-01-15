@@ -211,6 +211,14 @@ describe.sequential('UX tools', () => {
     expect(resourceLink).toBeTruthy();
   });
 
+  it('flux_daemon_get_info proxies getinfo', async () => {
+    const r = await callTool('flux_daemon_get_info', {});
+    expect(typeof r.isError).toBe('boolean');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+  });
+
   it('flux_syncthing_metrics returns resource_link summary', async () => {
     const r = await callTool('flux_syncthing_metrics', {});
     expect(r.isError).toBe(true);

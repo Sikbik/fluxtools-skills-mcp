@@ -36,6 +36,15 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_explorer_status')).toBe(true);
     expect(names.has('flux_explorer_balance_summary')).toBe(true);
     expect(names.has('flux_daemon_call')).toBe(true);
+    expect(names.has('flux_daemon_get_info')).toBe(true);
+    expect(names.has('flux_daemon_get_blockchain_info')).toBe(true);
+    expect(names.has('flux_daemon_get_network_info')).toBe(true);
+    expect(names.has('flux_daemon_get_peer_info')).toBe(true);
+    expect(names.has('flux_daemon_get_mempool_info')).toBe(true);
+    expect(names.has('flux_daemon_get_raw_mempool')).toBe(true);
+    expect(names.has('flux_daemon_get_block_count')).toBe(true);
+    expect(names.has('flux_daemon_get_connection_count')).toBe(true);
+    expect(names.has('flux_daemon_get_difficulty')).toBe(true);
   });
 
   it('defines required args for key tools', () => {

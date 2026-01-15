@@ -705,6 +705,56 @@ export const tools: Tool[] = [
       required: ['method'],
     },
   },
+  {
+    name: 'flux_daemon_get_info',
+    description: 'Convenience wrapper for daemon getinfo (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_blockchain_info',
+    description: 'Convenience wrapper for daemon getblockchaininfo (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_network_info',
+    description: 'Convenience wrapper for daemon getnetworkinfo (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_peer_info',
+    description: 'Convenience wrapper for daemon getpeerinfo (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_mempool_info',
+    description: 'Convenience wrapper for daemon getmempoolinfo (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_raw_mempool',
+    description: 'Convenience wrapper for daemon getrawmempool (read-only).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        verbose: { type: 'boolean', description: 'If true, request verbose mempool details (default false).' },
+      },
+    },
+  },
+  {
+    name: 'flux_daemon_get_block_count',
+    description: 'Convenience wrapper for daemon getblockcount (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_connection_count',
+    description: 'Convenience wrapper for daemon getconnectioncount (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_daemon_get_difficulty',
+    description: 'Convenience wrapper for daemon getdifficulty (read-only).',
+    inputSchema: { type: 'object', properties: {} },
+  },
 
   // Generic request (escape hatch)
   {
@@ -2142,6 +2192,43 @@ export async function callTool(name: string, rawArgs: unknown) {
           structuredContent: summary,
           isError: !res.ok,
         };
+      }
+
+      case 'flux_daemon_get_info': {
+        return callTool('flux_daemon_call', { method: 'getinfo' });
+      }
+
+      case 'flux_daemon_get_blockchain_info': {
+        return callTool('flux_daemon_call', { method: 'getblockchaininfo' });
+      }
+
+      case 'flux_daemon_get_network_info': {
+        return callTool('flux_daemon_call', { method: 'getnetworkinfo' });
+      }
+
+      case 'flux_daemon_get_peer_info': {
+        return callTool('flux_daemon_call', { method: 'getpeerinfo' });
+      }
+
+      case 'flux_daemon_get_mempool_info': {
+        return callTool('flux_daemon_call', { method: 'getmempoolinfo' });
+      }
+
+      case 'flux_daemon_get_raw_mempool': {
+        const verbose = (asOptionalBoolean(args['verbose']) ?? false) === true;
+        return callTool('flux_daemon_call', { method: 'getrawmempool', params: verbose ? [true] : [] });
+      }
+
+      case 'flux_daemon_get_block_count': {
+        return callTool('flux_daemon_call', { method: 'getblockcount' });
+      }
+
+      case 'flux_daemon_get_connection_count': {
+        return callTool('flux_daemon_call', { method: 'getconnectioncount' });
+      }
+
+      case 'flux_daemon_get_difficulty': {
+        return callTool('flux_daemon_call', { method: 'getdifficulty' });
       }
 
       case 'flux_request': {
