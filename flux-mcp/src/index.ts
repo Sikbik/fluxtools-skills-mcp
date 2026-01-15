@@ -756,6 +756,42 @@ export const tools: Tool[] = [
     inputSchema: { type: 'object', properties: {} },
   },
 
+  {
+    name: 'flux_explorer_restart',
+    description: 'Restart explorer (GET /explorer/restart). Requires confirm=true.',
+    inputSchema: { type: 'object', properties: { confirm: { type: 'boolean' } }, required: ['confirm'] },
+  },
+  {
+    name: 'flux_explorer_stop',
+    description: 'Stop explorer (GET /explorer/stop). Requires confirm=true.',
+    inputSchema: { type: 'object', properties: { confirm: { type: 'boolean' } }, required: ['confirm'] },
+  },
+  {
+    name: 'flux_explorer_reindex',
+    description: 'Reindex explorer (GET /explorer/reindex). Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reindexapps: { type: 'boolean', description: 'If true, also reindex apps (default false).' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['confirm'],
+    },
+  },
+  {
+    name: 'flux_explorer_rescan',
+    description: 'Rescan explorer (GET /explorer/rescan). Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        blockheight: { type: 'number', description: 'Optional starting blockheight.' },
+        rescanapps: { type: 'boolean', description: 'If true, also rescan apps (default false).' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['confirm'],
+    },
+  },
+
   // Generic request (escape hatch)
   {
     name: 'flux_request',
@@ -2229,6 +2265,39 @@ export async function callTool(name: string, rawArgs: unknown) {
 
       case 'flux_daemon_get_difficulty': {
         return callTool('flux_daemon_call', { method: 'getdifficulty' });
+      }
+
+      case 'flux_explorer_restart': {
+        requireConfirm(args, 'explorer/restart');
+        return jsonResult(await client.request('/explorer/restart', { allowMutation: true }));
+      }
+
+      case 'flux_explorer_stop': {
+        requireConfirm(args, 'explorer/stop');
+        return jsonResult(await client.request('/explorer/stop', { allowMutation: true }));
+      }
+
+      case 'flux_explorer_reindex': {
+        requireConfirm(args, 'explorer/reindex');
+        const reindexapps = (asOptionalBoolean(args['reindexapps']) ?? false) === true;
+        const path = reindexapps ? '/explorer/reindex/true' : '/explorer/reindex';
+        return jsonResult(await client.request(path, { allowMutation: true }));
+      }
+
+      case 'flux_explorer_rescan': {
+        requireConfirm(args, 'explorer/rescan');
+        const blockheight = asOptionalNumber(args['blockheight']);
+        const rescanapps = (asOptionalBoolean(args['rescanapps']) ?? false) === true;
+
+        const parts: string[] = ['/explorer/rescan'];
+        if (blockheight !== undefined) parts.push(String(Math.floor(blockheight)));
+        if (rescanapps) {
+          if (blockheight === undefined) parts.push('');
+          parts.push('true');
+        }
+        const path = parts.join('/');
+
+        return jsonResult(await client.request(path, { allowMutation: true }));
       }
 
       case 'flux_request': {

@@ -219,6 +219,26 @@ describe.sequential('UX tools', () => {
     expect(resourceLink).toBeTruthy();
   });
 
+  it('flux_explorer_restart requires confirm', async () => {
+    const r = await callTool('flux_explorer_restart', {});
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_explorer_stop requires confirm', async () => {
+    const r = await callTool('flux_explorer_stop', {});
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_explorer_reindex requires confirm', async () => {
+    const r = await callTool('flux_explorer_reindex', {});
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_explorer_rescan requires confirm', async () => {
+    const r = await callTool('flux_explorer_rescan', {});
+    expect(r.isError).toBe(true);
+  });
+
   it('flux_syncthing_metrics returns resource_link summary', async () => {
     const r = await callTool('flux_syncthing_metrics', {});
     expect(r.isError).toBe(true);

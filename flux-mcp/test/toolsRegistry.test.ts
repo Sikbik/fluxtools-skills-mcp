@@ -45,6 +45,10 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_daemon_get_block_count')).toBe(true);
     expect(names.has('flux_daemon_get_connection_count')).toBe(true);
     expect(names.has('flux_daemon_get_difficulty')).toBe(true);
+    expect(names.has('flux_explorer_restart')).toBe(true);
+    expect(names.has('flux_explorer_stop')).toBe(true);
+    expect(names.has('flux_explorer_reindex')).toBe(true);
+    expect(names.has('flux_explorer_rescan')).toBe(true);
   });
 
   it('defines required args for key tools', () => {
