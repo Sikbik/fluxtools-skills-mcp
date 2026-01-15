@@ -574,6 +574,17 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    name: 'flux_explorer_balance_summary',
+    description: 'Table-first balance summary for a Flux address (explorer wrapper).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'Flux address' },
+      },
+      required: ['address'],
+    },
+  },
 
   // Generic request (escape hatch)
   {
@@ -1869,6 +1880,60 @@ export async function callTool(name: string, rawArgs: unknown) {
           secondsPerBlock,
           approxBlocksPerHour: Math.floor((60 * 60) / secondsPerBlock),
           approxBlocksPerDay: Math.floor((24 * 60 * 60) / secondsPerBlock),
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
+      }
+
+      case 'flux_explorer_balance_summary': {
+        const address = mustBeString(args['address'], 'address');
+
+        const balanceRes = await client.request(`/explorer/balance/${encodeURIComponent(address)}`);
+        const raw = unwrapFluxEnvelope<unknown>(balanceRes.data);
+
+        const parsed = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+        const confirmed = typeof parsed.confirmed === 'number' ? parsed.confirmed : Number(parsed.confirmed);
+        const unconfirmed = typeof parsed.unconfirmed === 'number' ? parsed.unconfirmed : Number(parsed.unconfirmed);
+        const total = typeof parsed.balance === 'number' ? parsed.balance : Number(parsed.balance);
+
+        const rows: string[][] = [
+          ['address', address],
+          ['confirmed', Number.isFinite(confirmed) ? String(confirmed) : '-'],
+          ['unconfirmed', Number.isFinite(unconfirmed) ? String(unconfirmed) : '-'],
+          ['balance', Number.isFinite(total) ? String(total) : '-'],
+        ];
+
+        const { table, shown } = renderMarkdownTable({ headers: ['Metric', 'Value'], rows, maxRows: 50 });
+
+        const link = resourceStore.putJson({
+          kind: 'explorer/balance_summary',
+          name: `Balance summary ${address}`,
+          description: 'Explorer balance payload',
+          value: {
+            address,
+            raw: {
+              balance: balanceRes,
+            },
+          },
+        });
+
+        const summary = {
+          ok: balanceRes.ok,
+          status: balanceRes.status,
+          shown,
+          address,
+          confirmed: Number.isFinite(confirmed) ? confirmed : null,
+          unconfirmed: Number.isFinite(unconfirmed) ? unconfirmed : null,
+          balance: Number.isFinite(total) ? total : null,
           resourceUri: link.uri,
         };
 

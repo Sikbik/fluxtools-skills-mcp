@@ -57,6 +57,10 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: true });
     }
 
+    if (url === '/explorer/balance/t1test') {
+      return json(res, 200, { status: 'success', data: { confirmed: 10, unconfirmed: 2, balance: 12 } });
+    }
+
     await readBody(req);
     return json(res, 404, { status: 'error', data: 'not found' });
   });
@@ -166,6 +170,19 @@ describe.sequential('UX tools', () => {
 
   it('flux_explorer_status returns table + resource_link', async () => {
     const r = await callTool('flux_explorer_status', {});
+    expect(typeof r.isError).toBe('boolean');
+
+    expect(r.content[0]?.type).toBe('text');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+
+  it('flux_explorer_balance_summary returns table + resource_link', async () => {
+    const r = await callTool('flux_explorer_balance_summary', { address: 't1test' });
     expect(typeof r.isError).toBe('boolean');
 
     expect(r.content[0]?.type).toBe('text');
