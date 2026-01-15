@@ -237,6 +237,113 @@ function estimateSecondsFromBlocks(blocksRemaining: number, secondsPerBlock: num
   return blocksRemaining * secondsPerBlock;
 }
 
+type JsonPrimitive = string | number | boolean | null;
+
+type RedactionOptions = {
+  maxDepth: number;
+  maxArrayLength: number;
+  maxStringLength: number;
+  redactTxHex: boolean;
+};
+
+function redactSensitive(value: unknown, opts: RedactionOptions, depth = 0): unknown {
+  if (depth > opts.maxDepth) return '[REDACTED:depth]';
+
+  if (value === null || value === undefined) return value;
+
+  if (typeof value === 'string') {
+    if (value.length > opts.maxStringLength) return `${value.slice(0, opts.maxStringLength)}…`;
+    if (opts.redactTxHex && /^[0-9a-fA-F]{128,}$/.test(value)) return '[REDACTED:hex]';
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+
+  if (Array.isArray(value)) {
+    const sliced = value.slice(0, opts.maxArrayLength);
+    return sliced.map((v) => redactSensitive(v, opts, depth + 1));
+  }
+
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const key = k.toLowerCase();
+
+      if (
+        key.includes('privkey') ||
+        key.includes('privatekey') ||
+        key.includes('mnemonic') ||
+        key.includes('seed') ||
+        key.includes('wif') ||
+        key === 'hex' ||
+        key.endsWith('hex') ||
+        key.includes('secret')
+      ) {
+        out[k] = '[REDACTED]';
+        continue;
+      }
+
+      out[k] = redactSensitive(v, opts, depth + 1);
+    }
+    return out;
+  }
+
+  return '[REDACTED:unsupported]';
+}
+
+function validateDaemonMethod(method: string): string {
+  const m = method.trim().toLowerCase();
+  if (!/^[a-z0-9_]+$/.test(m)) throw new Error('method must match ^[a-z0-9_]+$');
+  return m;
+}
+
+function validateDaemonParams(params: unknown): JsonPrimitive[] {
+  if (params === undefined || params === null) return [];
+  if (!Array.isArray(params)) throw new Error('params must be an array when provided');
+  if (params.length > 10) throw new Error('params array too large');
+
+  const out: JsonPrimitive[] = [];
+  for (const p of params) {
+    if (p === null) {
+      out.push(null);
+      continue;
+    }
+    if (typeof p === 'string') {
+      if (p.length > 4096) throw new Error('string param too long');
+      out.push(p);
+      continue;
+    }
+    if (typeof p === 'number') {
+      if (!Number.isFinite(p)) throw new Error('number param must be finite');
+      out.push(p);
+      continue;
+    }
+    if (typeof p === 'boolean') {
+      out.push(p);
+      continue;
+    }
+    throw new Error('params may only contain string/number/boolean/null');
+  }
+
+  return out;
+}
+
+function isAllowedDaemonReadOnlyMethod(method: string): boolean {
+  const allowed = new Set([
+    'getinfo',
+    'getblockchaininfo',
+    'getnetworkinfo',
+    'getmempoolinfo',
+    'getpeerinfo',
+    'getblockcount',
+    'getdifficulty',
+    'getconnectioncount',
+    'getrawmempool',
+  ]);
+
+  return allowed.has(method);
+}
+
 async function pollMessagePropagation(opts: {
   hash: string;
   attempts: number;
@@ -583,6 +690,19 @@ export const tools: Tool[] = [
         address: { type: 'string', description: 'Flux address' },
       },
       required: ['address'],
+    },
+  },
+  {
+    name: 'flux_daemon_call',
+    description: 'Call a safe, read-only subset of daemon RPC proxies (strict allowlist + redaction).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        method: { type: 'string', description: 'Daemon method name (e.g. getinfo)' },
+        params: { type: 'array', description: 'Positional params array (strings/numbers/bools/null only)' },
+        redactTxHex: { type: 'boolean', description: 'If true (default), redacts long hex strings.', default: true },
+      },
+      required: ['method'],
     },
   },
 
@@ -1945,6 +2065,82 @@ export async function callTool(name: string, rawArgs: unknown) {
           ],
           structuredContent: summary,
           isError: !summary.ok,
+        };
+      }
+
+      case 'flux_daemon_call': {
+        const methodInput = mustBeString(args['method'], 'method');
+        const method = validateDaemonMethod(methodInput);
+        const params = validateDaemonParams(args['params']);
+        const redactTxHex = (asOptionalBoolean(args['redactTxHex']) ?? true) === true;
+
+        if (!isAllowedDaemonReadOnlyMethod(method)) {
+          const out = {
+            ok: false,
+            status: 'denied',
+            method,
+            allowed: Array.from(
+              new Set([
+                'getinfo',
+                'getblockchaininfo',
+                'getnetworkinfo',
+                'getmempoolinfo',
+                'getpeerinfo',
+                'getblockcount',
+                'getdifficulty',
+                'getconnectioncount',
+                'getrawmempool',
+              ])
+            ).sort(),
+          };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
+
+        const path = params.length > 0 ? `/daemon/${method}/${params.map((p) => encodeURIComponent(String(p))).join('/')}` : `/daemon/${method}`;
+        const res = await client.request(path);
+        const data = unwrapFluxEnvelope<unknown>(res.data);
+
+        const sanitized = redactSensitive(data, {
+          maxDepth: 6,
+          maxArrayLength: 200,
+          maxStringLength: 4096,
+          redactTxHex,
+        });
+
+        const link = resourceStore.putJson({
+          kind: 'daemon/call',
+          name: `Daemon ${method}`,
+          description: 'Sanitized daemon proxy response',
+          value: { method, params, raw: res, sanitized },
+        });
+
+        const rows: string[][] = [
+          ['method', method],
+          ['params', params.length ? JSON.stringify(params) : '[]'],
+          ['httpStatus', String(res.status)],
+          ['ok', String(res.ok)],
+        ];
+
+        const { table, shown } = renderMarkdownTable({ headers: ['Metric', 'Value'], rows, maxRows: 20 });
+
+        const summary = {
+          ok: res.ok,
+          status: res.ok ? 'ok' : 'error',
+          shown,
+          method,
+          params,
+          httpStatus: res.status,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
         };
       }
 

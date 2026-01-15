@@ -61,6 +61,10 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: { confirmed: 10, unconfirmed: 2, balance: 12 } });
     }
 
+    if (url === '/daemon/getinfo') {
+      return json(res, 200, { status: 'success', data: { version: 1, secret: 'abc', rawtxhex: 'f'.repeat(200) } });
+    }
+
     await readBody(req);
     return json(res, 404, { status: 'error', data: 'not found' });
   });
@@ -192,6 +196,19 @@ describe.sequential('UX tools', () => {
 
     const structured = r.structuredContent as Record<string, unknown> | undefined;
     expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+
+  it('flux_daemon_call denies non-allowlisted methods', async () => {
+    const r = await callTool('flux_daemon_call', { method: 'sendtoaddress', params: [] });
+    expect(r.isError).toBe(true);
+  });
+
+  it('flux_daemon_call returns resource_link for allowlisted method', async () => {
+    const r = await callTool('flux_daemon_call', { method: 'getinfo', params: [] });
+    expect(typeof r.isError).toBe('boolean');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
   });
 
   it('flux_syncthing_metrics returns resource_link summary', async () => {
