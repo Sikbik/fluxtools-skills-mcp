@@ -564,6 +564,16 @@ export const tools: Tool[] = [
       },
     },
   },
+  {
+    name: 'flux_explorer_status',
+    description: 'Table-first explorer status summary (sync, height, key signals).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        secondsPerBlock: { type: 'number', description: 'Override seconds per block (default 120)' },
+      },
+    },
+  },
 
   // Generic request (escape hatch)
   {
@@ -1800,6 +1810,77 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
 
         return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_explorer_status': {
+        const secondsPerBlockRaw = asOptionalNumber(args['secondsPerBlock']);
+        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 120;
+
+        const [scannedHeightRes, isSyncedRes] = await Promise.all([
+          client.request('/explorer/scannedheight'),
+          client.request('/explorer/issynced'),
+        ]);
+
+        const scanned = unwrapFluxEnvelope<Record<string, unknown>>(scannedHeightRes.data);
+        const currentHeightRaw = scanned?.['generalScannedHeight'];
+        const currentHeight = typeof currentHeightRaw === 'number' ? currentHeightRaw : Number(currentHeightRaw);
+
+        const isSyncedPayload = unwrapFluxEnvelope<unknown>(isSyncedRes.data);
+         const isSynced = typeof isSyncedPayload === 'boolean'
+           ? isSyncedPayload
+           : typeof isSyncedPayload === 'string'
+             ? isSyncedPayload.toLowerCase() === 'true'
+             : Boolean(isSyncedPayload);
+
+         const approxSecondsBehind = isSynced === true ? 0 : null;
+
+         const rows: string[][] = [
+
+          ['isSynced', isSyncedRes.ok ? String(isSynced) : 'unknown'],
+          ['scannedHeight', Number.isFinite(currentHeight) ? String(Math.trunc(currentHeight)) : 'unknown'],
+          ['secondsPerBlock', String(secondsPerBlock)],
+          ['approxBlocksPerDay', String(Math.floor((24 * 60 * 60) / secondsPerBlock))],
+          ['approxBlocksPerHour', String(Math.floor((60 * 60) / secondsPerBlock))],
+          ['approxBehind', approxSecondsBehind === null ? 'unknown' : formatDurationSeconds(approxSecondsBehind)],
+        ];
+
+        const { table, shown } = renderMarkdownTable({ headers: ['Metric', 'Value'], rows, maxRows: 50 });
+
+        const link = resourceStore.putJson({
+          kind: 'explorer/status',
+          name: 'Explorer status',
+          description: 'Explorer status payloads',
+          value: {
+            secondsPerBlock,
+            raw: {
+              scannedheight: scannedHeightRes,
+              issynced: isSyncedRes,
+            },
+          },
+        });
+
+        const summary = {
+          ok: scannedHeightRes.ok && isSyncedRes.ok,
+          status: scannedHeightRes.ok && isSyncedRes.ok ? 'ok' : 'partial',
+          shown,
+          currentHeight: Number.isFinite(currentHeight) ? Math.trunc(currentHeight) : null,
+          isSynced,
+          approxSecondsBehind: isSynced === true ? 0 : null,
+          secondsPerBlock,
+          approxBlocksPerHour: Math.floor((60 * 60) / secondsPerBlock),
+          approxBlocksPerDay: Math.floor((24 * 60 * 60) / secondsPerBlock),
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
       }
 
       case 'flux_request': {

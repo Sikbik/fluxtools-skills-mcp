@@ -53,6 +53,10 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: { generalScannedHeight: 12345 } });
     }
 
+    if (url === '/explorer/issynced') {
+      return json(res, 200, { status: 'success', data: true });
+    }
+
     await readBody(req);
     return json(res, 404, { status: 'error', data: 'not found' });
   });
@@ -158,6 +162,19 @@ describe.sequential('UX tools', () => {
 
     const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
     expect(payload.secondsPerBlock).toBeTypeOf('number');
+  });
+
+  it('flux_explorer_status returns table + resource_link', async () => {
+    const r = await callTool('flux_explorer_status', {});
+    expect(typeof r.isError).toBe('boolean');
+
+    expect(r.content[0]?.type).toBe('text');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
   });
 
   it('flux_syncthing_metrics returns resource_link summary', async () => {
