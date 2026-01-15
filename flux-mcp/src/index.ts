@@ -3621,14 +3621,15 @@ export async function callTool(name: string, rawArgs: unknown) {
            attemptsUsed: propagation.attemptsUsed,
            temporaryPresent: propagation.temporaryPresent,
            permanentPresent: propagation.permanentPresent,
-           globalPresent,
-           resourceUri: link.uri,
-           nextActions: ok
-             ? []
-             : [
-                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
-                 appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
-               ].filter(Boolean),
+            globalPresent,
+            messageToSign,
+            resourceUri: link.uri,
+            nextActions: ok
+              ? []
+              : [
+                  { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                  appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+                ].filter(Boolean),
          };
 
          return {
@@ -3798,14 +3799,15 @@ export async function callTool(name: string, rawArgs: unknown) {
            attemptsUsed: propagation.attemptsUsed,
            temporaryPresent: propagation.temporaryPresent,
            permanentPresent: propagation.permanentPresent,
-           globalPresent,
-           resourceUri: link.uri,
-           nextActions: ok
-             ? []
-             : [
-                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
-                 appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
-               ].filter(Boolean),
+            globalPresent,
+            messageToSign,
+            resourceUri: link.uri,
+            nextActions: ok
+              ? []
+              : [
+                  { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                  appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+                ].filter(Boolean),
          };
 
          return {
