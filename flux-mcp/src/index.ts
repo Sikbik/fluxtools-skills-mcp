@@ -2284,6 +2284,22 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: { method, params, raw: res, sanitized },
         });
 
+        let detailTable: string | null = null;
+        if (method === 'getpeerinfo' && Array.isArray(sanitized)) {
+          const peerRows = sanitized
+            .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+            .slice(0, 50)
+            .map((p) => {
+              const addr = typeof p.addr === 'string' ? p.addr : '-';
+              const inbound = typeof p.inbound === 'boolean' ? (p.inbound ? 'in' : 'out') : '-';
+              const ping = typeof p.pingtime === 'number' ? String(p.pingtime) : '-';
+              const subver = typeof p.subver === 'string' ? p.subver : '-';
+              return [addr, inbound, ping, subver];
+            });
+
+          detailTable = renderMarkdownTable({ headers: ['addr', 'dir', 'ping', 'subver'], rows: peerRows, maxRows: 50 }).table;
+        }
+
         const rows: string[][] = [
           ['method', method],
           ['params', params.length ? JSON.stringify(params) : '[]'],
@@ -2305,7 +2321,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         return {
           content: [
-            { type: 'text', text: table },
+            { type: 'text', text: detailTable ? `${detailTable}\n\n${table}` : table },
             { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
             { type: 'resource_link', ...link },
           ],

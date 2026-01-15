@@ -65,6 +65,15 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: { version: 1, secret: 'abc', rawtxhex: 'f'.repeat(200) } });
     }
 
+    if (url === '/daemon/getpeerinfo') {
+      return json(res, 200, {
+        status: 'success',
+        data: [
+          { addr: '1.2.3.4:16125', inbound: false, pingtime: 0.12, subver: '/Satoshi:0.21.0/' },
+        ],
+      });
+    }
+
     await readBody(req);
     return json(res, 404, { status: 'error', data: 'not found' });
   });
@@ -222,6 +231,15 @@ describe.sequential('UX tools', () => {
 
     const resourceLink = r.content.find((c) => c.type === 'resource_link');
     expect(resourceLink).toBeTruthy();
+  });
+
+  it('flux_daemon_call renders peer table for getpeerinfo', async () => {
+    const r = await callTool('flux_daemon_call', { method: 'getpeerinfo' });
+    expect(r.isError).not.toBe(true);
+
+    const text = r.content[0]?.type === 'text' ? r.content[0].text : '';
+    expect(text.includes('addr')).toBe(true);
+    expect(text.includes('1.2.3.4:16125')).toBe(true);
   });
 
   it('flux_daemon_get_info proxies getinfo', async () => {
