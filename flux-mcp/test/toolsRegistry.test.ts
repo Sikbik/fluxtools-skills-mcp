@@ -54,6 +54,7 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_backup_list_local')).toBe(true);
     expect(names.has('flux_backup_remove_file')).toBe(true);
     expect(names.has('flux_backup_download_local_file')).toBe(true);
+    expect(names.has('flux_maintenance_checklist')).toBe(true);
   });
 
   it('defines required args for key tools', () => {

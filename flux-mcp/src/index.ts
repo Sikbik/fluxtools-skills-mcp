@@ -861,6 +861,11 @@ export const tools: Tool[] = [
       required: ['filepath', 'confirm'],
     },
   },
+  {
+    name: 'flux_maintenance_checklist',
+    description: 'Return a guided maintenance checklist with nextActions scaffolds.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 
   // Generic request (escape hatch)
   {
@@ -2474,6 +2479,82 @@ export async function callTool(name: string, rawArgs: unknown) {
           : `/backup/downloadlocalfile/${encodeURIComponent(filepath)}`;
 
         return jsonResult(await client.request(path, { responseType: 'base64', maxBytes, allowMutation: true }));
+      }
+
+      case 'flux_maintenance_checklist': {
+        const items = [
+          {
+            title: 'Confirm baseUrl points to a healthy node',
+            safe: true,
+            nextActions: [
+              { tool: 'flux_node_health', arguments: {} },
+              { tool: 'flux_get_state', arguments: {} },
+            ],
+          },
+          {
+            title: 'Check explorer sync + height',
+            safe: true,
+            nextActions: [
+              { tool: 'flux_explorer_status', arguments: {} },
+              { tool: 'flux_explorer_height_info', arguments: {} },
+            ],
+          },
+          {
+            title: 'Check Syncthing health',
+            safe: true,
+            nextActions: [
+              { tool: 'flux_syncthing_metrics_health', arguments: {} },
+              { tool: 'flux_syncthing_system_status', arguments: {} },
+            ],
+          },
+          {
+            title: 'Check running apps on this node',
+            safe: true,
+            nextActions: [{ tool: 'flux_apps_list_running', arguments: {} }],
+          },
+          {
+            title: 'Investigate an app globally',
+            safe: true,
+            nextActions: [
+              { tool: 'flux_apps_global_status', arguments: { limit: 50 } },
+              { tool: 'flux_apps_troubleshoot', arguments: { appname: '<appname>' } },
+            ],
+          },
+          {
+            title: 'Restart Syncthing (requires confirm)',
+            safe: false,
+            nextActions: [{ tool: 'flux_syncthing_restart', arguments: { confirm: true } }],
+          },
+          {
+            title: 'Restart explorer (requires confirm)',
+            safe: false,
+            nextActions: [{ tool: 'flux_explorer_restart', arguments: { confirm: true } }],
+          },
+          {
+            title: 'Rescan explorer (requires confirm)',
+            safe: false,
+            nextActions: [
+              { tool: 'flux_explorer_rescan', arguments: { confirm: true } },
+              { tool: 'flux_explorer_rescan', arguments: { blockheight: 0, rescanapps: true, confirm: true } },
+            ],
+          },
+          {
+            title: 'Reindex explorer (requires confirm)',
+            safe: false,
+            nextActions: [
+              { tool: 'flux_explorer_reindex', arguments: { confirm: true } },
+              { tool: 'flux_explorer_reindex', arguments: { reindexapps: true, confirm: true } },
+            ],
+          },
+        ];
+
+        const summary = {
+          ok: true,
+          count: items.length,
+          checklist: items,
+        };
+
+        return jsonResult(summary, { structuredContent: summary });
       }
 
       case 'flux_request': {

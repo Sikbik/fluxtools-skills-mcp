@@ -198,6 +198,14 @@ describe.sequential('UX tools', () => {
     expect(structured?.resourceUri).toBeTypeOf('string');
   });
 
+  it('flux_maintenance_checklist returns a checklist', async () => {
+    const r = await callTool('flux_maintenance_checklist', {});
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(Array.isArray(payload.checklist)).toBe(true);
+  });
+
   it('flux_daemon_call denies non-allowlisted methods', async () => {
     const r = await callTool('flux_daemon_call', { method: 'sendtoaddress', params: [] });
     expect(r.isError).toBe(true);
