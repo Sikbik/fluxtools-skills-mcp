@@ -215,6 +215,19 @@ describe.sequential('UX tools', () => {
     expect(Array.isArray(payload.checklist)).toBe(true);
   });
 
+  it('flux_build_message_to_sign returns messageToSign', async () => {
+    const r = await callTool('flux_build_message_to_sign', {
+      type: 'fluxappupdate',
+      version: 1,
+      spec: { name: 'x' },
+      timestamp: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(typeof payload.messageToSign).toBe('string');
+  });
+
   it('flux_daemon_call denies non-allowlisted methods', async () => {
     const r = await callTool('flux_daemon_call', { method: 'sendtoaddress', params: [] });
     expect(r.isError).toBe(true);
@@ -237,7 +250,8 @@ describe.sequential('UX tools', () => {
     const r = await callTool('flux_daemon_call', { method: 'getpeerinfo' });
     expect(r.isError).not.toBe(true);
 
-    const text = r.content[0]?.type === 'text' ? r.content[0].text : '';
+    const textVal = r.content[0]?.type === 'text' ? r.content[0].text : undefined;
+    const text = textVal ?? '';
     expect(text.includes('addr')).toBe(true);
     expect(text.includes('1.2.3.4:16125')).toBe(true);
   });

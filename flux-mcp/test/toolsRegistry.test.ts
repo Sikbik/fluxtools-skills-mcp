@@ -57,6 +57,7 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_maintenance_checklist')).toBe(true);
     expect(names.has('flux_apps_append_backup_task')).toBe(true);
     expect(names.has('flux_apps_append_restore_task')).toBe(true);
+    expect(names.has('flux_build_message_to_sign')).toBe(true);
   });
 
   it('defines required args for key tools', () => {
