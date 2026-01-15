@@ -522,6 +522,20 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_apps_global_status',
+    description:
+      'Correlate global app specs with message propagation (temporary/permanent) for a ZelID or appname; returns table + resource_link.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        zelid: { type: 'string', description: 'Owner ZelID filter. If omitted, uses stored zelidauth.zelid when available.' },
+        appname: { type: 'string', description: 'Optional appname filter.' },
+        includeExpired: { type: 'boolean', description: 'Include expired apps (default false).', default: false },
+        limit: { type: 'number', description: 'Max rows (default 50, max 200).', minimum: 1, maximum: 200, default: 50 },
+      },
+    },
+  },
+  {
     name: 'flux_apps_list_by_zelid_with_expiry',
     description:
       'List globally registered apps for a ZelID with expiration computed from chain height + Flux rules (PON fork adjustment).',
@@ -1881,6 +1895,158 @@ export async function callTool(name: string, rawArgs: unknown) {
           blocksLasting,
           daemonPONFork,
           preview,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: table },
+            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
+      }
+
+      case 'flux_apps_global_status': {
+        const requestedZelid = asOptionalString(args['zelid']);
+        const requestedAppname = asOptionalString(args['appname']);
+        const includeExpired = (asOptionalBoolean(args['includeExpired']) ?? false) === true;
+        const limitRaw = asOptionalNumber(args['limit']) ?? 50;
+        const limit = Math.max(1, Math.min(200, Math.floor(limitRaw)));
+
+        const stored = client.getZelidauthSummary();
+        const zelid = requestedZelid ?? stored.zelid;
+
+        const globalSpecsRes = await client.request('/apps/globalappsspecifications', {
+          query: {
+            owner: zelid,
+            appname: requestedAppname,
+          },
+        });
+
+        const temporaryRes = await client.request('/apps/temporarymessages');
+        const permanentRes = await client.request('/apps/permanentmessages', {
+          query: {
+            owner: zelid,
+            appname: requestedAppname,
+          },
+        });
+
+        const scannedHeightRes = await client.request('/explorer/scannedheight');
+        const registrationInfoRes = await client.request('/apps/registrationinformation');
+
+        const globalSpecs = unwrapFluxEnvelope<unknown[]>(globalSpecsRes.data);
+        const scanned = unwrapFluxEnvelope<Record<string, unknown>>(scannedHeightRes.data);
+        const regInfo = unwrapFluxEnvelope<Record<string, unknown>>(registrationInfoRes.data);
+
+        const currentHeightRaw = scanned?.['generalScannedHeight'];
+        const currentHeight = typeof currentHeightRaw === 'number' ? currentHeightRaw : Number(currentHeightRaw);
+        if (!Number.isFinite(currentHeight)) throw new Error('Could not parse explorer scanned height from /explorer/scannedheight');
+
+        const blocksLastingRaw = regInfo?.['blocksLasting'];
+        const daemonPONForkRaw = regInfo?.['daemonPONFork'];
+        const blocksLasting = typeof blocksLastingRaw === 'number' ? blocksLastingRaw : Number(blocksLastingRaw);
+        const daemonPONFork = typeof daemonPONForkRaw === 'number' ? daemonPONForkRaw : Number(daemonPONForkRaw);
+
+        if (!Number.isFinite(blocksLasting) || !Number.isFinite(daemonPONFork)) {
+          throw new Error('Could not parse blocksLasting/daemonPONFork from /apps/registrationinformation');
+        }
+
+        const apps = Array.isArray(globalSpecs)
+          ? globalSpecs.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const computed = apps
+          .map((app) => {
+            const name = typeof app['name'] === 'string' ? (app['name'] as string) : null;
+            const owner = typeof app['owner'] === 'string' ? (app['owner'] as string) : null;
+
+            const heightRaw = app['height'];
+            const height = typeof heightRaw === 'number' ? heightRaw : Number(heightRaw);
+
+            const expireRaw = app['expire'];
+            const expire = expireRaw === undefined || expireRaw === null
+              ? null
+              : (typeof expireRaw === 'number' ? expireRaw : Number(expireRaw));
+
+            const defaultExpire = height >= daemonPONFork ? blocksLasting * 4 : blocksLasting;
+            const expireIn = Number.isFinite(expire as number) ? (expire as number) : defaultExpire;
+
+            const originalExpirationHeight = height + expireIn;
+            let expirationHeight = originalExpirationHeight;
+
+            if (height < daemonPONFork && currentHeight >= daemonPONFork && originalExpirationHeight > daemonPONFork) {
+              const blocksAfterFork = originalExpirationHeight - daemonPONFork;
+              expirationHeight = daemonPONFork + blocksAfterFork * 4;
+            }
+
+            const blocksRemaining = expirationHeight - currentHeight;
+
+            return {
+              name,
+              owner,
+              height: Number.isFinite(height) ? height : null,
+              expirationHeight,
+              blocksRemaining,
+              expired: blocksRemaining < 0,
+            };
+          })
+          .sort((a, b) => {
+            const av = typeof a.blocksRemaining === 'number' ? a.blocksRemaining : 0;
+            const bv = typeof b.blocksRemaining === 'number' ? b.blocksRemaining : 0;
+            return av - bv;
+          });
+
+        const filtered = includeExpired ? computed : computed.filter((x) => x.expired !== true);
+
+        const temporary = unwrapFluxEnvelope<unknown>(temporaryRes.data);
+        const permanent = unwrapFluxEnvelope<unknown>(permanentRes.data);
+
+        const temporaryCount = Array.isArray(temporary) ? temporary.length : null;
+        const permanentCount = Array.isArray(permanent) ? permanent.length : null;
+
+        const headers = ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs'];
+        const rows = filtered.map((x) => {
+          const name = typeof x.name === 'string' ? x.name : '-';
+          const blocksRemaining = typeof x.blocksRemaining === 'number' ? Math.trunc(x.blocksRemaining) : 0;
+          const expired = x.expired === true ? 'yes' : 'no';
+          const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
+          const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
+          return [name, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+        });
+
+        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });
+
+        const link = resourceStore.putJson({
+          kind: 'apps/global_status',
+          name: 'Global app status',
+          description: 'Global app specs + message propagation payloads',
+          value: {
+            zelid: zelid ?? null,
+            appname: requestedAppname ?? null,
+            includeExpired,
+            currentHeight,
+            apps: computed,
+            raw: {
+              globalappsspecifications: globalSpecsRes,
+              temporarymessages: temporaryRes,
+              permanentmessages: permanentRes,
+              scannedheight: scannedHeightRes,
+              registrationinformation: registrationInfoRes,
+            },
+          },
+        });
+
+        const summary = {
+          ok: globalSpecsRes.ok && temporaryRes.ok && permanentRes.ok && scannedHeightRes.ok && registrationInfoRes.ok,
+          zelid: zelid ?? null,
+          appname: requestedAppname ?? null,
+          count: computed.length,
+          shown,
+          temporaryCount,
+          permanentCount,
           resourceUri: link.uri,
         };
 

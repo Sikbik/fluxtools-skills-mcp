@@ -28,6 +28,7 @@ describe('MCP tool registry', () => {
 
     expect(names.has('flux_apps_list_global_specs')).toBe(true);
     expect(names.has('flux_apps_list_by_zelid_with_expiry')).toBe(true);
+    expect(names.has('flux_apps_global_status')).toBe(true);
   });
 
   it('defines required args for key tools', () => {
@@ -44,12 +45,15 @@ describe('MCP tool registry', () => {
     expect(checkReq).toEqual(['zelid', 'signature', 'loginPhrase']);
 
     const listGlobal = tools.find((t) => t.name === 'flux_apps_list_global_specs');
+    const globalStatus = tools.find((t) => t.name === 'flux_apps_global_status');
     const byZelid = tools.find((t) => t.name === 'flux_apps_list_by_zelid_with_expiry');
 
     expect(listGlobal).toBeTruthy();
+    expect(globalStatus).toBeTruthy();
     expect(byZelid).toBeTruthy();
 
     expect(getRequired(listGlobal?.inputSchema)).toBeUndefined();
+    expect(getRequired(globalStatus?.inputSchema)).toBeUndefined();
     expect(getRequired(byZelid?.inputSchema)).toBeUndefined();
 
     const byZelidSchema = byZelid?.inputSchema as Record<string, unknown> | undefined;

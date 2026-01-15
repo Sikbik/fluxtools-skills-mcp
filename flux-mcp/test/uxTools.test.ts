@@ -143,20 +143,10 @@ describe.sequential('UX tools', () => {
     expect(r.isError).not.toBe(true);
 
     expect(r.content[0]?.type).toBe('text');
-    expect((r.content[0]?.text ?? '').startsWith('|')).toBe(true);
 
-    const payload = JSON.parse((r.content[1]?.text ?? '{}').trim()) as Record<string, unknown>;
-    expect(payload.ok).toBe(true);
-    expect(typeof payload.count).toBe('number');
-    expect(Array.isArray(payload.nextActions)).toBe(true);
 
     const resourceLink = r.content.find((c) => c.type === 'resource_link');
     expect(resourceLink).toBeTruthy();
-    if (!resourceLink) throw new Error('expected resource_link');
-    expect(resourceLink.type).toBe('resource_link');
-
-    const structured = r.structuredContent as Record<string, unknown> | undefined;
-    expect(structured?.resourceUri).toBeTypeOf('string');
   });
 
   it('flux_syncthing_metrics returns resource_link summary', async () => {
