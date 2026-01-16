@@ -119,6 +119,50 @@ curl -sS http://<node-ip>:16127/id/emergencyphrase
 - Timestamp/login phrase mismatch: ensure you sign the exact returned phrase.
 - Wrong ZelID signing method: confirm the wallet is signing plain text, not hashing it first.
 
+### Playbook: My apps (global) vs running apps (node)
+
+Flux has two different sources of truth depending on the question:
+
+- “What apps do I own (registered on the network)?” → global registry
+- “What is this specific node currently running?” → node-local runtime
+
+#### Global apps (owned by a ZelID)
+
+- MCP-first:
+  - `flux_apps_list_by_zelid_with_expiry { zelid?, includeExpired? }`
+  - `flux_apps_global_status { zelid?, appname? }` (adds propagation + (optionally) location/runtime correlation)
+
+- curl:
+
+```bash
+curl -sS "http://<node-ip>:16127/apps/globalappsspecifications?owner=<ZELID>"
+```
+
+If you care about propagation or deployment, start with:
+
+- `flux_apps_global_status { zelid, appname }`
+
+#### Node-local running apps
+
+This answers “what containers are running on the node I’m talking to?”
+
+- MCP-first:
+  - `flux_apps_list_running`
+
+- curl:
+
+```bash
+curl -sS http://<node-ip>:16127/apps/listrunningapps
+```
+
+#### When they disagree
+
+- It’s normal for “registered globally” but “not running on this node” (the app may be on other nodes).
+- Use `flux_apps_global_status { appname }` to see:
+  - whether the app is expiring
+  - whether messages are propagated (temp/permanent)
+  - whether the current node reports it as running
+
 ## App essentials
 
 Discovery:
