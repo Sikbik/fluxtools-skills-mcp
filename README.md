@@ -18,18 +18,126 @@ This repo is designed to work well with:
 - **Syncthing**: metrics/status, folder/device listing, DB browse, scan/restart (with explicit confirmation + privileges).
 - **Full API discovery**: a generated inventory of the node API routes extracted from Flux source.
 
-## Claude Code Skill (recommended first)
+## Quickstart (pick your setup)
 
-Skill location: `claude/flux-cloud/`.
+Flux Skills can be used in a few ways, depending on which “agent client” you use.
 
-Install as a **personal skill**:
+All setups share the same core building block:
+- `flux-mcp/` — an MCP server you run locally (Node.js >= 20)
+
+### 0) Prereqs (all setups)
+
+- Node.js >= 20
+- A Flux node API base URL:
+  - Direct node (recommended): `http://<node-ip>:16127`
+  - Public gateway (works, but not always ideal): `https://api.runonflux.io`
+
+Common gotcha:
+- `https://cloud.runonflux.com/` is the UI, not the node API base URL.
+
+### 1) Build the Flux MCP server (one-time)
+
+From the repo root (this creates the MCP entrypoint used below):
+
+```bash
+cd flux-mcp
+npm ci
+npm run build
+```
+
+(If you prefer `npm install`, that also works — `npm ci` is just reproducible.)
+
+This produces: `flux-mcp/dist/index.js`
+
+### 2) Connect your client (choose one)
+
+#### A) Claude Code (MCP)
+
+Connect via stdio:
+
+```bash
+claude mcp add --transport stdio flux -- \
+  node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
+```
+
+Verify:
+
+```bash
+claude mcp list
+claude mcp get flux
+```
+
+#### B) Claude Desktop (MCP)
+
+Add to your Claude Desktop MCP config:
+
+```json
+{
+  "mcpServers": {
+    "flux": {
+      "command": "node",
+      "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
+      "env": {
+        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop.
+
+#### C) OpenCode (MCP)
+
+OpenCode reads MCP servers from `opencode.json` / `opencode.jsonc`.
+
+You can configure it globally:
+- `~/.config/opencode/opencode.json`
+
+Or per-project (recommended):
+- `./opencode.json` (in your project root)
+- or `./.opencode/opencode.json`
+
+Example config (local/stdio MCP server):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "flux": {
+      "type": "local",
+      "command": [
+        "node",
+        "/absolute/path/to/flux-skills/flux-mcp/dist/index.js"
+      ],
+      "environment": {
+        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
+      },
+      "timeout": 30000
+    }
+  }
+}
+```
+
+Restart OpenCode.
+
+Notes:
+- Use an absolute path for `flux-mcp/dist/index.js`.
+- If tools don’t show up, increase `timeout` (first load has to start Node + list tools).
+- If you see permission prompts for every MCP tool call, configure OpenCode permissions to allow `mcp-*` for your workflow.
+
+### 3) (Optional) Install the Claude Code “Skill” wrapper
+
+This is only for Claude Code’s skill system (it’s not required for MCP usage).
+
+- Personal install:
 
 ```bash
 mkdir -p ~/.claude/skills
 cp -R claude/flux-cloud ~/.claude/skills/flux-cloud
 ```
 
-Or install as a **project skill** (share with a team) inside any repo:
+- Project install:
 
 ```bash
 mkdir -p .claude/skills
@@ -42,47 +150,25 @@ Restart Claude Code, then verify:
 What Skills are available?
 ```
 
-This Claude Skill is **MCP-first**: it prefers using the `flux-mcp` tools for deterministic, safe workflows.
+### 4) First tool calls (works in any MCP client)
+
+- `flux_get_state`
+- If you didn’t set `FLUX_API_BASE_URL`: `flux_set_base_url { "baseUrl": "http://<node-ip>:16127" }`
+- If starting from gateway:
+  - `flux_set_base_url_from_gateway { "gatewayBaseUrl": "https://api.runonflux.io" }`
+- Auth plan (recommended):
+  - `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }`
+- Quick health check:
+  - `flux_node_health`
+
+### 5) Resource links (large outputs)
+
+Many tools return `resource_link` blocks to keep chat output compact.
+
+- If your client supports MCP resources, use `resources/read` with the given URI.
+- Otherwise, call `flux_resource_read { "uri": "..." }`.
 
 ## Flux MCP server (Flux-tuned tools)
-
-Note: many tools return `resource_link` blocks for large payloads. Use MCP `resources/read` or the wrapper tool `flux_resource_read` to fetch full content.
-
-## 5-minute quickstart (gateway → auth → “my apps”)
-
-Prereqs: Node.js >= 20 and access to a Flux node API.
-
-1) Build the MCP server:
-
-```bash
-cd flux-mcp
-npm install
-npm run build
-```
-
-2) Connect from Claude Code:
-
-```bash
-claude mcp add --transport stdio flux -- \
-  node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
-```
-
-3) If you want to start from the public gateway, resolve the real node behind it:
-
-- Call `flux_resolve_gateway_node { "gatewayBaseUrl": "https://api.runonflux.io" }`
-- Then call `flux_set_base_url { "baseUrl": "http://<resolved-ip>:16127" }`
-
-4) Authenticate (ZelID → `zelidauth`):
-
-- Call `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }` and follow the returned steps.
-  - This flow uses the correct request encoding for Flux auth endpoints.
-
-5) List your globally registered apps + expiry table:
-
-- Call `flux_apps_list_by_zelid_with_expiry`
-  - Optional: `{ "includeExpired": true, "limit": 100 }`
-
-Tip: many tools return a `resource_link` with raw payloads; use `flux_resource_read` to fetch it.
 
 Server location: `flux-mcp/`.
 
@@ -92,23 +178,6 @@ Key features:
 - **Workflow tools**: app register/update signing flow, lifecycle ops, logs, files, syncthing.
 - **Endpoint discovery**: bundled endpoint inventory + keyword search.
 - **Binary downloads**: file/folder downloads return base64 + metadata.
-
-Build (Node.js >= 20):
-
-```bash
-cd flux-mcp
-npm install
-npm run build
-```
-
-Connect from Claude Code (stdio transport):
-
-```bash
-claude mcp add --transport stdio flux -- \
-  node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
-```
-
-Set `FLUX_API_BASE_URL` to a direct node API (recommended) like `http://<node-ip>:16127`, or the public gateway `https://api.runonflux.io`. (`https://cloud.runonflux.com/` is the UI, not the node API base URL.)
 
 Docs: `flux-mcp/README.md`.
 

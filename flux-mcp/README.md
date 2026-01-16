@@ -18,38 +18,46 @@ FluxOS exposes many endpoints as `GET` routes (including state-changing actions)
 ## Requirements
 
 - Node.js >= 20
+- A Flux node API base URL:
+  - Direct node (recommended): `http://<node-ip>:16127`
+  - Public gateway: `https://api.runonflux.io`
 
-## Install & build
+Common gotcha:
+- `https://cloud.runonflux.com/` is the UI, not the node API base URL.
+
+## Build (one-time)
+
+From the repo root:
 
 ```bash
 cd flux-mcp
-npm install
+npm ci
 npm run build
 ```
 
-Run:
+(If you prefer `npm install`, that also works — `npm ci` is just reproducible.)
 
-```bash
-FLUX_API_BASE_URL="http://<node-ip>:16127" node dist/index.js
-# or, via the public gateway:
-# FLUX_API_BASE_URL="https://api.runonflux.io" node dist/index.js
-```
+This produces: `dist/index.js`
 
-## Connect from Claude Code
+## Connect your MCP client
+
+### Claude Code
 
 ```bash
 claude mcp add --transport stdio flux -- \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
-Useful commands:
+Verify:
 
 ```bash
 claude mcp list
 claude mcp get flux
 ```
 
-## Connect from Claude Desktop
+### Claude Desktop
+
+Add an MCP server entry:
 
 ```json
 {
@@ -63,6 +71,55 @@ claude mcp get flux
     }
   }
 }
+```
+
+Restart Claude Desktop.
+
+### OpenCode
+
+OpenCode reads MCP servers from `opencode.json` / `opencode.jsonc`.
+
+You can configure it globally:
+- `~/.config/opencode/opencode.json`
+
+Or per-project (recommended):
+- `./opencode.json`
+- or `./.opencode/opencode.json`
+
+Example config (local/stdio MCP server):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "flux": {
+      "type": "local",
+      "command": [
+        "node",
+        "/absolute/path/to/flux-skills/flux-mcp/dist/index.js"
+      ],
+      "environment": {
+        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
+      },
+      "timeout": 30000
+    }
+  }
+}
+```
+
+Restart OpenCode.
+
+Notes:
+- Use an absolute path for `dist/index.js`.
+- If tools don’t show up, increase `timeout`.
+- If you see permission prompts for every MCP tool call, configure OpenCode permissions to allow `mcp-*`.
+
+## Run standalone (debug)
+
+```bash
+FLUX_API_BASE_URL="http://<node-ip>:16127" node dist/index.js
+# or, via the public gateway:
+# FLUX_API_BASE_URL="https://api.runonflux.io" node dist/index.js
 ```
 
 ## Configuration
