@@ -34,3 +34,7 @@ flux-mcp/dist/
 # Packaged skill artifacts (generated)
 dist/*.skill
 
+# Local scratch / test artifacts
+/tmp/
+issues.md
+

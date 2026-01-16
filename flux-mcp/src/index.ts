@@ -2,6 +2,7 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -29,6 +30,67 @@ import { extractFluxErrorMessage, isFluxSuccess, unwrapFluxEnvelope } from './fl
 type CallToolRequest = { params: { name: string; arguments?: unknown } };
 
 type FluxRequestResult = Awaited<ReturnType<FluxClient['request']>>;
+
+type FluxDriveClientState = {
+  baseUrl: string;
+};
+
+function normalizeHttpBaseUrl(url: string): string {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Base URL must start with http:// or https://');
+  }
+  return url.replace(/\/+$/, '');
+}
+
+const fluxDriveClient: FluxDriveClientState = {
+  baseUrl: process.env.FLUXDRIVE_MWS_BASE_URL
+    ? normalizeHttpBaseUrl(process.env.FLUXDRIVE_MWS_BASE_URL)
+    : 'https://mws.fluxdrive.runonflux.io',
+};
+
+async function fluxDriveRequest(
+  pathname: string,
+  opts?: { method?: string; query?: Record<string, unknown>; body?: unknown; timeoutMs?: number }
+) {
+  const method = (opts?.method ?? (opts?.body === undefined ? 'GET' : 'POST')).toUpperCase();
+
+  const path = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  const qs = opts?.query ? new URLSearchParams(Object.entries(opts.query).map(([k, v]) => [k, String(v)])).toString() : '';
+  const url = `${fluxDriveClient.baseUrl}${path}${qs ? `?${qs}` : ''}`;
+
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+  };
+
+  const zelidauth = client.getZelidauthValue();
+  if (zelidauth) headers.zelidauth = zelidauth;
+
+  let body: string | undefined;
+  if (opts?.body !== undefined) {
+    body = JSON.stringify(opts.body);
+    headers['content-type'] = 'application/json';
+  }
+
+  const timeoutMs = Number(opts?.timeoutMs ?? client.getHttpDefaults().timeoutMs);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { method, headers, body, signal: controller.signal });
+    const outHeaders: Record<string, string> = {};
+    for (const [k, v] of res.headers.entries()) outHeaders[k.toLowerCase()] = v;
+    const text = await res.text();
+    let data: unknown = text;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+    }
+    return { url, status: res.status, ok: res.ok, headers: outHeaders, data };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function mustBeString(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string`);
@@ -452,6 +514,100 @@ export const tools: Tool[] = [
     name: 'flux_get_state',
     description: 'Get current MCP client state (base URL, whether zelidauth is set, HTTP defaults).',
     inputSchema: { type: 'object', properties: {} },
+  },
+
+  {
+    name: 'flux_fluxdrive_set_base_url',
+    description:
+      'Set FluxDrive MWS base URL for this MCP session (default https://mws.fluxdrive.runonflux.io). This is separate from the Flux node baseUrl.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        baseUrl: {
+          type: 'string',
+          description: 'FluxDrive MWS base URL (e.g. https://mws.fluxdrive.runonflux.io)',
+        },
+      },
+      required: ['baseUrl'],
+    },
+  },
+  {
+    name: 'flux_fluxdrive_register_backup_file',
+    description:
+      'Register a backup file with FluxDrive MWS (POST /registerbackupfile). Requires zelidauth set (use flux_set_zelidauth).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string' },
+        component: { type: 'string' },
+        filename: { type: 'string' },
+        filesize: { type: 'number' },
+        host: {
+          type: 'string',
+          description: 'Publicly reachable download URL for the backup tarball (usually /backup/downloadlocalfile/... on a node API domain).',
+        },
+        timestamp: { type: 'number', description: 'Epoch ms used by UI to identify backup run.' },
+      },
+      required: ['appname', 'component', 'filename', 'filesize', 'host', 'timestamp'],
+    },
+  },
+  {
+    name: 'flux_fluxdrive_get_task_status',
+    description: 'Get FluxDrive MWS task status (GET /gettaskstatus?taskId=...). Requires zelidauth set.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'number' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'flux_fluxdrive_get_backup_list',
+    description:
+      'Get FluxDrive MWS backup inventory for an app (GET /getbackuplist?appname=...). Requires zelidauth set.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string' },
+      },
+      required: ['appname'],
+    },
+  },
+  {
+    name: 'flux_fluxdrive_remove_checkpoint',
+    description: 'Remove a FluxDrive checkpoint (POST /removeCheckpoint). Requires zelidauth set.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string' },
+        timestamp: { type: 'number' },
+      },
+      required: ['appname', 'timestamp'],
+    },
+  },
+  {
+    name: 'flux_ioutils_file_upload',
+    description:
+      'Upload a file into an app volume via IOUtils.fileUpload (POST /ioutils/fileupload). Requires confirm=true. Note: This uses a streamed multipart upload in the UI; MCP currently supports only remote URL uploads.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: 'Upload type (e.g. backup). When type=backup, uploads into <mount>/backup/upload/.',
+        },
+        appname: { type: 'string' },
+        component: { type: 'string' },
+        folder: { type: 'string', description: 'Folder path or "null" for backup uploads.' },
+        filename: { type: 'string' },
+        fileurl: { type: 'string', description: 'Remote URL to download and place on the node (node will fetch it).',
+        },
+        filePath: { type: 'string', description: 'Absolute path to a local file to upload as multipart/form-data.' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['type', 'appname', 'component', 'filename', 'confirm'],
+    },
   },
   {
     name: 'flux_resource_prune',
@@ -899,29 +1055,39 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_append_backup_task',
-    description: 'Append a backup task to the queue (POST /apps/appendbackuptask). Requires confirm=true.',
+    description:
+      'Append a backup task to the queue (POST /apps/appendbackuptask). Requires confirm=true. If backup is omitted, defaults to backing up all components.',
     inputSchema: {
       type: 'object',
       properties: {
         appname: { type: 'string' },
-        backup: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Array of {component, backup:true/false}' },
+        backup: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: true },
+          description: 'Optional array of {component, backup:true/false}. Defaults to all components with backup=true.',
+        },
         confirm: { type: 'boolean' },
       },
-      required: ['appname', 'backup', 'confirm'],
+      required: ['appname', 'confirm'],
     },
   },
   {
     name: 'flux_apps_append_restore_task',
-    description: 'Append a restore task to the queue (POST /apps/appendrestoretask). Requires confirm=true.',
+    description:
+      'Append a restore task to the queue (POST /apps/appendrestoretask). Requires confirm=true. If restore is omitted, defaults to restoring all components.',
     inputSchema: {
       type: 'object',
       properties: {
         appname: { type: 'string' },
-        restore: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Array of {component, restore:true/false}' },
-        type: { type: 'string', enum: ['local', 'remote'] },
+        restore: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: true },
+          description: 'Optional array of {component, restore:true/false, url?}. Defaults to all components with restore=true and url="".',
+        },
+        type: { type: 'string', enum: ['local', 'remote', 'upload'] },
         confirm: { type: 'boolean' },
       },
-      required: ['appname', 'restore', 'type', 'confirm'],
+      required: ['appname', 'type', 'confirm'],
     },
   },
 
@@ -1554,6 +1720,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           baseUrl: client.getBaseUrl(),
           zelidauth: client.getZelidauthSummary(),
           httpDefaults: client.getHttpDefaults(),
+          fluxDriveMwsBaseUrl: fluxDriveClient.baseUrl,
           endpointsInventory: inventory
             ? { path: endpointsPath, routeCount: inventory.routeCount, generatedAt: inventory.generatedAt }
             : { path: endpointsPath, present: false },
@@ -1607,6 +1774,90 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
         const out = { ok: true, httpDefaults: client.getHttpDefaults(), note: 'Omitted fields keep their previous values.' };
         return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_fluxdrive_set_base_url': {
+        const baseUrl = mustBeString(args['baseUrl'], 'baseUrl');
+        fluxDriveClient.baseUrl = normalizeHttpBaseUrl(baseUrl);
+        const out = { ok: true, fluxDriveMwsBaseUrl: fluxDriveClient.baseUrl };
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_fluxdrive_register_backup_file': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const filename = mustBeString(args['filename'], 'filename');
+        const filesize = mustBeNumber(args['filesize'], 'filesize');
+        const host = mustBeString(args['host'], 'host');
+        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+
+        const payload = { appname, component, filename, filesize, host, timestamp };
+        return jsonResult(await fluxDriveRequest('/registerbackupfile', { method: 'POST', body: payload }));
+      }
+
+      case 'flux_fluxdrive_get_task_status': {
+        const taskId = mustBeNumber(args['taskId'], 'taskId');
+        return jsonResult(await fluxDriveRequest('/gettaskstatus', { method: 'GET', query: { taskId } }));
+      }
+
+      case 'flux_fluxdrive_get_backup_list': {
+        const appname = mustBeString(args['appname'], 'appname');
+        return jsonResult(await fluxDriveRequest('/getbackuplist', { method: 'GET', query: { appname } }));
+      }
+
+      case 'flux_fluxdrive_remove_checkpoint': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
+        return jsonResult(await fluxDriveRequest('/removeCheckpoint', { method: 'POST', body: { appname, timestamp } }));
+      }
+
+      case 'flux_ioutils_file_upload': {
+        requireConfirm(args, 'ioutils/fileupload');
+        const type = mustBeString(args['type'], 'type');
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const filename = mustBeString(args['filename'], 'filename');
+        const folder = asOptionalString(args['folder']) ?? 'null';
+
+        const filePath = asOptionalString(args['filePath']);
+        const fileurl = asOptionalString(args['fileurl']);
+
+        if (!filePath && !fileurl) {
+          throw new Error('Either filePath (local file) or fileurl (remote URL) must be provided');
+        }
+        if (filePath && fileurl) {
+          throw new Error('Provide only one of filePath or fileurl');
+        }
+
+        const apiPath = `/ioutils/fileupload/${encodeURIComponent(type)}/${encodeURIComponent(appname)}/${encodeURIComponent(
+          component
+        )}/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
+
+        if (fileurl) {
+          return jsonResult(
+            await client.request(apiPath, {
+              method: 'POST',
+              allowMutation: true,
+              bodyType: 'form',
+              body: { fileurl },
+            })
+          );
+        }
+
+        const localPath = mustBeString(filePath, 'filePath');
+        const bytes = await fs.readFile(localPath);
+        const form = new FormData();
+        const fieldName = path.basename(localPath);
+        form.set(fieldName, new Blob([bytes]), fieldName);
+
+        return jsonResult(
+          await client.request(apiPath, {
+            method: 'POST',
+            allowMutation: true,
+            bodyType: 'multipart',
+            body: form,
+          })
+        );
       }
 
       case 'flux_auth_flow': {
@@ -2558,8 +2809,18 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_append_backup_task': {
         requireConfirm(args, 'apps/appendbackuptask');
         const appname = mustBeString(args['appname'], 'appname');
-        const backup = args['backup'];
-        if (!Array.isArray(backup)) throw new Error('backup must be an array');
+
+        let backup = args['backup'];
+        if (backup === undefined || backup === null) {
+          const specRes = await client.request(`/apps/appspecifications/${encodeURIComponent(appname)}`);
+          const spec = unwrapFluxEnvelope<Record<string, unknown> | null>(specRes.data);
+          const compose = spec && typeof spec === 'object' && Array.isArray(spec.compose) ? spec.compose : [];
+          backup = compose
+            .map((c) => ({ component: typeof c.name === 'string' ? c.name : undefined, backup: true }))
+            .filter((x) => typeof x.component === 'string');
+        }
+
+        if (!Array.isArray(backup)) throw new Error('backup must be an array when provided');
 
         const payload = { appname, backup };
         return jsonResult(
@@ -2574,10 +2835,22 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_append_restore_task': {
         requireConfirm(args, 'apps/appendrestoretask');
         const appname = mustBeString(args['appname'], 'appname');
-        const restore = args['restore'];
-        if (!Array.isArray(restore)) throw new Error('restore must be an array');
         const type = mustBeString(args['type'], 'type');
-        if (type !== 'local' && type !== 'remote') throw new Error('type must be one of: local, remote');
+        if (type !== 'local' && type !== 'remote' && type !== 'upload') {
+          throw new Error('type must be one of: local, remote, upload');
+        }
+
+        let restore = args['restore'];
+        if (restore === undefined || restore === null) {
+          const specRes = await client.request(`/apps/appspecifications/${encodeURIComponent(appname)}`);
+          const spec = unwrapFluxEnvelope<Record<string, unknown> | null>(specRes.data);
+          const compose = spec && typeof spec === 'object' && Array.isArray(spec.compose) ? spec.compose : [];
+          restore = compose
+            .map((c) => ({ component: typeof c.name === 'string' ? c.name : undefined, restore: true, url: '' }))
+            .filter((x) => typeof x.component === 'string');
+        }
+
+        if (!Array.isArray(restore)) throw new Error('restore must be an array when provided');
 
         const payload = { appname, restore, type };
         return jsonResult(
@@ -4578,7 +4851,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
       case 'flux_syncthing_restart': {
         requireConfirm(args, 'syncthing/system/restart');
-        return jsonResult(await client.request('/syncthing/system/restart'));
+        return jsonResult(await client.request('/syncthing/system/restart', { allowMutation: true }));
       }
 
       default: {

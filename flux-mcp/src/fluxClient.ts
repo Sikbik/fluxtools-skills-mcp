@@ -221,7 +221,7 @@ export class FluxClient {
       method?: string;
       query?: Record<string, unknown>;
       body?: unknown;
-      bodyType?: 'json' | 'form';
+      bodyType?: 'json' | 'form' | 'multipart';
       zelidauth?: unknown;
       useStoredZelidauth?: boolean;
       timeoutMs?: number;
@@ -268,7 +268,7 @@ export class FluxClient {
 
     const bodyType = opts?.bodyType ?? 'json';
 
-    let body: string | undefined;
+    let body: BodyInit | undefined;
 
     if (opts?.body !== undefined) {
       if (bodyType === 'json') {
@@ -276,7 +276,7 @@ export class FluxClient {
         headers['content-type'] = 'application/json';
       } else if (bodyType === 'form') {
         if (!opts.body || typeof opts.body !== 'object' || Array.isArray(opts.body)) {
-          throw new Error("Form bodyType requires a plain object body");
+          throw new Error('Form bodyType requires a plain object body');
         }
 
         const params = new URLSearchParams();
@@ -287,6 +287,11 @@ export class FluxClient {
 
         body = params.toString();
         headers['content-type'] = 'application/x-www-form-urlencoded';
+      } else if (bodyType === 'multipart') {
+        if (!(opts.body instanceof FormData)) {
+          throw new Error('Multipart bodyType requires a FormData body');
+        }
+        body = opts.body;
       } else {
         throw new Error(`Unsupported bodyType: ${String(bodyType)}`);
       }
