@@ -250,6 +250,12 @@ describe.sequential('UX tools', () => {
     expect(structured?.locationsCount).toBeTypeOf('number');
     expect(structured?.localRunningCount).toBeTypeOf('number');
 
+    const propagation = structured?.propagation as Record<string, unknown> | undefined;
+    expect(propagation?.tempYes).toBeTypeOf('number');
+    expect(propagation?.permYes).toBeTypeOf('number');
+    expect(propagation?.both).toBeTypeOf('number');
+    expect(propagation?.neither).toBeTypeOf('number');
+
     const tableText = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
     expect(tableText.includes('Instances')).toBe(true);
     expect(tableText.includes('Temp?')).toBe(true);

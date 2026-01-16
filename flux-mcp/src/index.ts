@@ -3209,6 +3209,21 @@ export async function callTool(name: string, rawArgs: unknown) {
           && (locationsRes?.ok ?? true)
           && (runningRes?.ok ?? true);
 
+        let tempYes = 0;
+        let permYes = 0;
+        let both = 0;
+        let neither = 0;
+
+        for (const x of computed) {
+          const tmp = x.temporaryMsg !== null;
+          const perm = x.permanentMsg !== null;
+
+          if (tmp) tempYes += 1;
+          if (perm) permYes += 1;
+          if (tmp && perm) both += 1;
+          if (!tmp && !perm) neither += 1;
+        }
+
         const summary = {
           ok,
           zelid: zelid ?? null,
@@ -3219,6 +3234,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           permanentCount,
           locationsCount,
           localRunningCount,
+          propagation: {
+            tempYes,
+            permYes,
+            both,
+            neither,
+          },
           resourceUri: link.uri,
         };
 
