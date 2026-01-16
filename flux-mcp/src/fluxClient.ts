@@ -110,7 +110,13 @@ function isNonMutatingPostPath(method: string, pathname: string): boolean {
   if (method !== 'POST') return false;
   const path = pathname.startsWith('/') ? pathname : `/${pathname}`;
 
-  const allowed = ['/id/verifylogin', '/id/checkprivilege'];
+  const allowed = [
+    '/id/verifylogin',
+    '/id/checkprivilege',
+    '/apps/verifyappregistrationspecifications',
+    '/apps/verifyappupdatespecifications',
+    '/apps/calculateprice',
+  ];
   return allowed.includes(path);
 }
 

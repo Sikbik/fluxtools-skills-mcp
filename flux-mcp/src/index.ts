@@ -126,6 +126,15 @@ function isContainerForApp(containerName: string, appname: string): boolean {
   return n === `flux${appname}` || n === `zel${appname}` || n.endsWith(`_${appname}`);
 }
 
+function isSensitivePath(p: string): boolean {
+  const s = p.toLowerCase();
+  if (s.includes('credential') || s.includes('secret') || s.includes('private')) return true;
+  if (s.endsWith('.env') || s.includes('/.env') || s.includes('\\.env')) return true;
+  if (s.endsWith('credentials.json') || s.includes('credentials.json')) return true;
+  if (s.endsWith('.pem') || s.endsWith('.key') || s.endsWith('.p12') || s.endsWith('.pfx')) return true;
+  return false;
+}
+
 type RuntimeTargetResult = {
   ok: boolean;
   appname: string;
@@ -1730,7 +1739,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_download_file',
-    description: 'Download a file from an app volume (GET /apps/downloadfile) as base64.',
+    description: 'Download a file from an app volume (GET /apps/downloadfile) as base64. Requires confirm=true for sensitive paths.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1738,13 +1747,14 @@ export const tools: Tool[] = [
         component: { type: 'string' },
         file: { type: 'string', description: 'Relative file path' },
         maxBytes: { type: 'number', description: 'Max bytes to download (default 1048576)' },
+        confirm: { type: 'boolean', description: 'Required when file path looks sensitive (e.g. .env, credentials).' },
       },
       required: ['appname', 'component', 'file'],
     },
   },
   {
     name: 'flux_apps_download_folder',
-    description: 'Download a folder from an app volume (GET /apps/downloadfolder) as a zipped base64 blob.',
+    description: 'Download a folder from an app volume (GET /apps/downloadfolder) as a zipped base64 blob. Requires confirm=true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1752,8 +1762,9 @@ export const tools: Tool[] = [
         component: { type: 'string' },
         folder: { type: 'string', description: 'Relative folder path' },
         maxBytes: { type: 'number', description: 'Max bytes to download (default 1048576)' },
+        confirm: { type: 'boolean' },
       },
-      required: ['appname', 'component', 'folder'],
+      required: ['appname', 'component', 'folder', 'confirm'],
     },
   },
   {
@@ -3062,6 +3073,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             method: 'POST',
             body: payload,
             allowMutation: true,
+            responseType: 'text',
           })
         );
       }
@@ -3092,6 +3104,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             method: 'POST',
             body: payload,
             allowMutation: true,
+            responseType: 'text',
           })
         );
       }
@@ -4116,24 +4129,27 @@ export async function callTool(name: string, rawArgs: unknown) {
         );
       }
 
-      case 'flux_apps_plan_registration': {
-        const specInput = mustBeObject(args['spec'], 'spec');
-        const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
-        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+       case 'flux_apps_plan_registration': {
+         const specInput = mustBeObject(args['spec'], 'spec');
+         const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
+         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+ 
+         const verified = await client.request('/apps/verifyappregistrationspecifications', {
+           method: 'POST',
+           body: specInput,
+           allowMutation: true,
+           timeoutMs: 5 * 60 * 1000,
+         });
+ 
+         const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
+ 
+         const price = await client.request('/apps/calculateprice', {
+           method: 'POST',
+           body: verifiedSpec,
+           allowMutation: true,
+           timeoutMs: 5 * 60 * 1000,
+         });
 
-        const verified = await client.request('/apps/verifyappregistrationspecifications', {
-          method: 'POST',
-          body: specInput,
-          allowMutation: true,
-        });
-
-        const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
-
-        const price = await client.request('/apps/calculateprice', {
-          method: 'POST',
-          body: verifiedSpec,
-          allowMutation: true,
-        });
 
         const [registrationInformation, deploymentInformation] = await Promise.all([
           client.request('/apps/registrationinformation'),
@@ -4158,7 +4174,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
       }
 
-       case 'flux_apps_register': {
+        case 'flux_apps_register': {
          const specInput = mustBeObject(args['spec'], 'spec');
          const signature = mustBeString(args['signature'], 'signature');
          const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
@@ -4171,8 +4187,10 @@ export async function callTool(name: string, rawArgs: unknown) {
                method: 'POST',
                body: specInput,
                allowMutation: true,
+               timeoutMs: 5 * 60 * 1000,
              })
            : null;
+
  
          const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
  
@@ -4310,6 +4328,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           method: 'POST',
           body: specInput,
           allowMutation: true,
+          timeoutMs: 5 * 60 * 1000,
         });
 
         const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
@@ -4318,6 +4337,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           method: 'POST',
           body: verifiedSpec,
           allowMutation: true,
+          timeoutMs: 5 * 60 * 1000,
         });
 
         const type = 'fluxappupdate' as const;
@@ -4349,6 +4369,7 @@ export async function callTool(name: string, rawArgs: unknown) {
                method: 'POST',
                body: specInput,
                allowMutation: true,
+               timeoutMs: 5 * 60 * 1000,
              })
            : null;
  
@@ -4596,6 +4617,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             method: 'GET',
             query: { appname, force, global },
             allowMutation: true,
+            responseType: 'text',
           })
         );
       }
@@ -4837,28 +4859,49 @@ export async function callTool(name: string, rawArgs: unknown) {
         const file = mustBeString(args['file'], 'file');
         const maxBytes = asOptionalNumber(args['maxBytes']);
 
-        return jsonResult(
-          await client.request('/apps/downloadfile', {
-            query: { appname, component, file },
-            responseType: 'base64',
-            maxBytes,
-          })
-        );
+        if (isSensitivePath(file)) {
+          requireConfirm(args, `apps/downloadfile sensitive path: ${file}`);
+        }
+
+        const res = await client.request('/apps/downloadfile', {
+          query: { appname, component, file },
+          responseType: 'base64',
+          maxBytes,
+        });
+
+        const out = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          component,
+          file,
+          data: res.data,
+        };
+        return jsonResult(out, { structuredContent: out, isError: !res.ok });
       }
 
       case 'flux_apps_download_folder': {
+        requireConfirm(args, 'apps/downloadfolder');
         const appname = mustBeString(args['appname'], 'appname');
         const component = mustBeString(args['component'], 'component');
         const folder = mustBeString(args['folder'], 'folder');
         const maxBytes = asOptionalNumber(args['maxBytes']);
 
-        return jsonResult(
-          await client.request('/apps/downloadfolder', {
-            query: { appname, component, folder },
-            responseType: 'base64',
-            maxBytes,
-          })
-        );
+        const res = await client.request('/apps/downloadfolder', {
+          query: { appname, component, folder },
+          responseType: 'base64',
+          maxBytes,
+        });
+
+        const out = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          component,
+          folder,
+          data: res.data,
+        };
+        return jsonResult(out, { structuredContent: out, isError: !res.ok });
       }
 
       case 'flux_apps_create_folder': {
