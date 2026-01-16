@@ -48,6 +48,12 @@ export function buildTableResult(opts: {
       type: 'text',
       text: "\n\nTip: If your client doesn't automatically open resource links, run flux_resource_read with the returned resourceUri.",
     });
+    if (summary.nextActions && summary.nextActions.length > 0) {
+      content.push({
+        type: 'text',
+        text: `\n\nNext actions:\n${summary.nextActions.map((a) => `- ${a.tool} ${JSON.stringify(a.arguments)}`).join('\n')}`,
+      });
+    }
   }
 
   return {

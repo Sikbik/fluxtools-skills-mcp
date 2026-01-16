@@ -135,6 +135,122 @@ function isSensitivePath(p: string): boolean {
   return false;
 }
 
+type ParsedProgressOutput = {
+  raw: string;
+  events: string[];
+  jsonObjects: unknown[];
+};
+
+function parseProgressOutput(raw: string): ParsedProgressOutput {
+  const text = raw ?? '';
+  const events: string[] = [];
+  const jsonObjects: unknown[] = [];
+
+  let lastIndex = 0;
+  let jsonStart: number | null = null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  const flushText = (value: string) => {
+    for (const line of value.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      events.push(trimmed);
+    }
+  };
+
+  const flushJson = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      jsonObjects.push(parsed);
+
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const obj = parsed as Record<string, unknown>;
+        const status = typeof obj.status === 'string' ? obj.status : undefined;
+        const data = obj.data;
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          const msg = (data as Record<string, unknown>).message;
+          if (typeof msg === 'string' && msg.trim()) {
+            events.push(status ? `${status}: ${msg}` : msg);
+            return;
+          }
+        }
+        if (typeof data === 'string' && data.trim()) {
+          events.push(status ? `${status}: ${data}` : data);
+          return;
+        }
+        if (status) {
+          events.push(status);
+          return;
+        }
+      }
+
+      events.push(trimmed);
+    } catch {
+      flushText(value);
+    }
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (jsonStart === null) {
+      if (ch === '{') {
+        const before = text.slice(lastIndex, i);
+        flushText(before);
+        jsonStart = i;
+        depth = 1;
+        inString = false;
+        escape = false;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const end = i + 1;
+        const chunk = text.slice(jsonStart, end);
+        flushJson(chunk);
+        lastIndex = end;
+        jsonStart = null;
+      }
+    }
+  }
+
+  if (jsonStart !== null) {
+    flushText(text.slice(jsonStart));
+  } else {
+    flushText(text.slice(lastIndex));
+  }
+
+  return { raw: text, events, jsonObjects };
+}
+
 type RuntimeTargetResult = {
   ok: boolean;
   appname: string;
@@ -1200,42 +1316,44 @@ export const tools: Tool[] = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'flux_apps_append_backup_task',
-    description:
-      'Append a backup task to the queue (POST /apps/appendbackuptask). Requires confirm=true. If backup is omitted, defaults to backing up all components.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        appname: { type: 'string' },
-        backup: {
-          type: 'array',
-          items: { type: 'object', additionalProperties: true },
-          description: 'Optional array of {component, backup:true/false}. Defaults to all components with backup=true.',
-        },
-        confirm: { type: 'boolean' },
-      },
-      required: ['appname', 'confirm'],
-    },
-  },
+     name: 'flux_apps_append_backup_task',
+     description:
+       'Append a backup task to the queue (POST /apps/appendbackuptask). Requires confirm=true. If backup is omitted, defaults to backing up all components.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         appname: { type: 'string' },
+         backup: {
+           type: 'array',
+           items: { type: 'object', additionalProperties: true },
+           description: 'Optional array of {component, backup:true/false}. Defaults to all components with backup=true.',
+         },
+         timeoutMs: { type: 'number', description: 'Request timeout in ms (default 10 minutes).', minimum: 1 },
+         confirm: { type: 'boolean' },
+       },
+       required: ['appname', 'confirm'],
+     },
+   },
   {
-    name: 'flux_apps_append_restore_task',
-    description:
-      'Append a restore task to the queue (POST /apps/appendrestoretask). Requires confirm=true. If restore is omitted, defaults to restoring all components.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        appname: { type: 'string' },
-        restore: {
-          type: 'array',
-          items: { type: 'object', additionalProperties: true },
-          description: 'Optional array of {component, restore:true/false, url?}. Defaults to all components with restore=true and url="".',
-        },
-        type: { type: 'string', enum: ['local', 'remote', 'upload'] },
-        confirm: { type: 'boolean' },
-      },
-      required: ['appname', 'type', 'confirm'],
-    },
-  },
+     name: 'flux_apps_append_restore_task',
+     description:
+       'Append a restore task to the queue (POST /apps/appendrestoretask). Requires confirm=true. If restore is omitted, defaults to restoring all components.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         appname: { type: 'string' },
+         restore: {
+           type: 'array',
+           items: { type: 'object', additionalProperties: true },
+           description: 'Optional array of {component, restore:true/false, url?}. Defaults to all components with restore=true and url="".',
+         },
+         type: { type: 'string', enum: ['local', 'remote', 'upload'] },
+         timeoutMs: { type: 'number', description: 'Request timeout in ms (default 10 minutes).', minimum: 1 },
+         confirm: { type: 'boolean' },
+       },
+       required: ['appname', 'type', 'confirm'],
+     },
+   },
 
   // Generic request (escape hatch)
   {
@@ -1612,6 +1730,7 @@ export const tools: Tool[] = [
         appname: { type: 'string' },
         force: { type: 'boolean', description: 'Force redeploy (optional)' },
         global: { type: 'boolean', description: 'Global redeploy (optional)' },
+        timeoutMs: { type: 'number', description: 'Request timeout in ms (optional).' },
         confirm: { type: 'boolean' },
       },
       required: ['appname', 'confirm'],
@@ -1625,7 +1744,8 @@ export const tools: Tool[] = [
       properties: {
         appname: { type: 'string' },
         component: { type: 'string' },
-        force: { type: 'boolean' },
+        force: { type: 'boolean', description: 'Force redeploy (optional)' },
+        timeoutMs: { type: 'number', description: 'Request timeout in ms (optional).' },
         confirm: { type: 'boolean' },
       },
       required: ['appname', 'component', 'confirm'],
@@ -3055,6 +3175,10 @@ export async function callTool(name: string, rawArgs: unknown) {
         requireConfirm(args, 'apps/appendbackuptask');
         const appname = mustBeString(args['appname'], 'appname');
 
+        const timeoutMsRaw = asOptionalNumber(args['timeoutMs']);
+        const timeoutMs = timeoutMsRaw === undefined ? 10 * 60 * 1000 : Math.floor(timeoutMsRaw);
+        if (timeoutMs <= 0) throw new Error('timeoutMs must be a positive number');
+
         let backup = args['backup'];
         if (backup === undefined || backup === null) {
           const specRes = await client.request(`/apps/appspecifications/${encodeURIComponent(appname)}`);
@@ -3068,20 +3192,56 @@ export async function callTool(name: string, rawArgs: unknown) {
         if (!Array.isArray(backup)) throw new Error('backup must be an array when provided');
 
         const payload = { appname, backup };
-        return jsonResult(
-          await client.request('/apps/appendbackuptask', {
-            method: 'POST',
-            body: payload,
-            allowMutation: true,
-            responseType: 'text',
-          })
-        );
+        const res = await client.request('/apps/appendbackuptask', {
+          method: 'POST',
+          body: payload,
+          allowMutation: true,
+          responseType: 'text',
+          timeoutMs,
+        });
+
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+        const parsed = parseProgressOutput(text);
+
+        const link = resourceStore.putJson({
+          kind: 'apps/appendbackuptask',
+          name: `${appname} backup task`,
+          description: 'Parsed /apps/appendbackuptask output',
+          value: { request: payload, response: res, parsed },
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          requested: payload,
+          eventCount: parsed.events.length,
+          resourceUri: link.uri,
+          events: parsed.events.slice(0, 25),
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: link.uri } },
+            { tool: 'flux_apps_logs', arguments: { appname } },
+          ],
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_append_restore_task': {
         requireConfirm(args, 'apps/appendrestoretask');
         const appname = mustBeString(args['appname'], 'appname');
         const type = mustBeString(args['type'], 'type');
+
+        const timeoutMsRaw = asOptionalNumber(args['timeoutMs']);
+        const timeoutMs = timeoutMsRaw === undefined ? 10 * 60 * 1000 : Math.floor(timeoutMsRaw);
+        if (timeoutMs <= 0) throw new Error('timeoutMs must be a positive number');
         if (type !== 'local' && type !== 'remote' && type !== 'upload') {
           throw new Error('type must be one of: local, remote, upload');
         }
@@ -3099,14 +3259,47 @@ export async function callTool(name: string, rawArgs: unknown) {
         if (!Array.isArray(restore)) throw new Error('restore must be an array when provided');
 
         const payload = { appname, restore, type };
-        return jsonResult(
-          await client.request('/apps/appendrestoretask', {
-            method: 'POST',
-            body: payload,
-            allowMutation: true,
-            responseType: 'text',
-          })
-        );
+        const res = await client.request('/apps/appendrestoretask', {
+          method: 'POST',
+          body: payload,
+          allowMutation: true,
+          responseType: 'text',
+          timeoutMs,
+        });
+
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+        const parsed = parseProgressOutput(text);
+
+        const link = resourceStore.putJson({
+          kind: 'apps/appendrestoretask',
+          name: `${appname} restore task`,
+          description: 'Parsed /apps/appendrestoretask output',
+          value: { request: payload, response: res, parsed },
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          type,
+          requested: payload,
+          eventCount: parsed.events.length,
+          resourceUri: link.uri,
+          events: parsed.events.slice(0, 25),
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: link.uri } },
+            { tool: 'flux_apps_logs', arguments: { appname } },
+          ],
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_maintenance_checklist': {
@@ -4611,15 +4804,50 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const force = asOptionalBoolean(args['force']);
         const global = asOptionalBoolean(args['global']);
+        const timeoutMs = asOptionalNumber(args['timeoutMs']);
 
-        return jsonResult(
-          await client.request('/apps/redeploy', {
-            method: 'GET',
-            query: { appname, force, global },
-            allowMutation: true,
-            responseType: 'text',
-          })
-        );
+        const res = await client.request('/apps/redeploy', {
+          method: 'GET',
+          query: { appname, force, global },
+          allowMutation: true,
+          responseType: 'text',
+          timeoutMs,
+        });
+
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+        const parsed = parseProgressOutput(text);
+
+        const link = resourceStore.putJson({
+          kind: 'apps/redeploy',
+          name: `${appname} redeploy`,
+          description: 'Parsed /apps/redeploy output',
+          value: { request: { appname, force: force ?? null, global: global ?? null }, response: res, parsed },
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          force: force ?? null,
+          global: global ?? null,
+          eventCount: parsed.events.length,
+          resourceUri: link.uri,
+          events: parsed.events.slice(0, 25),
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: link.uri } },
+            { tool: 'flux_apps_logs', arguments: { appname } },
+            { tool: 'flux_apps_stats', arguments: { appname } },
+          ],
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_redeploy_component': {
@@ -4627,14 +4855,49 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const component = mustBeString(args['component'], 'component');
         const force = asOptionalBoolean(args['force']);
+        const timeoutMs = asOptionalNumber(args['timeoutMs']);
 
-        return jsonResult(
-          await client.request('/apps/redeploycomponent', {
-            method: 'GET',
-            query: { appname, component, force },
-            allowMutation: true,
-          })
-        );
+        const res = await client.request('/apps/redeploycomponent', {
+          method: 'GET',
+          query: { appname, component, force },
+          allowMutation: true,
+          responseType: 'text',
+          timeoutMs,
+        });
+
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+        const parsed = parseProgressOutput(text);
+
+        const link = resourceStore.putJson({
+          kind: 'apps/redeploycomponent',
+          name: `${appname}/${component} redeploy`,
+          description: 'Parsed /apps/redeploycomponent output',
+          value: { request: { appname, component, force: force ?? null }, response: res, parsed },
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          appname,
+          component,
+          force: force ?? null,
+          eventCount: parsed.events.length,
+          resourceUri: link.uri,
+          events: parsed.events.slice(0, 25),
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: link.uri } },
+            { tool: 'flux_apps_logs', arguments: { appname } },
+          ],
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !res.ok,
+        };
       }
 
       case 'flux_apps_logs': {
@@ -4869,15 +5132,40 @@ export async function callTool(name: string, rawArgs: unknown) {
           maxBytes,
         });
 
+        if (!res.ok) {
+          const out = { ok: false, status: res.status, appname, component, file, error: res.data };
+          return jsonResult(out, { structuredContent: out, isError: true });
+        }
+
+        const blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        const base64 = blob && typeof blob.base64 === 'string' ? blob.base64 : null;
+        const bytes = blob && typeof blob.bytes === 'number' ? blob.bytes : null;
+        const contentType = blob && typeof blob.contentType === 'string' ? blob.contentType : 'application/octet-stream';
+
+        const link = resourceStore.putText({
+          kind: 'apps/downloadfile',
+          name: `${appname}/${component}/${file}`,
+          description: 'Downloaded file (base64)',
+          mimeType: contentType,
+          text: base64 ?? '',
+        });
+
         const out = {
-          ok: res.ok,
+          ok: true,
           status: res.status,
           appname,
           component,
           file,
-          data: res.data,
+          bytes,
+          mimeType: contentType,
+          resourceUri: link.uri,
         };
-        return jsonResult(out, { structuredContent: out, isError: !res.ok });
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: false,
+        };
       }
 
       case 'flux_apps_download_folder': {
@@ -4893,15 +5181,40 @@ export async function callTool(name: string, rawArgs: unknown) {
           maxBytes,
         });
 
+        if (!res.ok) {
+          const out = { ok: false, status: res.status, appname, component, folder, error: res.data };
+          return jsonResult(out, { structuredContent: out, isError: true });
+        }
+
+        const blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        const base64 = blob && typeof blob.base64 === 'string' ? blob.base64 : null;
+        const bytes = blob && typeof blob.bytes === 'number' ? blob.bytes : null;
+        const contentType = blob && typeof blob.contentType === 'string' ? blob.contentType : 'application/zip';
+
+        const link = resourceStore.putText({
+          kind: 'apps/downloadfolder',
+          name: `${appname}/${component}/${folder}.zip`,
+          description: 'Downloaded folder zip (base64)',
+          mimeType: contentType,
+          text: base64 ?? '',
+        });
+
         const out = {
-          ok: res.ok,
+          ok: true,
           status: res.status,
           appname,
           component,
           folder,
-          data: res.data,
+          bytes,
+          mimeType: contentType,
+          resourceUri: link.uri,
         };
-        return jsonResult(out, { structuredContent: out, isError: !res.ok });
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: false,
+        };
       }
 
       case 'flux_apps_create_folder': {
