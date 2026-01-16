@@ -1102,7 +1102,7 @@ export const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        secondsPerBlock: { type: 'number', description: 'Override seconds per block (default 120)' },
+        secondsPerBlock: { type: 'number', description: 'Override seconds per block (default 30)' }
       },
     },
   },
@@ -1112,7 +1112,7 @@ export const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        secondsPerBlock: { type: 'number', description: 'Override seconds per block (default 120)' },
+        secondsPerBlock: { type: 'number', description: 'Override seconds per block (default 30)' }
       },
     },
   },
@@ -1484,7 +1484,7 @@ export const tools: Tool[] = [
         zelid: { type: 'string', description: 'Owner ZelID. If omitted, uses stored zelidauth.zelid when available.' },
         includeExpired: { type: 'boolean', description: 'Include expired apps (default false).', default: false },
         estimateTimeRemaining: { type: 'boolean', description: 'If true, includes a best-effort ~time remaining column (default false).', default: false },
-        secondsPerBlock: { type: 'number', description: 'Optional override used when estimateTimeRemaining is true (default 120).' },
+        secondsPerBlock: { type: 'number', description: 'Optional override used when estimateTimeRemaining is true (default 30).' },
         limit: { type: 'number', description: 'Max rows in the table preview (default 50, max 200).', minimum: 1, maximum: 200, default: 50 },
       },
     },
@@ -2764,7 +2764,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
       case 'flux_explorer_height_info': {
         const secondsPerBlockRaw = asOptionalNumber(args['secondsPerBlock']);
-        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 120;
+        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 30;
 
         const scannedHeightRes = await client.request('/explorer/scannedheight');
         const scanned = unwrapFluxEnvelope<Record<string, unknown>>(scannedHeightRes.data);
@@ -2787,7 +2787,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
       case 'flux_explorer_status': {
         const secondsPerBlockRaw = asOptionalNumber(args['secondsPerBlock']);
-        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 120;
+        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 30;
 
         const [scannedHeightRes, isSyncedRes] = await Promise.all([
           client.request('/explorer/scannedheight'),
@@ -3575,7 +3575,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const includeExpired = (asOptionalBoolean(args['includeExpired']) ?? false) === true;
         const estimateTimeRemaining = (asOptionalBoolean(args['estimateTimeRemaining']) ?? false) === true;
         const secondsPerBlockRaw = asOptionalNumber(args['secondsPerBlock']);
-        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 120;
+        const secondsPerBlock = secondsPerBlockRaw && secondsPerBlockRaw > 0 ? secondsPerBlockRaw : 30;
 
         const limitRaw = asOptionalNumber(args['limit']) ?? 50;
         const limit = Math.max(1, Math.min(200, Math.floor(limitRaw)));
