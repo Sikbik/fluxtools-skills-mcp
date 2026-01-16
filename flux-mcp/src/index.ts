@@ -1789,7 +1789,8 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_logs',
-    description: 'Get app/container logs (GET /apps/applog).',
+    description:
+      'Get app/container logs (GET /apps/applog). Accepts a global app name (e.g. hytale) OR an explicit container name; on container lookup errors it will resolve node/port + container name automatically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1801,7 +1802,8 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_inspect',
-    description: 'Inspect a container (GET /apps/appinspect).',
+    description:
+      'Inspect a container (GET /apps/appinspect). Accepts a global app name OR container name; on container lookup errors it will resolve node/port + container name automatically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1812,7 +1814,8 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_stats',
-    description: 'Get container stats (GET /apps/appstats).',
+    description:
+      'Get container stats (GET /apps/appstats). Accepts a global app name OR container name; on container lookup errors it will resolve node/port + container name automatically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1823,7 +1826,8 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_top',
-    description: 'Get process list for a container (GET /apps/apptop).',
+    description:
+      'Get process list for a container (GET /apps/apptop). Accepts a global app name OR container name; on container lookup errors it will resolve node/port + container name automatically.',
     inputSchema: {
       type: 'object',
       properties: {

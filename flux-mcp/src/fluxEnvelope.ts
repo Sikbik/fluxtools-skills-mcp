@@ -39,7 +39,7 @@ export function extractFluxErrorMessage(value: unknown): string | null {
 function normalizeFluxErrorMessage(message: string): string {
   const m = message.trim();
   if (m.includes("Cannot read properties of undefined") && m.includes("reading 'Id'")) {
-    return 'Container not found on this node. You may be using the wrong node/port, or the app is not running here. Try resolving the app location and using the port returned by /apps/location.';
+    return "Container not found on this node. Likely wrong node/port or you passed a global app name instead of the container name. MCP observability tools (logs/stats/inspect/top) will auto-resolve via /apps/location + /apps/listrunningapps when possible.";
   }
   return message;
 }
