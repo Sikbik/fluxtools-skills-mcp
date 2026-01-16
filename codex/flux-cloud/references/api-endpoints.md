@@ -9,7 +9,7 @@ For a complete, generated endpoint list (all 400+ routes), see:
 - `references/endpoints-inventory.md`
 - `references/endpoints.json`
 
-## Base URLs
+## Base URLs and ports
 
 - UI gateway: `https://cloud.runonflux.com`
 - API gateway: `https://api.runonflux.io`
@@ -17,7 +17,9 @@ For a complete, generated endpoint list (all 400+ routes), see:
   - UI: `http://<node-ip>:16126/`
   - API: `http://<node-ip>:16127/`
 
-## Response envelope
+Tip: prefer a direct node for auth and troubleshooting; gateways can time out or route to different nodes.
+
+## Response envelope + exceptions
 
 Most endpoints respond with:
 
@@ -28,7 +30,23 @@ Most endpoints respond with:
 Notes:
 
 - For automation, treat `data` as the real payload; `status` is usually `success`/`error`.
-- Some endpoints may return a plain object/array (especially on proxies or older routes). In MCP we normalize by unwrapping when possible.
+- Some routes may return a plain object/array (older/proxy routes). In MCP we normalize by unwrapping when possible.
+- Transport success (HTTP 200) can still mean Flux-level failure (`status: "error"`).
+
+## Gateway vs direct node tradeoffs
+
+- Gateways (`https://api.runonflux.io`) are convenient but can be less reliable for some auth flows and may route to a different backing node over time.
+- Direct node (`http://<node-ip>:16127`) is preferred for debugging and consistent state.
+- In MCP, `flux_set_base_url_from_gateway` resolves the current node and sets the base URL.
+
+## GET routes that mutate
+
+Some Flux APIs use `GET` for actions that change state (service restarts, redeploys, explorer maintenance). Treat these as mutations even though they’re GET.
+
+In MCP:
+
+- lifecycle/maintenance tools require `confirm=true`
+- generic calls via `flux_request` require `allowMutation=true`
 
 ## Error behavior
 
@@ -46,13 +64,22 @@ curl -sS http://<node-ip>:16127/flux/info
 curl -sS http://<node-ip>:16127/flux/isarcaneos
 ```
 
-## Authentication
+## Authentication and privilege levels
+
+API authentication uses the `zelidauth` header.
 
 - Get a login phrase: `GET /id/loginphrase` (or `GET /id/emergencyphrase` if loginphrase fails)
 - Sign it with your ZelID
 - Send API calls with:
 
 `zelidauth: {"zelid":"<ZELID>","signature":"<SIG>","loginPhrase":"<PHRASE>"}`
+
+Privileges vary by endpoint. Common labels you’ll see in the inventory:
+
+- `PUBLIC`: no auth
+- `USER`: requires a valid `zelidauth`
+- `OWNER`: requires the app owner’s ZelID
+- `FluxTeam`: elevated privileges
 
 See: `references/auth-zelidauth.md`.
 

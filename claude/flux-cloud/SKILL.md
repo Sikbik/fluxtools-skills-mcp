@@ -98,13 +98,13 @@ Reference: `references/register-update.md`.
 
 If MCP is not available, use curl against `http://<node-ip>:16127`.
 
-- Quick overview: `references/api-overview.md`
+- Quick overview: `../../codex/flux-cloud/references/api-endpoints.md`
 - Full endpoint inventory (Flux source-derived): `https://github.com/RunOnFlux/flux/blob/master/ZelBack/src/routes.js`
 
 ## References
 
 - `references/mcp-setup.md` — connect Flux MCP to Claude Code/Desktop
-- `references/api-overview.md` — base URLs, auth header shape, health checks
+- `../../codex/flux-cloud/references/api-endpoints.md` — base URLs, envelopes, auth/privilege, gateway tradeoffs, mutation semantics
 - `references/app-spec-v8.md` — v8 spec template + rules
 - `references/register-update.md` — signing + register/update flow
 
