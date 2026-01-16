@@ -42,7 +42,13 @@ export function buildTableResult(opts: {
     { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
   ];
 
-  if (opts.resource) content.push({ type: 'resource_link', ...opts.resource });
+  if (opts.resource) {
+    content.push({ type: 'resource_link', ...opts.resource });
+    content.push({
+      type: 'text',
+      text: "\n\nTip: If your client doesn't automatically open resource links, run flux_resource_read with the returned resourceUri.",
+    });
+  }
 
   return {
     content,

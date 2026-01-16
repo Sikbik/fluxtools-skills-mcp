@@ -104,6 +104,110 @@ function asOptionalString(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function parseHostPort(raw: string): { host: string; port: number | null } {
+  const trimmed = raw.trim();
+  const parts = trimmed.split(':');
+  if (parts.length === 2) {
+    const port = Number(parts[1]);
+    return { host: parts[0], port: Number.isFinite(port) ? port : null };
+  }
+  return { host: trimmed, port: null };
+}
+
+function containerNameFromRunningEntry(entry: Record<string, unknown>): string | null {
+  const nameRaw = entry['name'] ?? entry['Names'];
+  if (typeof nameRaw === 'string') return nameRaw.replace(/^\//, '');
+  if (Array.isArray(nameRaw) && typeof nameRaw[0] === 'string') return (nameRaw[0] as string).replace(/^\//, '');
+  return null;
+}
+
+function isContainerForApp(containerName: string, appname: string): boolean {
+  const n = containerName.replace(/^\//, '');
+  return n === `flux${appname}` || n === `zel${appname}` || n.endsWith(`_${appname}`);
+}
+
+type RuntimeTargetResult = {
+  ok: boolean;
+  appname: string;
+  baseUrl?: string;
+  host?: string;
+  port?: number | null;
+  containerNames?: string[];
+  candidates: Array<{ host: string; port: number | null; baseUrl: string }>;
+  error?: string;
+};
+
+async function resolveRuntimeTarget(opts: {
+  client: FluxClient;
+  appname: string;
+  preferHost?: string;
+  requireRunning: boolean;
+}): Promise<RuntimeTargetResult> {
+  const locationRes = await opts.client.request(`/apps/location/${encodeURIComponent(opts.appname)}`);
+  if (!locationRes.ok) {
+    return { ok: false, appname: opts.appname, candidates: [], error: extractFluxErrorMessage(locationRes.data) ?? 'Location lookup failed' };
+  }
+
+  const locationsRaw = unwrapFluxEnvelope<unknown>(locationRes.data);
+  const locations = Array.isArray(locationsRaw)
+    ? locationsRaw.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+    : [];
+
+  const candidates = locations
+    .map((x) => {
+      const ip = x['ip'];
+      const ipString = typeof ip === 'string' ? ip : '';
+      const parsed = ipString ? parseHostPort(ipString) : { host: '', port: null };
+      const baseUrl = parsed.host ? `http://${parsed.host}:${parsed.port ?? 16127}` : null;
+      return { raw: ipString, host: parsed.host, port: parsed.port, baseUrl };
+    })
+    .filter((x): x is { raw: string; host: string; port: number | null; baseUrl: string } => !!x.baseUrl);
+
+  const ordered = opts.preferHost
+    ? [...candidates.filter((c) => c.host === opts.preferHost), ...candidates.filter((c) => c.host !== opts.preferHost)]
+    : candidates;
+
+  for (const c of ordered) {
+    const tmp = new FluxClient({ baseUrl: c.baseUrl, zelidauth: opts.client.getZelidauthValue() ?? undefined });
+    tmp.setHttpDefaults({ ...opts.client.getHttpDefaults(), timeoutMs: Math.max(opts.client.getHttpDefaults().timeoutMs, 15000) });
+
+    const runningRes = await tmp.request('/apps/listrunningapps');
+    if (!runningRes.ok) continue;
+
+    const runningRaw = unwrapFluxEnvelope<unknown>(runningRes.data);
+    const running = Array.isArray(runningRaw)
+      ? runningRaw.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+      : [];
+
+    const containerNames = running
+      .map((x) => containerNameFromRunningEntry(x))
+      .filter((x): x is string => typeof x === 'string');
+
+    const matching = containerNames.filter((n) => isContainerForApp(n, opts.appname));
+
+    if (opts.requireRunning && matching.length === 0) continue;
+
+    return {
+      ok: true,
+      appname: opts.appname,
+      baseUrl: c.baseUrl,
+      host: c.host,
+      port: c.port,
+      containerNames: matching,
+      candidates: ordered.map((x) => ({ host: x.host, port: x.port, baseUrl: x.baseUrl })),
+    };
+  }
+
+  return {
+    ok: false,
+    appname: opts.appname,
+    candidates: ordered.map((x) => ({ host: x.host, port: x.port, baseUrl: x.baseUrl })),
+    error: opts.requireRunning
+      ? 'No candidate node reported the app as running. Try requireRunning=false to just get baseUrl candidates.'
+      : 'No location candidates available.',
+  };
+}
+
 function mustBeNumber(value: unknown, name: string): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) throw new Error(`${name} must be a number`);
@@ -1521,6 +1625,24 @@ export const tools: Tool[] = [
 
   // App observability
   {
+    name: 'flux_apps_resolve_runtime_target',
+    description:
+      'Resolve an app name to a node baseUrl (preserving port) and candidate container names for observability (logs/stats/top).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Global Flux app name (e.g. hytale, mcp)' },
+        preferHost: { type: 'string', description: 'Optional preferred host/IP from /apps/location results' },
+        requireRunning: {
+          type: 'boolean',
+          description: 'If true, only return a baseUrl if the app appears in /apps/listrunningapps on that node (default true).',
+          default: true,
+        },
+      },
+      required: ['appname'],
+    },
+  },
+  {
     name: 'flux_apps_logs',
     description: 'Get app/container logs (GET /apps/applog).',
     inputSchema: {
@@ -1842,6 +1964,15 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
         return jsonResult(await fluxDriveRequest('/removeCheckpoint', { method: 'POST', body: { appname, timestamp } }));
+      }
+
+      case 'flux_apps_resolve_runtime_target': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const preferHost = asOptionalString(args['preferHost']);
+        const requireRunning = asOptionalBoolean(args['requireRunning']) ?? true;
+
+        const out = await resolveRuntimeTarget({ client, appname, preferHost, requireRunning });
+        return jsonResult(out, { isError: out.ok !== true, structuredContent: out });
       }
 
       case 'flux_ioutils_file_upload': {
@@ -4488,7 +4619,16 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const lines = asOptionalString(args['lines']) ?? 'all';
 
-        const res = await client.request('/apps/applog', { query: { appname, lines } });
+        let res = await client.request('/apps/applog', { query: { appname, lines } });
+        const knownError = extractFluxErrorMessage(res.data);
+        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+          const resolved = await resolveRuntimeTarget({ client, appname, requireRunning: true });
+          if (resolved.ok && typeof resolved.baseUrl === 'string') client.setBaseUrl(resolved.baseUrl);
+          const target = resolved.ok && Array.isArray(resolved.containerNames) ? resolved.containerNames[0] : null;
+          if (resolved.ok && typeof target === 'string') {
+            res = await client.request('/apps/applog', { query: { appname: target, lines } });
+          }
+        }
 
         const link = resourceStore.putJson({
           kind: 'apps/applog',
@@ -4547,7 +4687,16 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_stats': {
         const appname = mustBeString(args['appname'], 'appname');
 
-        const res = await client.request('/apps/appstats', { query: { appname } });
+        let res = await client.request('/apps/appstats', { query: { appname } });
+        const knownError = extractFluxErrorMessage(res.data);
+        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+          const resolved = await resolveRuntimeTarget({ client, appname, requireRunning: true });
+          if (resolved.ok && typeof resolved.baseUrl === 'string') client.setBaseUrl(resolved.baseUrl);
+          const target = resolved.ok && Array.isArray(resolved.containerNames) ? resolved.containerNames[0] : null;
+          if (resolved.ok && typeof target === 'string') {
+            res = await client.request('/apps/appstats', { query: { appname: target } });
+          }
+        }
 
         const link = resourceStore.putJson({
           kind: 'apps/stats',
@@ -4963,10 +5112,17 @@ export async function callTool(name: string, rawArgs: unknown) {
       }
     }
   } catch (err: unknown) {
-    const hint =
+    let hint =
       name === 'flux_request'
         ? 'For mutating endpoints, retry with allowMutation=true. For safer workflows, prefer dedicated flux_apps_* tools that require confirm=true.'
         : undefined;
+
+    if (err instanceof Error && err.name === 'AbortError') {
+      hint = hint
+        ? `${hint} Also: request timed out; increase timeoutMs (or set flux_set_http_defaults.timeoutMs).`
+        : 'Request timed out; increase timeoutMs (or set flux_set_http_defaults.timeoutMs).';
+    }
+
     return errorResult(err, { tool: name, hint });
   }
 }

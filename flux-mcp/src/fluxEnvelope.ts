@@ -26,12 +26,20 @@ export function extractFluxErrorMessage(value: unknown): string | null {
   if (typeof status === 'string' && status.toLowerCase() === 'success') return null;
 
   const data = obj.data;
-  if (typeof data === 'string') return data;
+  if (typeof data === 'string') return normalizeFluxErrorMessage(data);
   if (data && typeof data === 'object' && !Array.isArray(data)) {
     const msg = (data as Record<string, unknown>).message;
-    if (typeof msg === 'string') return msg;
+    if (typeof msg === 'string') return normalizeFluxErrorMessage(msg);
   }
 
-  if (typeof status === 'string') return status;
+  if (typeof status === 'string') return normalizeFluxErrorMessage(status);
   return 'unknown error';
+}
+
+function normalizeFluxErrorMessage(message: string): string {
+  const m = message.trim();
+  if (m.includes("Cannot read properties of undefined") && m.includes("reading 'Id'")) {
+    return 'Container not found on this node. You may be using the wrong node/port, or the app is not running here. Try resolving the app location and using the port returned by /apps/location.';
+  }
+  return message;
 }
