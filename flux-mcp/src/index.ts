@@ -262,6 +262,22 @@ type RuntimeTargetResult = {
   error?: string;
 };
 
+type ResolveContainerOptions = {
+  client: FluxClient;
+  appname: string;
+  requireRunning: boolean;
+};
+
+async function resolveContainerOnCorrectNode(opts: ResolveContainerOptions): Promise<{ baseUrl: string; containerName: string } | null> {
+  const resolved = await resolveRuntimeTarget({ client: opts.client, appname: opts.appname, requireRunning: opts.requireRunning });
+  if (!resolved.ok || typeof resolved.baseUrl !== 'string') return null;
+  const containerName = Array.isArray(resolved.containerNames) && typeof resolved.containerNames[0] === 'string'
+    ? resolved.containerNames[0]
+    : null;
+  if (!containerName) return null;
+  return { baseUrl: resolved.baseUrl, containerName };
+}
+
 async function resolveRuntimeTarget(opts: {
   client: FluxClient;
   appname: string;
@@ -2395,10 +2411,9 @@ export async function callTool(name: string, rawArgs: unknown) {
         const monitorRangeMs = Math.min(24 * 60 * 60 * 1000, Math.max(1000, monitorRangeValue));
 
         const resolved = await resolveRuntimeTarget({ client, appname, requireRunning: true });
-        if (resolved.ok && typeof resolved.baseUrl === 'string') client.setBaseUrl(resolved.baseUrl);
-        const target = resolved.ok && Array.isArray(resolved.containerNames) && resolved.containerNames[0]
-          ? resolved.containerNames[0]
-          : appname;
+        const resolvedContainer = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+        if (resolvedContainer) client.setBaseUrl(resolvedContainer.baseUrl);
+        const target = resolvedContainer ? resolvedContainer.containerName : appname;
 
         const [inspect, stats, top, monitor, logs] = await Promise.all([
           client.request(`/apps/appinspect/${encodeURIComponent(target)}`),
@@ -4921,11 +4936,10 @@ export async function callTool(name: string, rawArgs: unknown) {
         let res = await client.request('/apps/applog', { query: { appname, lines } });
         const knownError = extractFluxErrorMessage(res.data);
         if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
-          const resolved = await resolveRuntimeTarget({ client, appname, requireRunning: true });
-          if (resolved.ok && typeof resolved.baseUrl === 'string') client.setBaseUrl(resolved.baseUrl);
-          const target = resolved.ok && Array.isArray(resolved.containerNames) ? resolved.containerNames[0] : null;
-          if (resolved.ok && typeof target === 'string') {
-            res = await client.request('/apps/applog', { query: { appname: target, lines } });
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            client.setBaseUrl(resolved.baseUrl);
+            res = await client.request('/apps/applog', { query: { appname: resolved.containerName, lines } });
           }
         }
 
@@ -4957,7 +4971,15 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_inspect': {
         const appname = mustBeString(args['appname'], 'appname');
 
-        const res = await client.request('/apps/appinspect', { query: { appname } });
+        let res = await client.request('/apps/appinspect', { query: { appname } });
+        const knownError = extractFluxErrorMessage(res.data);
+        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            client.setBaseUrl(resolved.baseUrl);
+            res = await client.request('/apps/appinspect', { query: { appname: resolved.containerName } });
+          }
+        }
 
         const link = resourceStore.putJson({
           kind: 'apps/inspect',
@@ -4989,11 +5011,10 @@ export async function callTool(name: string, rawArgs: unknown) {
         let res = await client.request('/apps/appstats', { query: { appname } });
         const knownError = extractFluxErrorMessage(res.data);
         if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
-          const resolved = await resolveRuntimeTarget({ client, appname, requireRunning: true });
-          if (resolved.ok && typeof resolved.baseUrl === 'string') client.setBaseUrl(resolved.baseUrl);
-          const target = resolved.ok && Array.isArray(resolved.containerNames) ? resolved.containerNames[0] : null;
-          if (resolved.ok && typeof target === 'string') {
-            res = await client.request('/apps/appstats', { query: { appname: target } });
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            client.setBaseUrl(resolved.baseUrl);
+            res = await client.request('/apps/appstats', { query: { appname: resolved.containerName } });
           }
         }
 
@@ -5024,7 +5045,15 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_top': {
         const appname = mustBeString(args['appname'], 'appname');
 
-        const res = await client.request('/apps/apptop', { query: { appname } });
+        let res = await client.request('/apps/apptop', { query: { appname } });
+        const knownError = extractFluxErrorMessage(res.data);
+        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            client.setBaseUrl(resolved.baseUrl);
+            res = await client.request('/apps/apptop', { query: { appname: resolved.containerName } });
+          }
+        }
 
         const link = resourceStore.putJson({
           kind: 'apps/top',
