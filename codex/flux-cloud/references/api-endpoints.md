@@ -264,6 +264,36 @@ Syncthing is FluxOS’s replication layer for app volumes. Issues often show up 
 - Network partition (device offline)
 - Folder ID mismatch / configuration drift
 
+### Playbook: Observability (which endpoint to use when)
+
+When the question is “what’s happening?”, pick the tool based on the signal you need.
+
+#### Single app quick snapshot
+
+- `flux_app_health_report { appname }` (inspect/stats/top/monitor/logs summary)
+- `flux_apps_troubleshoot { appname }` (global registry + locations + installing errors + local running)
+
+#### Logs
+
+- `flux_logs_tail { appname }` (incremental polling; best default)
+- `flux_apps_logs { appname, lines? }` (direct container logs)
+
+#### Runtime details
+
+- `flux_apps_inspect { appname }` (container config, mounts, env)
+- `flux_apps_stats { appname }` (CPU/mem/net)
+- `flux_apps_top { appname }` (process list)
+- `flux_apps_monitor { appname }` (historical monitoring)
+
+#### Cluster/network view
+
+- `flux_apps_global_status { appname }` (registration + expiry + propagation + location/runtime correlation)
+- `flux_explorer_status` / `flux_explorer_height_info` (chain sync signals)
+
+#### When outputs are large
+
+Prefer tools that emit a `resource_link`, then read it via MCP `resources/read` (or `flux_resource_read`).
+
 ## App essentials
 
 Discovery:
