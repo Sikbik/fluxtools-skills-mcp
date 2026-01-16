@@ -3224,6 +3224,8 @@ export async function callTool(name: string, rawArgs: unknown) {
           if (!tmp && !perm) neither += 1;
         }
 
+        const propagationLine = `Propagation: temp=${tempYes}, perm=${permYes}, both=${both}, neither=${neither}`;
+
         const summary = {
           ok,
           zelid: zelid ?? null,
@@ -3245,7 +3247,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         return {
           content: [
-            { type: 'text', text: table },
+            { type: 'text', text: `${table}\n\n${propagationLine}` },
             { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
             { type: 'resource_link', ...link },
           ],

@@ -262,6 +262,7 @@ describe.sequential('UX tools', () => {
     expect(tableText.includes('Perm?')).toBe(true);
     expect(tableText.includes('yes')).toBe(true);
     expect(tableText.includes('no')).toBe(true);
+    expect(tableText.includes('Propagation:')).toBe(true);
 
     expect(seen.some((x) => x.url.startsWith('/apps/location/myapp'))).toBe(true);
     expect(seen.some((x) => x.url === '/apps/listrunningapps')).toBe(true);
