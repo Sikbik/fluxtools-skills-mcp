@@ -3070,6 +3070,9 @@ export async function callTool(name: string, rawArgs: unknown) {
             const name = typeof app['name'] === 'string' ? (app['name'] as string) : null;
             const owner = typeof app['owner'] === 'string' ? (app['owner'] as string) : null;
 
+            const instancesRaw = app['instances'];
+            const instances = typeof instancesRaw === 'number' ? instancesRaw : Number(instancesRaw);
+
             const heightRaw = app['height'];
             const height = typeof heightRaw === 'number' ? heightRaw : Number(heightRaw);
 
@@ -3094,6 +3097,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             return {
               name,
               owner,
+              instances: Number.isFinite(instances) ? Math.trunc(instances) : null,
               height: Number.isFinite(height) ? height : null,
               expirationHeight,
               blocksRemaining,
@@ -3115,12 +3119,13 @@ export async function callTool(name: string, rawArgs: unknown) {
         const permanentCount = Array.isArray(permanent) ? permanent.length : null;
 
         const headers = appnameDetails
-          ? ['App', 'Owner', 'Locations', 'Local running', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs']
-          : ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs'];
+          ? ['App', 'Owner', 'Instances', 'Locations', 'Local running', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs']
+          : ['App', 'Owner', 'Instances', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs'];
 
         const rows = filtered.map((x) => {
           const name = typeof x.name === 'string' ? x.name : '-';
           const owner = typeof x.owner === 'string' ? x.owner : '-';
+          const instances = typeof x.instances === 'number' ? x.instances : '-';
 
           const blocksRemaining = typeof x.blocksRemaining === 'number' ? Math.trunc(x.blocksRemaining) : 0;
           const expired = x.expired === true ? 'yes' : 'no';
@@ -3128,13 +3133,13 @@ export async function callTool(name: string, rawArgs: unknown) {
           const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
 
           if (!appnameDetails) {
-            return [name, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+            return [name, owner, instances, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
           }
 
           const locations = typeof locationsCount === 'number' ? locationsCount : '-';
           const running = typeof localRunningCount === 'number' ? localRunningCount : '-';
 
-          return [name, owner, locations, running, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+          return [name, owner, instances, locations, running, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
         });
 
         const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });

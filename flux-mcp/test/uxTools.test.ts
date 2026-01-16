@@ -75,7 +75,7 @@ describe.sequential('UX tools', () => {
     if (url.startsWith('/apps/globalappsspecifications')) {
       return json(res, 200, {
         status: 'success',
-        data: [{ name: 'myapp', owner: 'zelid', height: 100, expire: 10 }],
+        data: [{ name: 'myapp', owner: 'zelid', height: 100, expire: 10, instances: 3 }],
       });
     }
 
@@ -249,6 +249,9 @@ describe.sequential('UX tools', () => {
     const structured = r.structuredContent as Record<string, unknown> | undefined;
     expect(structured?.locationsCount).toBeTypeOf('number');
     expect(structured?.localRunningCount).toBeTypeOf('number');
+
+    const tableText = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
+    expect(tableText.includes('Instances')).toBe(true);
 
     expect(seen.some((x) => x.url.startsWith('/apps/location/myapp'))).toBe(true);
     expect(seen.some((x) => x.url === '/apps/listrunningapps')).toBe(true);
