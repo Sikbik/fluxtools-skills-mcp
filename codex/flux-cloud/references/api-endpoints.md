@@ -163,6 +163,42 @@ curl -sS http://<node-ip>:16127/apps/listrunningapps
   - whether messages are propagated (temp/permanent)
   - whether the current node reports it as running
 
+### Playbook: App registration/update stuck
+
+This is about the network-level register/update flow (message propagation), not container runtime.
+
+#### Quick checklist
+
+- Use a direct node base URL: `http://<node-ip>:16127`
+- Confirm node health: `GET /flux/info`
+- Confirm you are signing the exact returned message string.
+
+#### MCP-first flow (recommended)
+
+1) Generate a canonical spec + price + message-to-sign scaffold:
+
+- Register:
+  - `flux_apps_plan_registration` → returns `messageToSign`, `payload`, and `hash` details
+- Update:
+  - `flux_apps_plan_update` → returns `messageToSign`, `payload`, and `hash` details
+
+2) Sign the returned `messageToSign` with the app owner’s ZelID.
+
+3) Submit and verify propagation:
+
+- `flux_apps_register_and_verify` / `flux_apps_update_and_verify`
+
+If you need manual polling by hash:
+
+- `flux_apps_get_messages { hash, kind: "both" }`
+
+#### Common root causes
+
+- Spec was edited after verification: always sign the canonicalized spec that comes back from the verify/plan step.
+- Timestamp drift: keep timestamps fresh and ensure local clock is correct.
+- Node is unhealthy / insufficient peers: retry on a different node.
+- Signing wrong string: sign exactly `type + version + JSON.stringify(spec) + timestamp` (MCP tools output the exact string).
+
 ## App essentials
 
 Discovery:
