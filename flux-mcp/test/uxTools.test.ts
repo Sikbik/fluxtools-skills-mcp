@@ -242,6 +242,18 @@ describe.sequential('UX tools', () => {
     expect(resourceLink).toBeTruthy();
   });
 
+  it('flux_apps_global_status includes location + local running when appname is provided', async () => {
+    const r = await callTool('flux_apps_global_status', { zelid: 'zelid', appname: 'myapp' });
+    expect(typeof r.isError).toBe('boolean');
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.locationsCount).toBeTypeOf('number');
+    expect(structured?.localRunningCount).toBeTypeOf('number');
+
+    expect(seen.some((x) => x.url.startsWith('/apps/location/myapp'))).toBe(true);
+    expect(seen.some((x) => x.url === '/apps/listrunningapps')).toBe(true);
+  });
+
   it('flux_maintenance_checklist returns a checklist', async () => {
     const r = await callTool('flux_maintenance_checklist', {});
     expect(r.isError).not.toBe(true);

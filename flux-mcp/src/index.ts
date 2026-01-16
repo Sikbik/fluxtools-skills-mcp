@@ -3032,6 +3032,35 @@ export async function callTool(name: string, rawArgs: unknown) {
           throw new Error('Could not parse blocksLasting/daemonPONFork from /apps/registrationinformation');
         }
 
+        const appnameDetails = typeof requestedAppname === 'string' && requestedAppname.length > 0 ? requestedAppname : null;
+
+        let locationsRes: Awaited<ReturnType<typeof client.request>> | null = null;
+        let runningRes: Awaited<ReturnType<typeof client.request>> | null = null;
+
+        let locationsCount: number | null = null;
+        let localRunningCount: number | null = null;
+
+        if (appnameDetails) {
+          [locationsRes, runningRes] = await Promise.all([
+            client.request(`/apps/location/${encodeURIComponent(appnameDetails)}`),
+            client.request('/apps/listrunningapps'),
+          ]);
+
+          const locations = unwrapFluxEnvelope<unknown>(locationsRes.data);
+          locationsCount = Array.isArray(locations) ? locations.length : null;
+
+          const running = unwrapFluxEnvelope<unknown>(runningRes.data);
+          const runningApps = Array.isArray(running) ? running : [];
+
+          localRunningCount = runningApps.filter((x) => {
+            if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+            const rec = x as Record<string, unknown>;
+            const name = typeof rec['name'] === 'string' ? rec['name'] : undefined;
+            const app = typeof rec['app'] === 'string' ? rec['app'] : undefined;
+            return name === appnameDetails || app === appnameDetails;
+          }).length;
+        }
+
         const apps = Array.isArray(globalSpecs)
           ? globalSpecs.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
           : [];
@@ -3085,14 +3114,27 @@ export async function callTool(name: string, rawArgs: unknown) {
         const temporaryCount = Array.isArray(temporary) ? temporary.length : null;
         const permanentCount = Array.isArray(permanent) ? permanent.length : null;
 
-        const headers = ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs'];
+        const headers = appnameDetails
+          ? ['App', 'Owner', 'Locations', 'Local running', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs']
+          : ['App', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs'];
+
         const rows = filtered.map((x) => {
           const name = typeof x.name === 'string' ? x.name : '-';
+          const owner = typeof x.owner === 'string' ? x.owner : '-';
+
           const blocksRemaining = typeof x.blocksRemaining === 'number' ? Math.trunc(x.blocksRemaining) : 0;
           const expired = x.expired === true ? 'yes' : 'no';
           const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
           const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
-          return [name, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+
+          if (!appnameDetails) {
+            return [name, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+          }
+
+          const locations = typeof locationsCount === 'number' ? locationsCount : '-';
+          const running = typeof localRunningCount === 'number' ? localRunningCount : '-';
+
+          return [name, owner, locations, running, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
         });
 
         const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });
@@ -3107,24 +3149,38 @@ export async function callTool(name: string, rawArgs: unknown) {
             includeExpired,
             currentHeight,
             apps: computed,
+            location: appnameDetails ? { appname: appnameDetails, count: locationsCount } : null,
+            localRuntime: appnameDetails ? { appname: appnameDetails, runningCount: localRunningCount } : null,
             raw: {
               globalappsspecifications: globalSpecsRes,
               temporarymessages: temporaryRes,
               permanentmessages: permanentRes,
               scannedheight: scannedHeightRes,
               registrationinformation: registrationInfoRes,
+              location: locationsRes,
+              listrunningapps: runningRes,
             },
           },
         });
 
+        const ok = globalSpecsRes.ok
+          && temporaryRes.ok
+          && permanentRes.ok
+          && scannedHeightRes.ok
+          && registrationInfoRes.ok
+          && (locationsRes?.ok ?? true)
+          && (runningRes?.ok ?? true);
+
         const summary = {
-          ok: globalSpecsRes.ok && temporaryRes.ok && permanentRes.ok && scannedHeightRes.ok && registrationInfoRes.ok,
+          ok,
           zelid: zelid ?? null,
           appname: requestedAppname ?? null,
           count: computed.length,
           shown,
           temporaryCount,
           permanentCount,
+          locationsCount,
+          localRunningCount,
           resourceUri: link.uri,
         };
 
