@@ -655,6 +655,20 @@ export const tools: Tool[] = [
       required: ['type', 'version', 'spec', 'timestamp'],
     },
   },
+  {
+    name: 'flux_apps_signing_playbook',
+    description: 'Guided signing helper for app registration/update: builds messageToSign and suggests next tool calls.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['fluxappregister', 'fluxappupdate', 'zelappregister', 'zelappupdate'] },
+        version: { type: 'number' },
+        spec: { type: 'object', additionalProperties: true },
+        timestamp: { type: 'number', description: 'Unix ms epoch (optional; defaults to now)' },
+      },
+      required: ['type', 'version', 'spec'],
+    },
+  },
 
   {
     name: 'flux_list_endpoint_categories',
@@ -2064,6 +2078,37 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
         const out = { ok: true, type, version, timestamp, messageToSign };
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_apps_signing_playbook': {
+        const type = mustBeString(args['type'], 'type') as 'fluxappregister' | 'fluxappupdate' | 'zelappregister' | 'zelappupdate';
+        if (type !== 'fluxappregister' && type !== 'fluxappupdate' && type !== 'zelappregister' && type !== 'zelappupdate') {
+          throw new Error('type must be one of: fluxappregister, fluxappupdate, zelappregister, zelappupdate');
+        }
+
+        const version = mustBeNumber(args['version'], 'version');
+        const spec = mustBeObject(args['spec'], 'spec');
+        const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
+        if (!Number.isFinite(timestamp)) throw new Error('timestamp must be a finite number');
+
+        const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
+
+        const nextActions = [
+          { tool: 'flux_build_message_to_sign', arguments: { type, version, spec, timestamp } },
+          { tool: 'flux_apps_plan_registration', arguments: { timestamp, typeVersion: version } },
+          { tool: 'flux_apps_plan_update', arguments: { timestamp, typeVersion: version } },
+        ];
+
+        const out = {
+          ok: true,
+          type,
+          version,
+          timestamp,
+          messageToSign,
+          nextActions,
+        };
+
         return jsonResult(out, { structuredContent: out });
       }
 

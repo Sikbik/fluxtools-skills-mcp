@@ -289,6 +289,20 @@ describe.sequential('UX tools', () => {
     expect(typeof payload.messageToSign).toBe('string');
   });
 
+  it('flux_apps_signing_playbook returns messageToSign + nextActions', async () => {
+    const r = await callTool('flux_apps_signing_playbook', {
+      type: 'fluxappregister',
+      version: 1,
+      spec: { name: 'x' },
+      timestamp: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(typeof payload.messageToSign).toBe('string');
+    expect(Array.isArray(payload.nextActions)).toBe(true);
+  });
+
   it('flux_daemon_call denies non-allowlisted methods', async () => {
     const r = await callTool('flux_daemon_call', { method: 'sendtoaddress', params: [] });
     expect(r.isError).toBe(true);
