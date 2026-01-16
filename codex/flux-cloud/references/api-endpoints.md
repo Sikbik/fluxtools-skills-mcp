@@ -233,6 +233,37 @@ This is about container runtime and node-local state.
 - App spec ports/domains mismatch
 - Volume corruption or missing expected files
 
+### Playbook: Syncthing unhealthy
+
+Syncthing is FluxOS’s replication layer for app volumes. Issues often show up as stale files, missing config, or a container behaving differently across nodes.
+
+#### MCP-first triage
+
+1) Check health and system status:
+
+- `flux_syncthing_metrics_health`
+- `flux_syncthing_system_status`
+
+2) List configured folders/devices:
+
+- `flux_syncthing_list_folders`
+- `flux_syncthing_list_devices`
+
+3) If you know the folder ID, inspect what Syncthing thinks exists:
+
+- `flux_syncthing_db_browse { folder, levels? }`
+
+4) If you have permission and want to force a rescan/restart (confirm required):
+
+- `flux_syncthing_db_scan { folder, sub?, confirm: true }`
+- `flux_syncthing_restart { confirm: true }`
+
+#### Common causes
+
+- Node disk full / permissions issues in volume
+- Network partition (device offline)
+- Folder ID mismatch / configuration drift
+
 ## App essentials
 
 Discovery:
