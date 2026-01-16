@@ -199,6 +199,40 @@ If you need manual polling by hash:
 - Node is unhealthy / insufficient peers: retry on a different node.
 - Signing wrong string: sign exactly `type + version + JSON.stringify(spec) + timestamp` (MCP tools output the exact string).
 
+### Playbook: App won’t deploy / keeps restarting
+
+This is about container runtime and node-local state.
+
+#### MCP-first triage flow
+
+1) Get a single summary view:
+
+- `flux_apps_troubleshoot { appname }`
+
+2) Check logs and runtime state:
+
+- `flux_logs_tail { appname }`
+- `flux_apps_logs { appname }`
+- `flux_apps_inspect { appname }`
+- `flux_apps_stats { appname }`
+
+3) Check where it is supposed to run:
+
+- `flux_apps_global_status { appname }`
+
+4) If you have permission and want to attempt recovery (confirm required):
+
+- `flux_apps_restart { appname, confirm: true }`
+- `flux_apps_redeploy { appname, confirm: true }`
+- For multi-component apps: `flux_apps_redeploy_component { appname, component, confirm: true }`
+
+#### Common causes
+
+- Bad image/tag or registry/auth problem (pull failures)
+- Resource constraints (RAM/CPU/Disk) on candidate nodes
+- App spec ports/domains mismatch
+- Volume corruption or missing expected files
+
 ## App essentials
 
 Discovery:
