@@ -23,7 +23,8 @@ import {
   summarizeByCategory,
 } from './endpoints.js';
 import { renderMarkdownTable } from './markdownTable.js';
-import { isFluxSuccess, unwrapFluxEnvelope } from './fluxEnvelope.js';
+import { buildTableResult } from './toolOutput.js';
+import { extractFluxErrorMessage, isFluxSuccess, unwrapFluxEnvelope } from './fluxEnvelope.js';
 
 type CallToolRequest = { params: { name: string; arguments?: unknown } };
 
@@ -2123,18 +2124,20 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
       }
 
-      case 'flux_search_endpoints': {
-        if (!inventory) {
-          const out = { error: 'Endpoint inventory not found', endpointsPath };
-          return jsonResult(out, { isError: true, structuredContent: out });
-        }
-        const query = asOptionalString(args['query']);
-        const category = asOptionalString(args['category']);
-        const access = asOptionalString(args['access']);
-        const method = asOptionalString(args['method']);
-        const limit = asOptionalNumber(args['limit']);
-
-        const results = searchRoutes(inventory.routes, { query, category, access, method, limit });
+       case 'flux_search_endpoints': {
+         if (!inventory) {
+           const out = { error: 'Endpoint inventory not found', endpointsPath };
+           return jsonResult(out, { isError: true, structuredContent: out });
+         }
+         const query = asOptionalString(args['query']);
+         const category = asOptionalString(args['category']);
+         const access = asOptionalString(args['access']);
+         const method = asOptionalString(args['method']);
+         const limit = asOptionalNumber(args['limit']);
+ 
+         const results = searchRoutes(inventory.routes, { query, category, access, method, limit });
+         const ok = results.length > 0;
+         const status = ok ? 'ok' : 'not_found';
 
         const link = resourceStore.putJson({
           kind: 'inventory/search',
@@ -2152,16 +2155,14 @@ export async function callTool(name: string, rawArgs: unknown) {
           r.deprecated ? 'DEPRECATED' : r.localOnly ? 'LOCAL-ONLY' : r.cache ? `cache=${r.cache}` : '',
         ]);
 
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 50 });
-
         const summary = {
-          ok: true,
+          ok,
+          status,
           query: query ?? null,
           category: category ?? null,
           access: access ?? null,
           method: method ?? null,
           count: results.length,
-          shown,
           resourceUri: link.uri,
           nextActions: results.slice(0, 5).map((r) => ({
             tool: 'flux_request',
@@ -2172,15 +2173,13 @@ export async function callTool(name: string, rawArgs: unknown) {
           })),
         };
 
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: false,
-        };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 50,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_explorer_height_info': {
@@ -2238,7 +2237,6 @@ export async function callTool(name: string, rawArgs: unknown) {
           ['approxBehind', approxSecondsBehind === null ? 'unknown' : formatDurationSeconds(approxSecondsBehind)],
         ];
 
-        const { table, shown } = renderMarkdownTable({ headers: ['Metric', 'Value'], rows, maxRows: 50 });
 
         const link = resourceStore.putJson({
           kind: 'explorer/status',
@@ -2253,28 +2251,24 @@ export async function callTool(name: string, rawArgs: unknown) {
           },
         });
 
-        const summary = {
-          ok: scannedHeightRes.ok && isSyncedRes.ok,
-          status: scannedHeightRes.ok && isSyncedRes.ok ? 'ok' : 'partial',
-          shown,
-          currentHeight: Number.isFinite(currentHeight) ? Math.trunc(currentHeight) : null,
-          isSynced,
-          approxSecondsBehind: isSynced === true ? 0 : null,
-          secondsPerBlock,
-          approxBlocksPerHour: Math.floor((60 * 60) / secondsPerBlock),
-          approxBlocksPerDay: Math.floor((24 * 60 * 60) / secondsPerBlock),
-          resourceUri: link.uri,
-        };
+         const summary = {
+           ok: scannedHeightRes.ok && isSyncedRes.ok,
+           status: scannedHeightRes.ok && isSyncedRes.ok ? 'ok' : 'partial',
+           currentHeight: Number.isFinite(currentHeight) ? Math.trunc(currentHeight) : null,
+           isSynced,
+           approxSecondsBehind,
+           secondsPerBlock,
+           approxBlocksPerHour: Math.floor((60 * 60) / secondsPerBlock),
+           approxBlocksPerDay: Math.floor((24 * 60 * 60) / secondsPerBlock),
+         };
 
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !summary.ok,
-        };
+         return buildTableResult({
+           headers: ['Metric', 'Value'],
+           rows,
+           maxRows: 50,
+           summary: { ...summary, resourceUri: link.uri },
+           resource: link,
+         });
       }
 
       case 'flux_explorer_balance_summary': {
@@ -2295,8 +2289,6 @@ export async function callTool(name: string, rawArgs: unknown) {
           ['balance', Number.isFinite(total) ? String(total) : '-'],
         ];
 
-        const { table, shown } = renderMarkdownTable({ headers: ['Metric', 'Value'], rows, maxRows: 50 });
-
         const link = resourceStore.putJson({
           kind: 'explorer/balance_summary',
           name: `Balance summary ${address}`,
@@ -2311,123 +2303,80 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const summary = {
           ok: balanceRes.ok,
-          status: balanceRes.status,
-          shown,
+          httpStatus: balanceRes.status,
           address,
           confirmed: Number.isFinite(confirmed) ? confirmed : null,
           unconfirmed: Number.isFinite(unconfirmed) ? unconfirmed : null,
           balance: Number.isFinite(total) ? total : null,
-          resourceUri: link.uri,
         };
 
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !summary.ok,
-        };
+        return buildTableResult({
+          headers: ['Metric', 'Value'],
+          rows,
+          maxRows: 50,
+          summary: { ...summary, resourceUri: link.uri },
+          resource: link,
+        });
       }
 
       case 'flux_daemon_call': {
-        const methodInput = mustBeString(args['method'], 'method');
-        const method = validateDaemonMethod(methodInput);
+        if (asOptionalBoolean(args['allowMutation']) === true) {
+          throw new Error('flux_daemon_call only supports read-only methods; allowMutation must remain false');
+        }
+
+        const method = validateDaemonMethod(mustBeString(args['method'], 'method'));
+        if (!isAllowedDaemonReadOnlyMethod(method)) {
+          throw new Error(`Daemon method "${method}" is not in the read-only allowlist`);
+        }
+
         const params = validateDaemonParams(args['params']);
         const redactTxHex = (asOptionalBoolean(args['redactTxHex']) ?? true) === true;
-        const allowMutation = (asOptionalBoolean(args['allowMutation']) ?? false) === true;
-
-        if (allowMutation) {
-          requireConfirm(args, `daemon/${method}`);
-          const out = { ok: false, status: 'mutation_disabled', method };
-          return jsonResult(out, { isError: true, structuredContent: out });
-        }
-
-        if (!isAllowedDaemonReadOnlyMethod(method)) {
-          const out = {
-            ok: false,
-            status: 'denied',
-            method,
-            allowed: Array.from(
-              new Set([
-                'getinfo',
-                'getblockchaininfo',
-                'getnetworkinfo',
-                'getmempoolinfo',
-                'getpeerinfo',
-                'getblockcount',
-                'getdifficulty',
-                'getconnectioncount',
-                'getrawmempool',
-              ])
-            ).sort(),
-          };
-          return jsonResult(out, { isError: true, structuredContent: out });
-        }
 
         const path = params.length > 0 ? `/daemon/${method}/${params.map((p) => encodeURIComponent(String(p))).join('/')}` : `/daemon/${method}`;
         const res = await client.request(path);
-        const data = unwrapFluxEnvelope<unknown>(res.data);
+        const rawData = unwrapFluxEnvelope<unknown>(res.data);
 
-        const sanitized = redactSensitive(data, {
-          maxDepth: 6,
-          maxArrayLength: 200,
-          maxStringLength: 4096,
+        const redacted = redactSensitive(rawData, {
+          maxDepth: 8,
+          maxArrayLength: 100,
+          maxStringLength: 512,
           redactTxHex,
         });
 
         const link = resourceStore.putJson({
-          kind: 'daemon/call',
+          kind: `daemon/${method}`,
           name: `Daemon ${method}`,
-          description: 'Sanitized daemon proxy response',
-          value: { method, params, raw: res, sanitized },
+          description: `Response from /daemon/${method}`,
+          value: { method, params, redacted, raw: rawData },
         });
 
-        let detailTable: string | null = null;
-        if (method === 'getpeerinfo' && Array.isArray(sanitized)) {
-          const peerRows = sanitized
-            .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
-            .slice(0, 50)
-            .map((p) => {
-              const addr = typeof p.addr === 'string' ? p.addr : '-';
-              const inbound = typeof p.inbound === 'boolean' ? (p.inbound ? 'in' : 'out') : '-';
-              const ping = typeof p.pingtime === 'number' ? String(p.pingtime) : '-';
-              const subver = typeof p.subver === 'string' ? p.subver : '-';
-              return [addr, inbound, ping, subver];
-            });
+        if (method === 'getpeerinfo' && Array.isArray(redacted)) {
+          const peers = redacted as Record<string, unknown>[];
+          const rows: string[][] = peers.map((p) => [
+            String(p['addr'] ?? '-'),
+            String(p['subver'] ?? '-'),
+            String(p['inbound'] ?? '-'),
+            String(p['conntime'] ?? '-'),
+          ]);
 
-          detailTable = renderMarkdownTable({ headers: ['addr', 'dir', 'ping', 'subver'], rows: peerRows, maxRows: 50 }).table;
+          return buildTableResult({
+            headers: ['addr', 'subver', 'inbound', 'conntime'],
+            rows,
+            maxRows: 50,
+            summary: { ok: res.ok, httpStatus: res.status, method, peerCount: peers.length, resourceUri: link.uri },
+            resource: link,
+          });
         }
 
-        const rows: string[][] = [
-          ['method', method],
-          ['params', params.length ? JSON.stringify(params) : '[]'],
-          ['httpStatus', String(res.status)],
-          ['ok', String(res.ok)],
-        ];
+        const rows: string[][] = Object.entries(typeof redacted === 'object' && redacted !== null && !Array.isArray(redacted) ? (redacted as Record<string, unknown>) : { result: redacted }).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)]);
 
-        const { table, shown } = renderMarkdownTable({ headers: ['Metric', 'Value'], rows, maxRows: 20 });
-
-        const summary = {
-          ok: res.ok,
-          status: res.ok ? 'ok' : 'error',
-          shown,
-          method,
-          params,
-          httpStatus: res.status,
-          resourceUri: link.uri,
-        };
-
-        return {
-          content: [
-            { type: 'text', text: detailTable ? `${detailTable}\n\n${table}` : table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        return buildTableResult({
+          headers: ['Key', 'Value'],
+          rows,
+          maxRows: 50,
+          summary: { ok: res.ok, httpStatus: res.status, method, resourceUri: link.uri },
+          resource: link,
+        });
       }
 
       case 'flux_daemon_get_info': {

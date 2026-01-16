@@ -257,9 +257,13 @@ describe.sequential('UX tools', () => {
     expect(propagation?.neither).toBeTypeOf('number');
 
     const tableText = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
+
+    expect(tableText.includes('App')).toBe(true);
+    expect(tableText.includes('Owner')).toBe(true);
     expect(tableText.includes('Instances')).toBe(true);
     expect(tableText.includes('Temp?')).toBe(true);
     expect(tableText.includes('Perm?')).toBe(true);
+
     expect(tableText.includes('yes')).toBe(true);
     expect(tableText.includes('no')).toBe(true);
     expect(tableText.includes('Propagation:')).toBe(true);
