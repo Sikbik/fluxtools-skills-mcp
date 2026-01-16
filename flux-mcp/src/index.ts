@@ -2394,41 +2394,47 @@ export async function callTool(name: string, rawArgs: unknown) {
         const monitorRangeValue = monitorRangeRaw === undefined ? 10 * 60 * 1000 : Math.floor(monitorRangeRaw);
         const monitorRangeMs = Math.min(24 * 60 * 60 * 1000, Math.max(1000, monitorRangeValue));
 
+        const resolved = await resolveRuntimeTarget({ client, appname, requireRunning: true });
+        if (resolved.ok && typeof resolved.baseUrl === 'string') client.setBaseUrl(resolved.baseUrl);
+        const target = resolved.ok && Array.isArray(resolved.containerNames) && resolved.containerNames[0]
+          ? resolved.containerNames[0]
+          : appname;
+
         const [inspect, stats, top, monitor, logs] = await Promise.all([
-          client.request(`/apps/appinspect/${encodeURIComponent(appname)}`),
-          client.request(`/apps/appstats/${encodeURIComponent(appname)}`),
-          client.request(`/apps/apptop/${encodeURIComponent(appname)}`),
-          client.request(`/apps/appmonitor/${encodeURIComponent(appname)}/${monitorRangeMs}`),
-          client.request(`/apps/applogpolling/${encodeURIComponent(appname)}/${logsLines}`),
+          client.request(`/apps/appinspect/${encodeURIComponent(target)}`),
+          client.request(`/apps/appstats/${encodeURIComponent(target)}`),
+          client.request(`/apps/apptop/${encodeURIComponent(target)}`),
+          client.request(`/apps/appmonitor/${encodeURIComponent(target)}/${monitorRangeMs}`),
+          client.request(`/apps/applogpolling/${encodeURIComponent(target)}/${logsLines}`),
         ]);
 
         const inspectLink = resourceStore.putJson({
           kind: 'app/inspect',
-          name: `${appname} inspect`,
+          name: `${target} inspect`,
           description: 'Raw /apps/appinspect response',
           value: inspect,
         });
         const statsLink = resourceStore.putJson({
           kind: 'app/stats',
-          name: `${appname} stats`,
+          name: `${target} stats`,
           description: 'Raw /apps/appstats response',
           value: stats,
         });
         const topLink = resourceStore.putJson({
           kind: 'app/top',
-          name: `${appname} top`,
+          name: `${target} top`,
           description: 'Raw /apps/apptop response',
           value: top,
         });
         const monitorLink = resourceStore.putJson({
           kind: 'app/monitor',
-          name: `${appname} monitor`,
+          name: `${target} monitor`,
           description: 'Raw /apps/appmonitor response',
           value: monitor,
         });
         const logsLink = resourceStore.putJson({
           kind: 'app/logs',
-          name: `${appname} logs (raw)`,
+          name: `${target} logs (raw)`,
           description: 'Raw /apps/applogpolling response',
           value: logs,
         });
@@ -2436,6 +2442,12 @@ export async function callTool(name: string, rawArgs: unknown) {
         const summary = {
           ok: true,
           appname,
+          resolved: {
+            ok: resolved.ok === true,
+            baseUrl: resolved.ok && typeof resolved.baseUrl === 'string' ? resolved.baseUrl : null,
+            containerName: target,
+            candidates: resolved.candidates,
+          },
           inspect: { ok: inspect.ok, status: inspect.status },
           stats: { ok: stats.ok, status: stats.status },
           top: { ok: top.ok, status: top.status },
@@ -2448,10 +2460,12 @@ export async function callTool(name: string, rawArgs: unknown) {
             monitor: monitorLink.uri,
             logs: logsLink.uri,
           },
-          nextSteps: [
-            'Use flux_logs_tail for safe log tailing',
-            'Use flux_apps_redeploy with confirm=true to redeploy',
-            'Use flux_auth_diagnose if any call fails due to auth',
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: logsLink.uri } },
+            { tool: 'flux_logs_tail', arguments: { appname: target } },
+            { tool: 'flux_apps_resolve_runtime_target', arguments: { appname } },
+            { tool: 'flux_apps_redeploy', arguments: { appname, confirm: true } },
+            { tool: 'flux_auth_diagnose', arguments: {} },
           ],
         };
 
