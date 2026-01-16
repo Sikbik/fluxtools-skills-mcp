@@ -589,7 +589,7 @@ export const tools: Tool[] = [
   {
     name: 'flux_ioutils_file_upload',
     description:
-      'Upload a file into an app volume via IOUtils.fileUpload (POST /ioutils/fileupload). Requires confirm=true. Note: This uses a streamed multipart upload in the UI; MCP currently supports only remote URL uploads.',
+      'Upload a file into an app volume via IOUtils.fileUpload (POST /ioutils/fileupload). Requires confirm=true. Note: Flux responds with a streaming (non-JSON) body and can take a while; set timeoutMs accordingly.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -601,12 +601,17 @@ export const tools: Tool[] = [
         component: { type: 'string' },
         folder: { type: 'string', description: 'Folder path or "null" for backup uploads.' },
         filename: { type: 'string' },
-        fileurl: { type: 'string', description: 'Remote URL to download and place on the node (node will fetch it).',
-        },
         filePath: { type: 'string', description: 'Absolute path to a local file to upload as multipart/form-data.' },
+        timeoutMs: { type: 'number', description: 'Request timeout in ms (default: 15 minutes).', minimum: 1 },
+        maxFileBytes: { type: 'number', description: 'Max bytes to read from disk (default: 1GB).', minimum: 1 },
+        allowProxy: {
+          type: 'boolean',
+          description:
+            'If true, allow using gateway/proxy base URLs (often unreliable for this endpoint). Default: false (recommended).',
+        },
         confirm: { type: 'boolean' },
       },
-      required: ['type', 'appname', 'component', 'filename', 'confirm'],
+      required: ['type', 'appname', 'component', 'filename', 'filePath', 'confirm'],
     },
   },
   {
@@ -1046,6 +1051,34 @@ export const tools: Tool[] = [
         confirm: { type: 'boolean' },
       },
       required: ['filepath', 'confirm'],
+    },
+  },
+  {
+    name: 'flux_ioutils_file_upload_from_url',
+    description:
+      'Download a remote file (from fileurl) and upload it into an app volume via IOUtils.fileUpload (POST /ioutils/fileupload). Requires confirm=true. Note: This proxies the content through the MCP server; prefer flux_apps_append_restore_task type=remote when possible.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: 'Upload type (e.g. backup). When type=backup, uploads into <mount>/backup/upload/.',
+        },
+        appname: { type: 'string' },
+        component: { type: 'string' },
+        folder: { type: 'string', description: 'Folder path or "null" for backup uploads.' },
+        filename: { type: 'string' },
+        fileurl: { type: 'string', description: 'Remote URL to download and then upload.' },
+        timeoutMs: { type: 'number', description: 'Upload request timeout in ms (default: 15 minutes).', minimum: 1 },
+        maxDownloadBytes: { type: 'number', description: 'Max bytes to download (default: 1GB).', minimum: 1 },
+        allowProxy: {
+          type: 'boolean',
+          description:
+            'If true, allow using gateway/proxy base URLs (often unreliable for this endpoint). Default: false (recommended).',
+        },
+        confirm: { type: 'boolean' },
+      },
+      required: ['type', 'appname', 'component', 'filename', 'fileurl', 'confirm'],
     },
   },
   {
@@ -1819,36 +1852,39 @@ export async function callTool(name: string, rawArgs: unknown) {
         const filename = mustBeString(args['filename'], 'filename');
         const folder = asOptionalString(args['folder']) ?? 'null';
 
-        const filePath = asOptionalString(args['filePath']);
-        const fileurl = asOptionalString(args['fileurl']);
+        const localPath = mustBeString(args['filePath'], 'filePath');
+        const timeoutMsRaw = asOptionalNumber(args['timeoutMs']);
+        const timeoutMs = timeoutMsRaw === undefined ? 15 * 60 * 1000 : Math.floor(timeoutMsRaw);
+        if (timeoutMs <= 0) throw new Error('timeoutMs must be a positive number');
 
-        if (!filePath && !fileurl) {
-          throw new Error('Either filePath (local file) or fileurl (remote URL) must be provided');
-        }
-        if (filePath && fileurl) {
-          throw new Error('Provide only one of filePath or fileurl');
+        const allowProxy = asOptionalBoolean(args['allowProxy']) ?? false;
+        const baseUrl = client.getBaseUrl();
+        if (!allowProxy && baseUrl) {
+          const u = new URL(baseUrl);
+          const host = u.hostname.toLowerCase();
+          const isProxyHost = host === 'api.runonflux.io' || host.endsWith('.node.api.runonflux.io');
+          if (isProxyHost) {
+            throw new Error(
+              'Refusing to call /ioutils/fileupload via gateway/proxy baseUrl. Use a direct node URL like http://<node-ip>:<port> (set allowProxy=true to override).'
+            );
+          }
         }
 
         const apiPath = `/ioutils/fileupload/${encodeURIComponent(type)}/${encodeURIComponent(appname)}/${encodeURIComponent(
           component
         )}/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
 
-        if (fileurl) {
-          return jsonResult(
-            await client.request(apiPath, {
-              method: 'POST',
-              allowMutation: true,
-              bodyType: 'form',
-              body: { fileurl },
-            })
-          );
+        const maxFileBytesRaw = asOptionalNumber(args['maxFileBytes']);
+        const maxFileBytes = maxFileBytesRaw === undefined ? 1024 * 1024 * 1024 : Math.floor(maxFileBytesRaw);
+        if (maxFileBytes <= 0) throw new Error('maxFileBytes must be a positive number');
+
+        const bytes = await fs.readFile(localPath);
+        if (bytes.length > maxFileBytes) {
+          throw new Error(`Local file too large (${bytes.length} bytes) for maxFileBytes=${maxFileBytes}`);
         }
 
-        const localPath = mustBeString(filePath, 'filePath');
-        const bytes = await fs.readFile(localPath);
         const form = new FormData();
-        const fieldName = path.basename(localPath);
-        form.set(fieldName, new Blob([bytes]), fieldName);
+        form.set(filename, new Blob([bytes]), filename);
 
         return jsonResult(
           await client.request(apiPath, {
@@ -1856,6 +1892,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             allowMutation: true,
             bodyType: 'multipart',
             body: form,
+            responseType: 'text',
+            timeoutMs,
           })
         );
       }
@@ -2804,6 +2842,71 @@ export async function callTool(name: string, rawArgs: unknown) {
           : `/backup/downloadlocalfile/${encodeURIComponent(filepath)}`;
 
         return jsonResult(await client.request(path, { responseType: 'base64', maxBytes, allowMutation: true }));
+      }
+
+      case 'flux_ioutils_file_upload_from_url': {
+        requireConfirm(args, 'ioutils/fileupload');
+        const type = mustBeString(args['type'], 'type');
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const filename = mustBeString(args['filename'], 'filename');
+        const folder = asOptionalString(args['folder']) ?? 'null';
+        const fileurl = mustBeString(args['fileurl'], 'fileurl');
+
+        const timeoutMsRaw = asOptionalNumber(args['timeoutMs']);
+        const timeoutMs = timeoutMsRaw === undefined ? 15 * 60 * 1000 : Math.floor(timeoutMsRaw);
+        if (timeoutMs <= 0) throw new Error('timeoutMs must be a positive number');
+
+        const maxDownloadBytesRaw = asOptionalNumber(args['maxDownloadBytes']);
+        const maxDownloadBytes = maxDownloadBytesRaw === undefined ? 1024 * 1024 * 1024 : Math.floor(maxDownloadBytesRaw);
+        if (maxDownloadBytes <= 0) throw new Error('maxDownloadBytes must be a positive number');
+
+        const allowProxy = asOptionalBoolean(args['allowProxy']) ?? false;
+        const baseUrl = client.getBaseUrl();
+        if (!allowProxy && baseUrl) {
+          const u = new URL(baseUrl);
+          const host = u.hostname.toLowerCase();
+          const isProxyHost = host === 'api.runonflux.io' || host.endsWith('.node.api.runonflux.io');
+          if (isProxyHost) {
+            throw new Error(
+              'Refusing to call /ioutils/fileupload via gateway/proxy baseUrl. Use a direct node URL like http://<node-ip>:<port> (set allowProxy=true to override).'
+            );
+          }
+        }
+
+        const dl = await fetch(fileurl);
+        if (!dl.ok) throw new Error(`Failed to download fileurl (HTTP ${dl.status})`);
+
+        const contentLengthHeader = dl.headers.get('content-length');
+        if (contentLengthHeader) {
+          const contentLength = Number(contentLengthHeader);
+          if (Number.isFinite(contentLength) && contentLength > maxDownloadBytes) {
+            throw new Error(`Remote file too large (${contentLength} bytes) for maxDownloadBytes=${maxDownloadBytes}`);
+          }
+        }
+
+        const bytes = Buffer.from(await dl.arrayBuffer());
+        if (bytes.length > maxDownloadBytes) {
+          throw new Error(`Remote file too large (${bytes.length} bytes) for maxDownloadBytes=${maxDownloadBytes}`);
+        }
+
+        const apiPath = `/ioutils/fileupload/${encodeURIComponent(type)}/${encodeURIComponent(appname)}/${encodeURIComponent(
+          component
+        )}/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
+
+        const form = new FormData();
+        form.set(filename, new Blob([bytes]), filename);
+
+        return jsonResult(
+          await client.request(apiPath, {
+            method: 'POST',
+            allowMutation: true,
+            bodyType: 'multipart',
+            body: form,
+            responseType: 'text',
+            timeoutMs,
+          })
+        );
       }
 
       case 'flux_apps_append_backup_task': {
