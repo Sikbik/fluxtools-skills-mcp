@@ -3065,6 +3065,34 @@ export async function callTool(name: string, rawArgs: unknown) {
           ? globalSpecs.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
           : [];
 
+        const temporary = unwrapFluxEnvelope<unknown>(temporaryRes.data);
+        const permanent = unwrapFluxEnvelope<unknown>(permanentRes.data);
+
+        const temporaryCount = Array.isArray(temporary) ? temporary.length : null;
+        const permanentCount = Array.isArray(permanent) ? permanent.length : null;
+
+        const temporaryByHash = new Map<string, Record<string, unknown>>();
+        if (Array.isArray(temporary)) {
+          for (const x of temporary) {
+            if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
+            const rec = x as Record<string, unknown>;
+            const hash = rec['hash'];
+            if (typeof hash !== 'string' || !hash) continue;
+            temporaryByHash.set(hash, rec);
+          }
+        }
+
+        const permanentByHash = new Map<string, Record<string, unknown>>();
+        if (Array.isArray(permanent)) {
+          for (const x of permanent) {
+            if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
+            const rec = x as Record<string, unknown>;
+            const hash = rec['hash'];
+            if (typeof hash !== 'string' || !hash) continue;
+            permanentByHash.set(hash, rec);
+          }
+        }
+
         const computed = apps
           .map((app) => {
             const name = typeof app['name'] === 'string' ? (app['name'] as string) : null;
@@ -3120,37 +3148,9 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const filtered = includeExpired ? computed : computed.filter((x) => x.expired !== true);
 
-        const temporary = unwrapFluxEnvelope<unknown>(temporaryRes.data);
-        const permanent = unwrapFluxEnvelope<unknown>(permanentRes.data);
-
-        const temporaryCount = Array.isArray(temporary) ? temporary.length : null;
-        const permanentCount = Array.isArray(permanent) ? permanent.length : null;
-
-        const temporaryByHash = new Map<string, Record<string, unknown>>();
-        if (Array.isArray(temporary)) {
-          for (const x of temporary) {
-            if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
-            const rec = x as Record<string, unknown>;
-            const hash = rec['hash'];
-            if (typeof hash !== 'string' || !hash) continue;
-            temporaryByHash.set(hash, rec);
-          }
-        }
-
-        const permanentByHash = new Map<string, Record<string, unknown>>();
-        if (Array.isArray(permanent)) {
-          for (const x of permanent) {
-            if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
-            const rec = x as Record<string, unknown>;
-            const hash = rec['hash'];
-            if (typeof hash !== 'string' || !hash) continue;
-            permanentByHash.set(hash, rec);
-          }
-        }
-
         const headers = appnameDetails
-          ? ['App', 'Owner', 'Instances', 'Locations', 'Local running', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs']
-          : ['App', 'Owner', 'Instances', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs'];
+          ? ['App', 'Owner', 'Instances', 'Locations', 'Local running', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp?', 'Perm?']
+          : ['App', 'Owner', 'Instances', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp?', 'Perm?'];
 
         const rows = filtered.map((x) => {
           const name = typeof x.name === 'string' ? x.name : '-';
@@ -3162,14 +3162,17 @@ export async function callTool(name: string, rawArgs: unknown) {
           const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
           const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
 
+          const tmp = x.temporaryMsg ? 'yes' : 'no';
+          const perm = x.permanentMsg ? 'yes' : 'no';
+
           if (!appnameDetails) {
-            return [name, owner, instances, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+            return [name, owner, instances, blocksRemaining, expired, expiresAt, updatedAt, tmp, perm];
           }
 
           const locations = typeof locationsCount === 'number' ? locationsCount : '-';
           const running = typeof localRunningCount === 'number' ? localRunningCount : '-';
 
-          return [name, owner, instances, locations, running, blocksRemaining, expired, expiresAt, updatedAt, temporaryCount ?? '-', permanentCount ?? '-'];
+          return [name, owner, instances, locations, running, blocksRemaining, expired, expiresAt, updatedAt, tmp, perm];
         });
 
         const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });

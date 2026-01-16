@@ -50,7 +50,7 @@ describe.sequential('UX tools', () => {
     }
 
     if (url === '/explorer/scannedheight') {
-      return json(res, 200, { status: 'success', data: { generalScannedHeight: 12345 } });
+      return json(res, 200, { status: 'success', data: { generalScannedHeight: 105 } });
     }
 
     if (url === '/explorer/issynced') {
@@ -75,12 +75,12 @@ describe.sequential('UX tools', () => {
     if (url.startsWith('/apps/globalappsspecifications')) {
       return json(res, 200, {
         status: 'success',
-        data: [{ name: 'myapp', owner: 'zelid', height: 100, expire: 10, instances: 3 }],
+        data: [{ name: 'myapp', owner: 'zelid', height: 100, expire: 10, instances: 3, hash: 'h1' }],
       });
     }
 
     if (url === '/apps/temporarymessages') {
-      return json(res, 200, { status: 'success', data: [] });
+      return json(res, 200, { status: 'success', data: [{ hash: 'h1' }] });
     }
 
     if (url.startsWith('/apps/permanentmessages')) {
@@ -252,6 +252,10 @@ describe.sequential('UX tools', () => {
 
     const tableText = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
     expect(tableText.includes('Instances')).toBe(true);
+    expect(tableText.includes('Temp?')).toBe(true);
+    expect(tableText.includes('Perm?')).toBe(true);
+    expect(tableText.includes('yes')).toBe(true);
+    expect(tableText.includes('no')).toBe(true);
 
     expect(seen.some((x) => x.url.startsWith('/apps/location/myapp'))).toBe(true);
     expect(seen.some((x) => x.url === '/apps/listrunningapps')).toBe(true);
