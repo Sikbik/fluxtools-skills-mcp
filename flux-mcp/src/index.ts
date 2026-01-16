@@ -3127,6 +3127,9 @@ export async function callTool(name: string, rawArgs: unknown) {
             const temporaryMsg = tmpHash ? (temporaryByHash.get(tmpHash) ?? null) : null;
             const permanentMsg = tmpHash ? (permanentByHash.get(tmpHash) ?? null) : null;
 
+            const hasTemporary = temporaryMsg !== null;
+            const hasPermanent = permanentMsg !== null;
+
             return {
               name,
               owner,
@@ -3136,8 +3139,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               expirationHeight,
               blocksRemaining,
               expired: blocksRemaining < 0,
-              temporaryMsg,
-              permanentMsg,
+              hasTemporary,
+              hasPermanent,
             };
           })
           .sort((a, b) => {
@@ -3162,8 +3165,8 @@ export async function callTool(name: string, rawArgs: unknown) {
           const expiresAt = typeof x.expirationHeight === 'number' ? Math.trunc(x.expirationHeight) : '-';
           const updatedAt = typeof x.height === 'number' ? Math.trunc(x.height) : '-';
 
-          const tmp = x.temporaryMsg ? 'yes' : 'no';
-          const perm = x.permanentMsg ? 'yes' : 'no';
+          const tmp = x.hasTemporary === true ? 'yes' : 'no';
+          const perm = x.hasPermanent === true ? 'yes' : 'no';
 
           if (!appnameDetails) {
             return [name, owner, instances, blocksRemaining, expired, expiresAt, updatedAt, tmp, perm];
@@ -3186,7 +3189,19 @@ export async function callTool(name: string, rawArgs: unknown) {
             appname: requestedAppname ?? null,
             includeExpired,
             currentHeight,
-            apps: computed,
+            apps: computed.map((x) => ({
+              name: x.name,
+              owner: x.owner,
+              hash: x.hash,
+              instances: x.instances,
+              height: x.height,
+              expirationHeight: x.expirationHeight,
+              blocksRemaining: x.blocksRemaining,
+              expired: x.expired,
+              hasTemporary: x.hasTemporary,
+              hasPermanent: x.hasPermanent,
+            })),
+            computed,
             location: appnameDetails ? { appname: appnameDetails, count: locationsCount } : null,
             localRuntime: appnameDetails ? { appname: appnameDetails, runningCount: localRunningCount } : null,
             raw: {
@@ -3215,8 +3230,8 @@ export async function callTool(name: string, rawArgs: unknown) {
         let neither = 0;
 
         for (const x of computed) {
-          const tmp = x.temporaryMsg !== null;
-          const perm = x.permanentMsg !== null;
+          const tmp = x.hasTemporary === true;
+          const perm = x.hasPermanent === true;
 
           if (tmp) tempYes += 1;
           if (perm) permYes += 1;
