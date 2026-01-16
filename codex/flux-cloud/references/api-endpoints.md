@@ -48,6 +48,29 @@ In MCP:
 - lifecycle/maintenance tools require `confirm=true`
 - generic calls via `flux_request` require `allowMutation=true`
 
+## Compatibility matrix
+
+This project spans multiple layers (MCP server, skill instructions, and Flux node APIs).
+
+- MCP runtime: Node.js >= 20
+- FluxOS / Flux API: best-effort compatibility; the API surface evolves. Always validate against `GET /flux/version`.
+- Observed in the wild (example): Flux `8.4.0` with Node.js `22.x`.
+
+## Known gateway limitations
+
+- `https://api.runonflux.io` can be convenient for discovery but less reliable for login phrase flows and long-running troubleshooting.
+- Gateways can route to different backing nodes over time; results may appear inconsistent between calls.
+- Prefer a direct node (`http://<node-ip>:16127`) for authentication, app lifecycle actions, and debugging.
+
+## Stability contract
+
+This repo aims to keep automation stable across versions.
+
+- Tool names: stable within a major version of the MCP server.
+- `structuredContent`: additive-only within a major version (fields may be added, but existing fields should not be removed or change meaning).
+- Breaking changes (renames/removals/semantic changes): require a major version bump.
+- Large payload handling: tools may move more data into `resource_link` over time; summaries remain compact.
+
 ## Error behavior
 
 Common patterns you’ll see:
