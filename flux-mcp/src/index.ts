@@ -3069,6 +3069,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           .map((app) => {
             const name = typeof app['name'] === 'string' ? (app['name'] as string) : null;
             const owner = typeof app['owner'] === 'string' ? (app['owner'] as string) : null;
+            const hash = typeof app['hash'] === 'string' ? (app['hash'] as string) : null;
 
             const instancesRaw = app['instances'];
             const instances = typeof instancesRaw === 'number' ? instancesRaw : Number(instancesRaw);
@@ -3094,14 +3095,21 @@ export async function callTool(name: string, rawArgs: unknown) {
 
             const blocksRemaining = expirationHeight - currentHeight;
 
+            const tmpHash = typeof hash === 'string' ? hash : '';
+            const temporaryMsg = tmpHash ? (temporaryByHash.get(tmpHash) ?? null) : null;
+            const permanentMsg = tmpHash ? (permanentByHash.get(tmpHash) ?? null) : null;
+
             return {
               name,
               owner,
+              hash,
               instances: Number.isFinite(instances) ? Math.trunc(instances) : null,
               height: Number.isFinite(height) ? height : null,
               expirationHeight,
               blocksRemaining,
               expired: blocksRemaining < 0,
+              temporaryMsg,
+              permanentMsg,
             };
           })
           .sort((a, b) => {
@@ -3117,6 +3125,28 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const temporaryCount = Array.isArray(temporary) ? temporary.length : null;
         const permanentCount = Array.isArray(permanent) ? permanent.length : null;
+
+        const temporaryByHash = new Map<string, Record<string, unknown>>();
+        if (Array.isArray(temporary)) {
+          for (const x of temporary) {
+            if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
+            const rec = x as Record<string, unknown>;
+            const hash = rec['hash'];
+            if (typeof hash !== 'string' || !hash) continue;
+            temporaryByHash.set(hash, rec);
+          }
+        }
+
+        const permanentByHash = new Map<string, Record<string, unknown>>();
+        if (Array.isArray(permanent)) {
+          for (const x of permanent) {
+            if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
+            const rec = x as Record<string, unknown>;
+            const hash = rec['hash'];
+            if (typeof hash !== 'string' || !hash) continue;
+            permanentByHash.set(hash, rec);
+          }
+        }
 
         const headers = appnameDetails
           ? ['App', 'Owner', 'Instances', 'Locations', 'Local running', 'Blocks Left', 'Expired?', 'Expires (height)', 'Updated (height)', 'Temp msgs', 'Perm msgs']
