@@ -83,6 +83,42 @@ Privileges vary by endpoint. Common labels you’ll see in the inventory:
 
 See: `references/auth-zelidauth.md`.
 
+### Playbook: Auth not working
+
+1) Prefer a direct node base URL for troubleshooting: `http://<node-ip>:16127`
+
+2) Quick node sanity:
+
+```bash
+curl -sS http://<node-ip>:16127/flux/version
+curl -sS http://<node-ip>:16127/flux/info
+```
+
+3) Get a login phrase (fallback if it fails):
+
+```bash
+curl -sS http://<node-ip>:16127/id/loginphrase
+curl -sS http://<node-ip>:16127/id/emergencyphrase
+```
+
+4) Sign the phrase with your ZelID and verify login:
+
+- MCP-first:
+  - `flux_get_login_phrase` (or `flux_get_emergency_phrase`)
+  - user signs phrase
+  - `flux_verify_login`
+  - `flux_build_zelidauth` + `flux_set_zelidauth`
+
+5) Validate privileges:
+
+- `flux_check_privilege`
+
+6) Common failure modes:
+
+- Using the API gateway (`https://api.runonflux.io`) for loginphrase can fail intermittently; resolve a node and retry.
+- Timestamp/login phrase mismatch: ensure you sign the exact returned phrase.
+- Wrong ZelID signing method: confirm the wallet is signing plain text, not hashing it first.
+
 ## App essentials
 
 Discovery:
