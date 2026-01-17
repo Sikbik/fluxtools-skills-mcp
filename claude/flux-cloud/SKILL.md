@@ -51,6 +51,7 @@ Setup instructions: `references/mcp-setup.md`.
 
 ### 2) Get ZelID login phrase and set `zelidauth`
 
+- This signature is separate from the app registration/update signature; authenticate before asking the user to sign the app message.
 - Use `flux_auth_flow` for a step-by-step plan (optionally pass `gatewayBaseUrl` to start from `https://api.runonflux.io` and resolve the current node), or do it manually: `flux_get_login_phrase` (or `flux_get_emergency_phrase` if loginphrase fails) → user signs phrase → `flux_verify_login` (recommended) → `flux_build_zelidauth` + `flux_set_zelidauth`.
 
 ### 3) Create a v8 app spec

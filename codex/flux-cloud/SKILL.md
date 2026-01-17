@@ -42,6 +42,7 @@ curl -sS "$API/flux/isarcaneos"
 
 - API auth uses the `zelidauth` header (signed login phrase).
 - App registration/update also requires a separate signature over an exact message string.
+- These are two different signatures; authenticate before signing the app message.
 
 Use:
 - `references/auth-zelidauth.md`

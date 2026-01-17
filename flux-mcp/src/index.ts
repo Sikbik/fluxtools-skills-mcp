@@ -728,6 +728,14 @@ function requireConfirm(args: Record<string, unknown>, actionDescription: string
   }
 }
 
+function assertAuthenticatedFor(action: string) {
+  const z = client.getZelidauthSummary();
+  if (z.present) return;
+  throw new Error(
+    `Not authenticated (zelidauth not set). Required for: ${action}. Run flux_auth_flow or flux_set_zelidauth before continuing.`
+  );
+}
+
 function asResponseType(value: unknown): FluxResponseType | undefined {
   if (typeof value !== 'string') return undefined;
   const v = value.trim().toLowerCase();
@@ -1591,7 +1599,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_plan_registration',
-    description: 'Verify spec + calculate price + build message-to-sign + payload scaffold for app registration.',
+    description: 'Verify spec + calculate price + build message-to-sign + payload scaffold for app registration. Includes requiresAuth guidance when zelidauth is missing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1619,7 +1627,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_plan_update',
-    description: 'Verify update spec + calculate price + build message-to-sign + payload scaffold for app update.',
+    description: 'Verify update spec + calculate price + build message-to-sign + payload scaffold for app update. Includes requiresAuth guidance when zelidauth is missing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -4359,7 +4367,25 @@ export async function callTool(name: string, rawArgs: unknown) {
       }
 
        case 'flux_apps_plan_registration': {
-         const specInput = mustBeObject(args['spec'], 'spec');
+          const requiresAuth = !client.getZelidauthSummary().present;
+
+          const specInput = mustBeObject(args['spec'], 'spec');
+
+          const identity = extractAppIdentity(specInput);
+          const missing: string[] = [];
+          if (!identity.appname) missing.push('name');
+
+          const descriptionRaw = specInput['description'];
+          const description = typeof descriptionRaw === 'string' ? descriptionRaw.trim() : '';
+          if (!description) missing.push('description');
+
+          if (!identity.owner || /placeholder|replace_me|<.*>|your_?zelid/i.test(identity.owner)) missing.push('owner');
+
+          if (missing.length > 0) {
+            throw new Error(
+              `Spec is missing required field(s): ${missing.join(', ')}. Set a real Flux/ZelID address in spec.owner before planning registration.`
+            );
+          }
          const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
          const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
  
@@ -4408,7 +4434,13 @@ export async function callTool(name: string, rawArgs: unknown) {
           note: 'After flux_apps_register returns a hash, pay the amount to address with memo=hash.',
         };
 
+        const authNote = requiresAuth
+          ? 'Before submitting registration, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app registration signature). You can sign both in one wallet session: first the login phrase (for zelidauth), then messageToSign (for app registration).'
+          : null;
+
         return jsonResult({
+          requiresAuth,
+          authNote,
           verified,
           price,
           registrationInformation,
@@ -4424,6 +4456,8 @@ export async function callTool(name: string, rawArgs: unknown) {
       }
 
         case 'flux_apps_register': {
+         assertAuthenticatedFor('apps/appregister');
+
          const specInput = mustBeObject(args['spec'], 'spec');
          const signature = mustBeString(args['signature'], 'signature');
          const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
@@ -4458,9 +4492,11 @@ export async function callTool(name: string, rawArgs: unknown) {
          return jsonResult({ verified, submit, hash, messageToSign, payload });
        }
 
-       case 'flux_apps_register_and_verify': {
-         requireConfirm(args, 'apps/appregister');
-         const specInput = mustBeObject(args['spec'], 'spec');
+        case 'flux_apps_register_and_verify': {
+          requireConfirm(args, 'apps/appregister');
+          assertAuthenticatedFor('apps/appregister');
+
+          const specInput = mustBeObject(args['spec'], 'spec');
          const signature = mustBeString(args['signature'], 'signature');
          const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
          const verifyFirstRaw = args['verifyFirst'];
@@ -4486,14 +4522,18 @@ export async function callTool(name: string, rawArgs: unknown) {
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
          const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
  
-         const submit = await client.request('/apps/appregister', {
-           method: 'POST',
-           body: payload,
-           allowMutation: true,
-         });
- 
-         const hash = extractHashFromAppMessageResponse(submit.data);
-         if (!hash) throw new Error('Could not extract message hash from registration response');
+          const submit = await client.request('/apps/appregister', {
+            method: 'POST',
+            body: payload,
+            allowMutation: true,
+          });
+
+          const hash = extractHashFromAppMessageResponse(submit.data);
+          if (!hash) {
+            const error = extractFluxErrorMessage(submit.data);
+            const hint = error ? ` Flux error: ${error}` : '';
+            throw new Error(`Could not extract message hash from registration response.${hint}`);
+          }
  
          const propagation = await pollMessagePropagation({ hash, attempts, intervalMs });
 
@@ -4619,8 +4659,10 @@ export async function callTool(name: string, rawArgs: unknown) {
        }
 
 
-      case 'flux_apps_plan_update': {
-        const specInput = mustBeObject(args['spec'], 'spec');
+       case 'flux_apps_plan_update': {
+         const requiresAuth = !client.getZelidauthSummary().present;
+
+         const specInput = mustBeObject(args['spec'], 'spec');
         const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
 
@@ -4644,19 +4686,27 @@ export async function callTool(name: string, rawArgs: unknown) {
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
         const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
 
-        return jsonResult({
-          verified,
-          price,
-          timestamp,
-          type,
-          typeVersion,
-          messageToSign,
-          payload,
-          next: 'Sign messageToSign with the OWNER ZelID, then call flux_apps_update with signature + same timestamp.',
-        });
+         const authNote = requiresAuth
+           ? 'Before submitting update, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app update signature).'
+           : null;
+
+         return jsonResult({
+           requiresAuth,
+           authNote,
+           verified,
+           price,
+           timestamp,
+           type,
+           typeVersion,
+           messageToSign,
+           payload,
+           next: 'Sign messageToSign with the OWNER ZelID, then call flux_apps_update with signature + same timestamp.',
+         });
       }
 
-       case 'flux_apps_update': {
+        case 'flux_apps_update': {
+         assertAuthenticatedFor('apps/appupdate');
+
          const specInput = mustBeObject(args['spec'], 'spec');
          const signature = mustBeString(args['signature'], 'signature');
          const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
@@ -4690,8 +4740,10 @@ export async function callTool(name: string, rawArgs: unknown) {
          return jsonResult({ verified, submit, hash, messageToSign, payload });
        }
 
-       case 'flux_apps_update_and_verify': {
+        case 'flux_apps_update_and_verify': {
          requireConfirm(args, 'apps/appupdate');
+         assertAuthenticatedFor('apps/appupdate');
+
          const specInput = mustBeObject(args['spec'], 'spec');
          const signature = mustBeString(args['signature'], 'signature');
          const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
@@ -4724,8 +4776,12 @@ export async function callTool(name: string, rawArgs: unknown) {
            allowMutation: true,
          });
  
-         const hash = extractHashFromAppMessageResponse(submit.data);
-         if (!hash) throw new Error('Could not extract message hash from update response');
+          const hash = extractHashFromAppMessageResponse(submit.data);
+          if (!hash) {
+            const error = extractFluxErrorMessage(submit.data);
+            const hint = error ? ` Flux error: ${error}` : '';
+            throw new Error(`Could not extract message hash from update response.${hint}`);
+          }
  
          const propagation = await pollMessagePropagation({ hash, attempts, intervalMs });
 
