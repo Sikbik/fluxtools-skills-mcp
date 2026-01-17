@@ -2386,29 +2386,33 @@ export async function callTool(name: string, rawArgs: unknown) {
           text: logsText,
         });
 
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                ok: true,
-                appname,
-                truncated,
-                lineCount: linesOut.length,
-                next: full.next,
-              }, null, 2),
-            },
-            {
-              type: 'resource_link',
-              uri: link.uri,
-              name: link.name,
-              description: link.description,
-              mimeType: link.mimeType,
-            },
-          ],
-          structuredContent: { ...full, resourceUri: link.uri },
-          isError: false,
-        };
+         const preview = linesOut.slice(-Math.min(linesOut.length, 50));
+
+         return {
+           content: [
+             {
+               type: 'text',
+               text: JSON.stringify({
+                 ok: true,
+                 appname,
+                 truncated,
+                 lineCount: linesOut.length,
+                 preview,
+                 next: full.next,
+                 resourceUri: link.uri,
+               }, null, 2),
+             },
+             {
+               type: 'resource_link',
+               uri: link.uri,
+               name: link.name,
+               description: link.description,
+               mimeType: link.mimeType,
+             },
+           ],
+           structuredContent: { ...full, preview, resourceUri: link.uri },
+           isError: false,
+         };
       }
 
       case 'flux_app_health_report': {
@@ -5144,13 +5148,20 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const lines = asOptionalString(args['lines']) ?? 'all';
 
-        let res = await client.request('/apps/applog', { query: { appname, lines } });
-        const knownError = extractFluxErrorMessage(res.data);
+        const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        if (resolved) client.setBaseUrl(resolved.baseUrl);
+        const target = resolved ? resolved.containerName : appname;
+
+        let res = await client.request('/apps/applog', { query: { appname: target, lines } });
+        let knownError = extractFluxErrorMessage(res.data);
+
         if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
-          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
-          if (resolved) {
-            client.setBaseUrl(resolved.baseUrl);
-            res = await client.request('/apps/applog', { query: { appname: resolved.containerName, lines } });
+          const fallback = `fluxserver_${appname}`;
+          if (fallback !== target) {
+            res = await client.request('/apps/applog', { query: { appname: fallback, lines } });
+            knownError = extractFluxErrorMessage(res.data);
           }
         }
 
@@ -5165,8 +5176,20 @@ export async function callTool(name: string, rawArgs: unknown) {
           ok: res.ok,
           status: res.status,
           appname,
+          resolved: resolved
+            ? { baseUrl: resolved.baseUrl, containerName: resolved.containerName, previousBaseUrl: attemptedBaseUrl }
+            : null,
+          target,
           lines,
+          error: res.ok ? null : knownError,
           resourceUri: link.uri,
+          nextActions: res.ok
+            ? []
+            : [
+                { tool: 'flux_apps_resolve_runtime_target', arguments: { appname } },
+                { tool: 'flux_apps_inspect', arguments: { appname } },
+                { tool: 'flux_logs_tail', arguments: { appname } },
+              ],
         };
 
         return {
