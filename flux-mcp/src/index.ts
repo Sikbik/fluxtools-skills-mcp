@@ -1789,8 +1789,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_logs',
-    description:
-      'Get app/container logs (GET /apps/applog). Accepts a global app name (e.g. hytale) OR an explicit container name; on container lookup errors it will resolve node/port + container name automatically.',
+    description: 'Get app/container logs (GET /apps/applog).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1802,8 +1801,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_inspect',
-    description:
-      'Inspect a container (GET /apps/appinspect). Accepts a global app name OR container name; on container lookup errors it will resolve node/port + container name automatically.',
+    description: 'Inspect a container (GET /apps/appinspect).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1814,8 +1812,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_stats',
-    description:
-      'Get container stats (GET /apps/appstats). Accepts a global app name OR container name; on container lookup errors it will resolve node/port + container name automatically.',
+    description: 'Get container stats (GET /apps/appstats).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1826,8 +1823,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_top',
-    description:
-      'Get process list for a container (GET /apps/apptop). Accepts a global app name OR container name; on container lookup errors it will resolve node/port + container name automatically.',
+    description: 'Get process list for a container (GET /apps/apptop).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2193,14 +2189,9 @@ export async function callTool(name: string, rawArgs: unknown) {
             note: 'Use the public gateway as a starting point.',
           });
           steps.push({
-            tool: 'flux_resolve_gateway_node',
+            tool: 'flux_set_base_url_from_gateway',
             arguments: { gatewayBaseUrl },
-            note: 'Resolve the node behind the gateway and switch to its direct base URL for login.',
-          });
-          steps.push({
-            tool: 'flux_set_base_url',
-            arguments: { baseUrl: 'http://<resolved-node-ip>:16127' },
-            note: 'Set baseUrl to the recommended direct node URL from flux_resolve_gateway_node.',
+            note: 'Resolve the gateway to a direct node and pin baseUrl there for the rest of this auth flow (prevents round-robin loginphrase/verify mismatch).',
           });
         } else {
           steps.push({
@@ -2219,22 +2210,17 @@ export async function callTool(name: string, rawArgs: unknown) {
         steps.push({
           tool: 'flux_verify_login',
           arguments: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' },
-          note: 'Establish a session on the node (recommended).',
-        });
-        steps.push({
-          tool: 'flux_build_zelidauth',
-          arguments: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' },
-          note: 'Build the zelidauth header JSON value.',
+          note: 'Establish a server-side session on this pinned node (recommended but not strictly required for header-based auth).',
         });
         steps.push({
           tool: 'flux_set_zelidauth',
           arguments: { zelidauth: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' } },
-          note: 'Store zelidauth for subsequent calls.',
+          note: 'Store zelidauth for subsequent calls. If verify_login fails due to gateway/node mismatch, this can still work as long as baseUrl is pinned.',
         });
         steps.push({
           tool: 'flux_check_privilege',
           arguments: { zelid: '<ZELID>', signature: '<SIGNATURE>', loginPhrase: '<PHRASE>' },
-          note: 'Confirm your privilege level (admin/fluxteam/appownerabove).',
+          note: 'Confirm your privilege level.',
         });
 
         const out = { ok: true, steps };
@@ -4195,11 +4181,15 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
+        const logicalOk = res.ok && isFluxSuccess(res.data);
+        const error = extractFluxErrorMessage(res.data);
+
         const summary = {
-          ok: res.ok,
+          ok: logicalOk,
           status: res.status,
           appname,
           decrypt: decrypt ?? null,
+          error,
           resourceUri: link.uri,
         };
 
@@ -4209,7 +4199,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !logicalOk,
         };
       }
 
@@ -4386,17 +4376,37 @@ export async function callTool(name: string, rawArgs: unknown) {
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
         const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
 
+        const priceData = unwrapFluxEnvelope<unknown>(price.data);
+        const fluxPrice =
+          priceData && typeof priceData === 'object' && !Array.isArray(priceData)
+            ? Number((priceData as Record<string, unknown>)['flux'])
+            : NaN;
+
+        const deploymentInfo = unwrapFluxEnvelope<unknown>(deploymentInformation.data);
+        const paymentAddress =
+          deploymentInfo && typeof deploymentInfo === 'object' && !Array.isArray(deploymentInfo)
+            ? (deploymentInfo as Record<string, unknown>)['address']
+            : undefined;
+
+        const payment = {
+          address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
+          amountFlux: Number.isFinite(fluxPrice) ? Number(fluxPrice.toFixed(2)) : null,
+          memo: '<REGISTRATION_HASH>',
+          note: 'After flux_apps_register returns a hash, pay the amount to address with memo=hash.',
+        };
+
         return jsonResult({
           verified,
           price,
           registrationInformation,
           deploymentInformation,
+          payment,
           timestamp,
           type,
           typeVersion,
           messageToSign,
           payload,
-          next: 'Sign messageToSign with the OWNER ZelID, then call flux_apps_register with signature + same timestamp.',
+          next: 'Sign messageToSign with the OWNER ZelID, then call flux_apps_register with signature + same timestamp. After registration returns a hash, run flux_apps_test_install (or flux_apps_test_install_pin if you are using a gateway) with that hash, then pay with the hash as memo.',
         });
       }
 
@@ -4497,51 +4507,87 @@ export async function callTool(name: string, rawArgs: unknown) {
            }
          }
 
-         const ok = submit.ok && propagation.permanentPresent === true && (globalPresent !== false);
+          const registered = submit.ok;
+          const status = !registered
+            ? 'error'
+            : propagation.permanentPresent !== true
+              ? 'awaiting_payment'
+              : globalPresent === false
+                ? 'verifying_global'
+                : 'verified';
 
-         const link = resourceStore.putJson({
-           kind: 'apps/register_and_verify',
-           name: `Register and verify ${appname ?? hash}`,
-           description: 'Registration submission + propagation checks',
-           value: {
-             appname: appname ?? null,
-             owner: owner ?? null,
-             hash,
-             attempts,
-             intervalMs,
-             verified,
-             submit,
-             propagation,
-             globalCheck,
-             globalPresent,
-           },
-         });
+          const ok = status === 'verified';
 
-         const summary = {
-           ok,
-           status: ok ? 'verified' : 'pending',
-           appname: appname ?? null,
-           owner: owner ?? null,
-           hash,
-           attemptsUsed: propagation.attemptsUsed,
-           temporaryPresent: propagation.temporaryPresent,
-           permanentPresent: propagation.permanentPresent,
+          const link = resourceStore.putJson({
+            kind: 'apps/register_and_verify',
+            name: `Register and verify ${appname ?? hash}`,
+            description: 'Registration submission + propagation checks',
+            value: {
+              appname: appname ?? null,
+              owner: owner ?? null,
+              hash,
+              attempts,
+              intervalMs,
+              verified,
+              submit,
+              propagation,
+              globalCheck,
+              globalPresent,
+            },
+          });
+
+          const nextActions = status === 'verified'
+            ? []
+            : [
+                { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+              ].filter(Boolean);
+
+          const deploymentInfoRes = await client.request('/apps/deploymentinformation');
+          const deploymentInfo = unwrapFluxEnvelope<unknown>(deploymentInfoRes.data);
+          const paymentAddress =
+            deploymentInfo && typeof deploymentInfo === 'object' && !Array.isArray(deploymentInfo)
+              ? (deploymentInfo as Record<string, unknown>)['address']
+              : undefined;
+
+          const payment = {
+            address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
+            amountFlux: null,
+            memo: hash,
+            note: 'Pay to address with memo=hash (after optional test install).',
+          };
+
+          const message = status === 'awaiting_payment'
+            ? 'Registration broadcasted. Next: (recommended) flux_apps_test_install with this hash, then pay with memo=hash.'
+            : status === 'verifying_global'
+              ? 'Registration appears permanent, but global app spec not visible yet. Re-check shortly.'
+              : status === 'error'
+                ? 'Registration submission failed.'
+                : 'Registration verified.';
+
+          const summary = {
+            ok,
+            status,
+            registered,
+            appname: appname ?? null,
+            owner: owner ?? null,
+            hash,
+            attemptsUsed: propagation.attemptsUsed,
+            temporaryPresent: propagation.temporaryPresent,
+            permanentPresent: propagation.permanentPresent,
             globalPresent,
             messageToSign,
+            message,
+            payment,
             resourceUri: link.uri,
-            nextActions: ok
-              ? []
-              : [
-                  { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
-                  appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
-                ].filter(Boolean),
-         };
+            nextActions,
+          };
 
-         return {
-           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
-           structuredContent: summary,
-           isError: !ok,
-         };
+          return {
+            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: summary,
+            isError: status === 'error',
+          };
        }
 
 

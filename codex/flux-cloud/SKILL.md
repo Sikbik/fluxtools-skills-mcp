@@ -80,9 +80,11 @@ Use: `references/api-endpoints.md`.
 
 ### 4) Register/update an app (network-level)
 
-- Verify (canonicalize) the spec.
-- Build the deterministic “message to sign” + payload scaffold.
-- Submit `POST /apps/appregister` or `POST /apps/appupdate`.
+- Prefer `flux_apps_plan_registration` / `flux_apps_plan_update` (auto-canonicalizes the spec).
+- Prefer direct node base URLs; if starting from a gateway, use tools with `resolveGateway=true` (now default).
+- Submit `flux_apps_register` / `flux_apps_update` with the owner signature.
+- Optional: `flux_apps_test_install` (direct node) or `flux_apps_test_install_pin` (gateway → auto-pin).
+- Payment: use the address from `flux_apps_deployment_information` (or `flux_apps_plan_registration.payment.address`). Pay the amount from pricing (`price.data.flux`), with memo = registration hash.
 
 Use:
 - `references/signing.md`

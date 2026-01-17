@@ -38,3 +38,6 @@ dist/*.skill
 /tmp/
 issues.md
 
+# Reference clones (not part of this repo)
+/fluxos-frontend/
+

@@ -116,8 +116,28 @@ function isNonMutatingPostPath(method: string, pathname: string): boolean {
     '/apps/verifyappregistrationspecifications',
     '/apps/verifyappupdatespecifications',
     '/apps/calculateprice',
+    '/apps/calculatefiatandfluxprice',
   ];
   return allowed.includes(path);
+}
+
+function prefersFormBody(pathname: string): boolean {
+  const path = pathname.startsWith('/') ? pathname : `/${pathname}`;
+
+  const formPaths = new Set([
+    '/apps/verifyappregistrationspecifications',
+    '/apps/verifyappupdatespecifications',
+    '/apps/calculateprice',
+    '/apps/calculatefiatandfluxprice',
+
+    '/apps/appregister',
+    '/apps/appupdate',
+    '/apps/checkdockerexistance',
+    '/id/verifylogin',
+    '/id/checkprivilege',
+  ]);
+
+  return formPaths.has(path);
 }
 
 export type ZelidauthValue = string;
@@ -227,13 +247,15 @@ export class FluxClient {
       method?: string;
       query?: Record<string, unknown>;
       body?: unknown;
-      bodyType?: 'json' | 'form' | 'multipart';
+      bodyType?: 'json' | 'form' | 'multipart' | 'fluxos';
       zelidauth?: unknown;
       useStoredZelidauth?: boolean;
       timeoutMs?: number;
       allowMutation?: boolean;
       responseType?: FluxResponseType;
       maxBytes?: number;
+      retryCount?: number;
+      retryBackoffMs?: number;
     }
   ) {
     if (!this.baseUrl) throw new Error('Base URL not set. Use flux_set_base_url first.');
@@ -272,7 +294,7 @@ export class FluxClient {
       headers.zelidauth = this.zelidauth;
     }
 
-    const bodyType = opts?.bodyType ?? 'json';
+    const bodyType = opts?.bodyType ?? (prefersFormBody(pathname) ? 'fluxos' : 'json');
 
     let body: BodyInit | undefined;
 
@@ -280,15 +302,19 @@ export class FluxClient {
       if (bodyType === 'json') {
         body = JSON.stringify(opts.body);
         headers['content-type'] = 'application/json';
+      } else if (bodyType === 'fluxos') {
+        body = JSON.stringify(opts.body);
+        headers['content-type'] = 'application/x-www-form-urlencoded';
       } else if (bodyType === 'form') {
-        if (!opts.body || typeof opts.body !== 'object' || Array.isArray(opts.body)) {
-          throw new Error('Form bodyType requires a plain object body');
-        }
-
         const params = new URLSearchParams();
-        for (const [key, value] of Object.entries(opts.body as Record<string, unknown>)) {
-          if (value === undefined || value === null) continue;
-          params.set(key, String(value));
+
+        if (opts.body && typeof opts.body === 'object' && !Array.isArray(opts.body)) {
+          for (const [key, value] of Object.entries(opts.body as Record<string, unknown>)) {
+            if (value === undefined || value === null) continue;
+            params.set(key, String(value));
+          }
+        } else {
+          params.set('data', JSON.stringify(opts.body));
         }
 
         body = params.toString();
@@ -310,7 +336,20 @@ export class FluxClient {
     }
 
     const canRetry = !isMutating && (method === 'GET' || isNonMutatingPostPath(method, pathname));
-    const maxAttempts = 1 + (canRetry ? this.httpDefaults.retryCount : 0);
+
+    const retryCountRaw = opts?.retryCount ?? this.httpDefaults.retryCount;
+    const retryCount = Number(retryCountRaw);
+    if (!Number.isFinite(retryCount) || retryCount < 0 || !Number.isInteger(retryCount)) {
+      throw new Error('retryCount must be a non-negative integer');
+    }
+
+    const retryBackoffMsRaw = opts?.retryBackoffMs ?? this.httpDefaults.retryBackoffMs;
+    const retryBackoffMs = Number(retryBackoffMsRaw);
+    if (!Number.isFinite(retryBackoffMs) || retryBackoffMs < 0) {
+      throw new Error('retryBackoffMs must be a non-negative number');
+    }
+
+    const maxAttempts = 1 + (canRetry ? retryCount : 0);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const controller = new AbortController();
@@ -320,7 +359,7 @@ export class FluxClient {
         const res = await fetch(url, { method, headers, body, signal: controller.signal });
 
         if (canRetry && attempt < maxAttempts && (res.status === 502 || res.status === 503 || res.status === 504)) {
-          const backoff = this.httpDefaults.retryBackoffMs * attempt;
+          const backoff = retryBackoffMs * attempt;
           await new Promise((resolve) => setTimeout(resolve, backoff));
           continue;
         }
@@ -389,7 +428,7 @@ export class FluxClient {
 
         if (!retryable) throw err;
 
-        const backoff = this.httpDefaults.retryBackoffMs * attempt;
+        const backoff = retryBackoffMs * attempt;
         await new Promise((resolve) => setTimeout(resolve, backoff));
         continue;
       } finally {
