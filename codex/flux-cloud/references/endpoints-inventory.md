@@ -1,16 +1,14 @@
 # Flux Node API ‚Äî Endpoint Inventory (Generated)
 
-Generated from Flux source: `https://github.com/RunOnFlux/flux`
-- Commit: `6faa537d4b9793fade68a6fd0daeddc39d96c0cb`
+Generated from:
+- Repo: `https://github.com/RunOnFlux/flux`
+- Ref: `master`
 - File: `ZelBack/src/routes.js`
-- Generated: `2026-01-01T17:19:08.612Z`
-
-This inventory is extracted from the Express route table. It is intentionally ‚Äúcomplete but shallow‚Äù; use the other reference docs for workflows and semantics.
+- Generated: `2026-01-17T17:07:24.669Z`
 
 ## Summary
 
 - Total routes: **465**
-- Categories: **11**
 
 ### Categories
 
@@ -36,13 +34,6 @@ This inventory is extracted from the Express route table. It is intentionally ‚Ä
 - `POST PUBLIC methods route`: 24
 - `POST PROTECTED API - FluxNode owner level`: 11
 - `POST PROTECTED API - USER LEVEL`: 7
-
-## Fields
-
-- `access`: section label from `routes.js` (public/user/owner/fluxteam).
-- `cache`: `apicache` TTL if present in route definition (may differ by deployment).
-- `localOnly`: route uses `isLocal` middleware (loopback-only).
-- `deprecated`: route comment contains `DEPRECATED`/`DEPERCATED`.
 
 ## Routes by category
 
@@ -247,7 +238,7 @@ This inventory is extracted from the Express route table. It is intentionally ‚Ä
 | GET | `/apps/availableapps` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | POST | `/apps/calculatefiatandfluxprice` | `GET PUBLIC methods` |  |  |  | returns price in usd and flux for both new registration of app and update of app |
 | POST | `/apps/calculateprice` | `GET PUBLIC methods` |  |  |  | returns price in flux for both new registration of app and update of app |
-| POST | `/apps/checkdockerexistance` | `POST PROTECTED API - USER LEVEL` |  |  |  |  |
+| POST | `/apps/checkdockerexistance` | `POST PROTECTED API - USER LEVEL` |  |  | yes | DEPRECATED: check docker image accessibility (deprecated) |
 | GET | `/apps/checkhashes` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
 | GET | `/apps/createfluxnetwork` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
 | GET | `/apps/createfolder/:appname?/:component?/:folder?` | `POST PROTECTED API - FluxTeam` |  |  |  |  |
@@ -274,7 +265,7 @@ This inventory is extracted from the Express route table. It is intentionally ‚Ä
 | POST | `/apps/getpublickey` | `POST PROTECTED API - USER LEVEL` |  |  |  |  |
 | GET | `/apps/globalappsspecifications/:hash?/:owner?/:appname?` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | GET | `/apps/hashes` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
-| GET | `/apps/installapplocally/:appname?` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
+| GET | `/apps/installapplocally/:appname?` | `GET PROTECTED API - FluxTeam` |  |  |  | Install app locally (install locally, installapplocally) |
 | GET | `/apps/installedapps/:appname?` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | GET | `/apps/installingerrorslocation/:appname?` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | GET | `/apps/installingerrorslocations` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
@@ -301,7 +292,7 @@ This inventory is extracted from the Express route table. It is intentionally ‚Ä
 | GET | `/apps/startmonitoring/:appname?` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
 | GET | `/apps/stopmonitoring/:appname?/:deletedata?` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
 | GET | `/apps/temporarymessages/:hash?` | `GET PUBLIC methods` | `5 seconds` |  |  |  |
-| GET | `/apps/testappinstall/:appname?` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
+| GET | `/apps/testappinstall/:appname?` | `GET PROTECTED API - FluxTeam` |  |  |  | Test install / image pull verification (test install, testappinstall, install check) |
 | GET | `/apps/updatetolatestspecs/:appname` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | POST | `/apps/verifyappregistrationspecifications` | `GET PUBLIC methods` |  |  |  | returns formatted app specifications |
 | POST | `/apps/verifyappupdatespecifications` | `GET PUBLIC methods` |  |  |  | returns formatted app specifications |

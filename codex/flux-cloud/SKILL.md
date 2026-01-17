@@ -83,8 +83,8 @@ Use: `references/api-endpoints.md`.
 - Prefer `flux_apps_plan_registration` / `flux_apps_plan_update` (auto-canonicalizes the spec).
 - Prefer direct node base URLs; if starting from a gateway, use tools with `resolveGateway=true` (now default).
 - Submit `flux_apps_register` / `flux_apps_update` with the owner signature.
-- Optional: `flux_apps_test_install` (direct node) or `flux_apps_test_install_pin` (gateway → auto-pin).
-- Payment: use the address from `flux_apps_deployment_information` (or `flux_apps_plan_registration.payment.address`). Pay the amount from pricing (`price.data.flux`), with memo = registration hash.
+- `flux_apps_test_install` with the registration hash (requires `confirm=true`).
+- Payment: use `flux_apps_register_and_verify.payment.address` (or `flux_apps_plan_registration.payment.address`). Amount is `payment.amountFlux`. Memo must be the registration hash.
 
 Use:
 - `references/signing.md`

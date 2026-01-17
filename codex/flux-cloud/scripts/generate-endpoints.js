@@ -43,6 +43,37 @@ function escapeMd(text) {
   return String(text ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 }
 
+function enrichRoute(route) {
+  const comment = String(route.comment ?? '').trim();
+  const p = String(route.path ?? '');
+
+  if (comment) return { ...route, comment };
+
+  if (p.includes('/apps/testappinstall')) {
+    return {
+      ...route,
+      comment: 'Test install / image pull verification (test install, testappinstall, install check)',
+    };
+  }
+
+  if (p.includes('/apps/installapplocally')) {
+    return {
+      ...route,
+      comment: 'Install app locally (install locally, installapplocally)',
+    };
+  }
+
+  if (p.includes('/apps/checkdockerexistance')) {
+    return {
+      ...route,
+      deprecated: true,
+      comment: 'DEPRECATED: check docker image accessibility (deprecated)',
+    };
+  }
+
+  return { ...route, comment };
+}
+
 function extractRoutes(routesJsText) {
   const lines = routesJsText.split(/\r?\n/);
 
@@ -74,7 +105,7 @@ function extractRoutes(routesJsText) {
     const cacheMatch = line.match(cacheRe);
     const cache = cacheMatch ? cacheMatch[1] : null;
 
-    routes.push({
+    const baseRoute = {
       method,
       path: routePath,
       category,
@@ -84,7 +115,9 @@ function extractRoutes(routesJsText) {
       deprecated,
       comment,
       source: { file: 'ZelBack/src/routes.js', line: i + 1 },
-    });
+    };
+
+    routes.push(enrichRoute(baseRoute));
   }
 
   return routes;

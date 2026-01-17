@@ -1659,7 +1659,7 @@ export const tools: Tool[] = [
    },
    {
      name: 'flux_apps_register_and_verify',
-     description: 'Submit app registration and poll for message propagation to permanent messages.',
+     description: 'Submit app registration and poll for message propagation. Returns ok=true when broadcast succeeds; use status to track phases.',
      inputSchema: {
        type: 'object',
        properties: {
@@ -1674,6 +1674,19 @@ export const tools: Tool[] = [
          confirm: { type: 'boolean', description: 'Required to submit registration' },
        },
        required: ['spec', 'signature', 'timestamp', 'confirm'],
+     },
+   },
+   {
+     name: 'flux_apps_test_install',
+     description: 'Test install a registered app by message hash (GET /apps/testappinstall/<hash>). Parses streaming progress output. Requires confirm=true.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         hash: { type: 'string', description: 'Registration message hash' },
+         timeoutMs: { type: 'number', description: 'Request timeout in ms (default 120000)' },
+         confirm: { type: 'boolean', description: 'Required to run test install' },
+       },
+       required: ['hash', 'confirm'],
      },
    },
    {
@@ -4516,7 +4529,8 @@ export async function callTool(name: string, rawArgs: unknown) {
                 ? 'verifying_global'
                 : 'verified';
 
-          const ok = status === 'verified';
+          const done = status === 'verified';
+          const ok = registered;
 
           const link = resourceStore.putJson({
             kind: 'apps/register_and_verify',
@@ -4550,9 +4564,22 @@ export async function callTool(name: string, rawArgs: unknown) {
               ? (deploymentInfo as Record<string, unknown>)['address']
               : undefined;
 
-          const payment = {
+          const priceRes = await client.request('/apps/calculateprice', {
+          method: 'POST',
+          body: spec,
+          allowMutation: true,
+          timeoutMs: 5 * 60 * 1000,
+        });
+
+        const priceData = unwrapFluxEnvelope<unknown>(priceRes.data);
+        const fluxAmount =
+          priceData && typeof priceData === 'object' && !Array.isArray(priceData)
+            ? Number((priceData as Record<string, unknown>)['flux'])
+            : NaN;
+
+        const payment = {
             address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
-            amountFlux: null,
+            amountFlux: Number.isFinite(fluxAmount) ? Number(fluxAmount.toFixed(2)) : null,
             memo: hash,
             note: 'Pay to address with memo=hash (after optional test install).',
           };
@@ -4568,6 +4595,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           const summary = {
             ok,
             status,
+            done,
             registered,
             appname: appname ?? null,
             owner: owner ?? null,
@@ -4724,51 +4752,74 @@ export async function callTool(name: string, rawArgs: unknown) {
            }
          }
 
-         const ok = submit.ok && propagation.permanentPresent === true && (globalPresent !== false);
+          const updated = submit.ok;
+          const status = !updated
+            ? 'error'
+            : propagation.permanentPresent !== true
+              ? 'pending'
+              : globalPresent === false
+                ? 'verifying_global'
+                : 'verified';
 
-         const link = resourceStore.putJson({
-           kind: 'apps/update_and_verify',
-           name: `Update and verify ${appname ?? hash}`,
-           description: 'Update submission + propagation checks',
-           value: {
-             appname: appname ?? null,
-             owner: owner ?? null,
-             hash,
-             attempts,
-             intervalMs,
-             verified,
-             submit,
-             propagation,
-             globalCheck,
-             globalPresent,
-           },
-         });
+          const done = status === 'verified';
+          const ok = updated;
 
-         const summary = {
-           ok,
-           status: ok ? 'verified' : 'pending',
-           appname: appname ?? null,
-           owner: owner ?? null,
-           hash,
-           attemptsUsed: propagation.attemptsUsed,
-           temporaryPresent: propagation.temporaryPresent,
-           permanentPresent: propagation.permanentPresent,
+          const link = resourceStore.putJson({
+            kind: 'apps/update_and_verify',
+            name: `Update and verify ${appname ?? hash}`,
+            description: 'Update submission + propagation checks',
+            value: {
+              appname: appname ?? null,
+              owner: owner ?? null,
+              hash,
+              attempts,
+              intervalMs,
+              verified,
+              submit,
+              propagation,
+              globalCheck,
+              globalPresent,
+            },
+          });
+
+          const nextActions = status === 'verified'
+            ? []
+            : [
+                { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+              ].filter(Boolean);
+
+          const message = status === 'pending'
+            ? 'Update broadcasted. Wait for propagation to permanent messages.'
+            : status === 'verifying_global'
+              ? 'Update appears permanent, but global app spec not visible yet. Re-check shortly.'
+              : status === 'error'
+                ? 'Update submission failed.'
+                : 'Update verified.';
+
+          const summary = {
+            ok,
+            status,
+            done,
+            updated,
+            appname: appname ?? null,
+            owner: owner ?? null,
+            hash,
+            attemptsUsed: propagation.attemptsUsed,
+            temporaryPresent: propagation.temporaryPresent,
+            permanentPresent: propagation.permanentPresent,
             globalPresent,
             messageToSign,
+            message,
             resourceUri: link.uri,
-            nextActions: ok
-              ? []
-              : [
-                  { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
-                  appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
-                ].filter(Boolean),
-         };
+            nextActions,
+          };
 
-         return {
-           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
-           structuredContent: summary,
-           isError: !ok,
-         };
+          return {
+            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: summary,
+            isError: status === 'error',
+          };
        }
 
 
@@ -4876,6 +4927,60 @@ export async function callTool(name: string, rawArgs: unknown) {
             allowMutation: true,
           })
         );
+      }
+
+      case 'flux_apps_test_install': {
+        requireConfirm(args, 'apps/testappinstall');
+        const hash = mustBeString(args['hash'], 'hash');
+        const timeoutMsRaw = asOptionalNumber(args['timeoutMs']);
+        const timeoutMs = timeoutMsRaw === undefined ? 120_000 : timeoutMsRaw;
+
+        const res = await client.request(`/apps/testappinstall/${encodeURIComponent(hash)}`, {
+          method: 'GET',
+          allowMutation: true,
+          responseType: 'text',
+          timeoutMs,
+        });
+
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+        const parsed = parseProgressOutput(text);
+
+        const link = resourceStore.putJson({
+          kind: 'apps/test_install',
+          name: `Test install ${hash}`,
+          description: 'Parsed /apps/testappinstall output',
+          value: { request: { hash, timeoutMs }, response: res, parsed },
+        });
+
+        const lastJson = parsed.jsonObjects.length > 0 ? parsed.jsonObjects[parsed.jsonObjects.length - 1] : null;
+        const success =
+          lastJson && typeof lastJson === 'object' && !Array.isArray(lastJson)
+            ? (() => {
+                const obj = lastJson as Record<string, unknown>;
+                const status = obj.status;
+                return typeof status === 'string' ? status.toLowerCase() === 'success' : false;
+              })()
+            : false;
+
+        const summary = {
+          ok: res.ok && success,
+          httpStatus: res.status,
+          hash,
+          timeoutMs,
+          eventCount: parsed.events.length,
+          events: parsed.events.slice(0, 50),
+          resourceUri: link.uri,
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: link.uri } },
+            { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+          ],
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !summary.ok,
+        };
       }
 
       case 'flux_apps_redeploy': {

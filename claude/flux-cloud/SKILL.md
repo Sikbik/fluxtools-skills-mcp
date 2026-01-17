@@ -65,8 +65,8 @@ Reference: `references/app-spec-v8.md`.
 1) `flux_apps_plan_registration` → returns canonicalized spec + `messageToSign` + payload scaffold (gateway auto-pin is now default).
 2) User signs `messageToSign` with the OWNER ZelID.
 3) `flux_apps_register` with `signature` + `timestamp`.
-4) Optional: `flux_apps_test_install` (direct node) or `flux_apps_test_install_pin` (gateway → auto-pin).
-5) Pay the registration fee to the address from `flux_apps_deployment_information` (or from `flux_apps_plan_registration.payment.address`). Use the registration hash as the memo.
+4) `flux_apps_test_install` with the registration hash (requires `confirm=true`).
+5) Pay the registration fee to the address from `flux_apps_register_and_verify.payment.address` (or from `flux_apps_plan_registration.payment.address`). Amount is available as `payment.amountFlux`. Memo must be the registration hash.
 6) Use `flux_apps_get_messages` to watch propagation by hash.
 
 Reference: `references/register-update.md`.
