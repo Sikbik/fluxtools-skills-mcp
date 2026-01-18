@@ -37,6 +37,7 @@ dist/*.skill
 # Local scratch / test artifacts
 /tmp/
 issues.md
+issue3.md
 
 # Reference clones (not part of this repo)
 /fluxos-frontend/

@@ -31,6 +31,54 @@ type CallToolRequest = { params: { name: string; arguments?: unknown } };
 
 type FluxRequestResult = Awaited<ReturnType<FluxClient['request']>>;
 
+type FluxRequestErrorHint = {
+  code?: string;
+  hint?: string;
+  recommended?: string;
+};
+
+function classifyRequestFailure(err: unknown): FluxRequestErrorHint {
+  const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+
+  if (lower.includes('aborterror') || lower.includes('timeout')) {
+    return { code: 'timeout', hint: 'Request timed out. Node may be unreachable or slow.', recommended: 'Try another candidate node or increase timeout.' };
+  }
+
+  if (lower.includes('econnrefused') || lower.includes('connection refused')) {
+    return { code: 'refused', hint: 'Connection refused. Node API port may be blocked or incorrect.', recommended: 'Verify the node API port from /apps/location and try another candidate.' };
+  }
+
+  if (lower.includes('ehostunreach') || lower.includes('host unreachable')) {
+    return { code: 'unreachable', hint: 'Host unreachable. Network path to node failed.', recommended: 'Try another candidate node.' };
+  }
+
+  if (lower.includes('fetch failed') || lower.includes('network error')) {
+    return { code: 'network', hint: 'Network request failed. Node may not be reachable from this environment.', recommended: 'Try another candidate node.' };
+  }
+
+  return {};
+}
+
+async function attemptOnCandidates<T>(
+  candidates: Array<{ baseUrl: string; host: string; apiPort: number }>,
+  fn: (baseUrl: string) => Promise<T>
+): Promise<{ ok: true; value: T; used: { baseUrl: string; host: string; apiPort: number }; failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> } | { ok: false; failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> }> {
+  const failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+
+  for (const c of candidates) {
+    try {
+      const value = await fn(c.baseUrl);
+      return { ok: true, value, used: c, failures };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      failures.push({ baseUrl: c.baseUrl, error, hint: classifyRequestFailure(err) });
+    }
+  }
+
+  return { ok: false, failures };
+}
+
 type FluxDriveClientState = {
   baseUrl: string;
 };
@@ -251,14 +299,24 @@ function parseProgressOutput(raw: string): ParsedProgressOutput {
   return { raw: text, events, jsonObjects };
 }
 
+type RuntimeTargetCandidate = { host: string; apiPort: number; baseUrl: string };
+
+type RuntimeTargetCheck = {
+  baseUrl: string;
+  ok: boolean;
+  error?: string;
+  matchingContainers?: string[];
+};
+
 type RuntimeTargetResult = {
   ok: boolean;
   appname: string;
   baseUrl?: string;
   host?: string;
-  port?: number | null;
+  apiPort?: number;
   containerNames?: string[];
-  candidates: Array<{ host: string; port: number | null; baseUrl: string }>;
+  candidates: RuntimeTargetCandidate[];
+  checks: RuntimeTargetCheck[];
   error?: string;
 };
 
@@ -268,14 +326,37 @@ type ResolveContainerOptions = {
   requireRunning: boolean;
 };
 
-async function resolveContainerOnCorrectNode(opts: ResolveContainerOptions): Promise<{ baseUrl: string; containerName: string } | null> {
+type ResolvedContainer = {
+  baseUrl: string;
+  host: string;
+  apiPort: number;
+  containerNames: string[];
+  containerName: string;
+  candidates: Array<{ host: string; apiPort: number; baseUrl: string }>;
+};
+
+async function resolveContainerOnCorrectNode(opts: ResolveContainerOptions): Promise<ResolvedContainer | null> {
   const resolved = await resolveRuntimeTarget({ client: opts.client, appname: opts.appname, requireRunning: opts.requireRunning });
   if (!resolved.ok || typeof resolved.baseUrl !== 'string') return null;
-  const containerName = Array.isArray(resolved.containerNames) && typeof resolved.containerNames[0] === 'string'
-    ? resolved.containerNames[0]
-    : null;
+
+  const containerNames = Array.isArray(resolved.containerNames)
+    ? resolved.containerNames.map((x) => (typeof x === 'string' ? x.trim() : '')).filter((x) => x.length > 0)
+    : [];
+
+  const containerName = typeof containerNames[0] === 'string' ? containerNames[0] : null;
   if (!containerName) return null;
-  return { baseUrl: resolved.baseUrl, containerName };
+
+  const host = typeof resolved.host === 'string' ? resolved.host : '';
+  const apiPort = typeof resolved.apiPort === 'number' && Number.isFinite(resolved.apiPort) ? resolved.apiPort : 16127;
+
+  return {
+    baseUrl: resolved.baseUrl,
+    host,
+    apiPort,
+    containerNames,
+    containerName,
+    candidates: resolved.candidates,
+  };
 }
 
 async function resolveRuntimeTarget(opts: {
@@ -286,7 +367,13 @@ async function resolveRuntimeTarget(opts: {
 }): Promise<RuntimeTargetResult> {
   const locationRes = await opts.client.request(`/apps/location/${encodeURIComponent(opts.appname)}`);
   if (!locationRes.ok) {
-    return { ok: false, appname: opts.appname, candidates: [], error: extractFluxErrorMessage(locationRes.data) ?? 'Location lookup failed' };
+    return {
+      ok: false,
+      appname: opts.appname,
+      candidates: [],
+      checks: [],
+      error: extractFluxErrorMessage(locationRes.data) ?? 'Location lookup failed',
+    };
   }
 
   const locationsRaw = unwrapFluxEnvelope<unknown>(locationRes.data);
@@ -294,26 +381,41 @@ async function resolveRuntimeTarget(opts: {
     ? locationsRaw.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
     : [];
 
+  const defaultApiPort = 16127;
+
   const candidates = locations
     .map((x) => {
       const ip = x['ip'];
       const ipString = typeof ip === 'string' ? ip : '';
       const parsed = ipString ? parseHostPort(ipString) : { host: '', port: null };
-      const baseUrl = parsed.host ? `http://${parsed.host}:${parsed.port ?? 16127}` : null;
-      return { raw: ipString, host: parsed.host, port: parsed.port, baseUrl };
+
+      const apiPort = parsed.port ?? defaultApiPort;
+      const baseUrl = parsed.host ? `http://${parsed.host}:${apiPort}` : null;
+
+      return {
+        raw: ipString,
+        host: parsed.host,
+        apiPort,
+        baseUrl,
+      };
     })
-    .filter((x): x is { raw: string; host: string; port: number | null; baseUrl: string } => !!x.baseUrl);
+    .filter((x): x is { raw: string; host: string; apiPort: number; baseUrl: string } => !!x.baseUrl);
 
   const ordered = opts.preferHost
     ? [...candidates.filter((c) => c.host === opts.preferHost), ...candidates.filter((c) => c.host !== opts.preferHost)]
     : candidates;
+
+  const checks: RuntimeTargetCheck[] = [];
 
   for (const c of ordered) {
     const tmp = new FluxClient({ baseUrl: c.baseUrl, zelidauth: opts.client.getZelidauthValue() ?? undefined });
     tmp.setHttpDefaults({ ...opts.client.getHttpDefaults(), timeoutMs: Math.max(opts.client.getHttpDefaults().timeoutMs, 15000) });
 
     const runningRes = await tmp.request('/apps/listrunningapps');
-    if (!runningRes.ok) continue;
+    if (!runningRes.ok) {
+      checks.push({ baseUrl: c.baseUrl, ok: false, error: extractFluxErrorMessage(runningRes.data) ?? 'listrunningapps failed' });
+      continue;
+    }
 
     const runningRaw = unwrapFluxEnvelope<unknown>(runningRes.data);
     const running = Array.isArray(runningRaw)
@@ -326,6 +428,12 @@ async function resolveRuntimeTarget(opts: {
 
     const matching = containerNames.filter((n) => isContainerForApp(n, opts.appname));
 
+    checks.push({
+      baseUrl: c.baseUrl,
+      ok: true,
+      matchingContainers: matching,
+    });
+
     if (opts.requireRunning && matching.length === 0) continue;
 
     return {
@@ -333,16 +441,19 @@ async function resolveRuntimeTarget(opts: {
       appname: opts.appname,
       baseUrl: c.baseUrl,
       host: c.host,
-      port: c.port,
+      apiPort: c.apiPort,
       containerNames: matching,
-      candidates: ordered.map((x) => ({ host: x.host, port: x.port, baseUrl: x.baseUrl })),
+      candidates: ordered.map((x) => ({ host: x.host, apiPort: x.apiPort, baseUrl: x.baseUrl })),
+      checks,
     };
   }
 
   return {
     ok: false,
     appname: opts.appname,
-    candidates: ordered.map((x) => ({ host: x.host, port: x.port, baseUrl: x.baseUrl })),
+    apiPort: defaultApiPort,
+    candidates: ordered.map((x) => ({ host: x.host, apiPort: x.apiPort, baseUrl: x.baseUrl })),
+    checks,
     error: opts.requireRunning
       ? 'No candidate node reported the app as running. Try requireRunning=false to just get baseUrl candidates.'
       : 'No location candidates available.',
@@ -2134,14 +2245,30 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(await fluxDriveRequest('/removeCheckpoint', { method: 'POST', body: { appname, timestamp } }));
       }
 
-      case 'flux_apps_resolve_runtime_target': {
-        const appname = mustBeString(args['appname'], 'appname');
-        const preferHost = asOptionalString(args['preferHost']);
-        const requireRunning = asOptionalBoolean(args['requireRunning']) ?? true;
+       case 'flux_apps_resolve_runtime_target': {
+         const appname = mustBeString(args['appname'], 'appname');
+         const preferHost = asOptionalString(args['preferHost']);
+         const requireRunning = asOptionalBoolean(args['requireRunning']) ?? true;
+ 
+         const out = await resolveRuntimeTarget({ client, appname, preferHost, requireRunning });
 
-        const out = await resolveRuntimeTarget({ client, appname, preferHost, requireRunning });
-        return jsonResult(out, { isError: out.ok !== true, structuredContent: out });
-      }
+         const candidateHosts = out.candidates.map((c) => c.host);
+         const hasDuplicates = new Set(candidateHosts).size !== candidateHosts.length;
+
+         const guidance = {
+           note: 'baseUrl points to the Flux node API. If /apps/location includes a port, that port is treated as the node API port (UPnP-style); otherwise defaults to :16127.',
+           warnings: [
+             hasDuplicates
+               ? 'Multiple candidates share the same host with different ports. This is expected on UPnP nodes: host:port identifies the node.'
+               : null,
+             out.ok !== true
+               ? 'Location broadcasts can be stale; checks[] shows which candidates actually reported the container running.'
+               : null,
+           ].filter((x): x is string => typeof x === 'string' && x.length > 0),
+         };
+
+         return jsonResult({ ...out, guidance }, { isError: out.ok !== true, structuredContent: { ...out, guidance } });
+       }
 
       case 'flux_ioutils_file_upload': {
         requireConfirm(args, 'ioutils/fileupload');
@@ -2223,10 +2350,14 @@ export async function callTool(name: string, rawArgs: unknown) {
         }
 
         const phraseTool = useEmergencyPhrase ? 'flux_get_emergency_phrase' : 'flux_get_login_phrase';
-        steps.push({ tool: phraseTool, arguments: {}, note: 'Fetch a login phrase to sign with your ZelID.' });
+        steps.push({
+          tool: phraseTool,
+          arguments: {},
+          note: 'Fetch a login phrase to sign with your ZelID (this is a Bitcoin-format address like 1..., 3..., or bc1...; not a Flux t1/t3 address).',
+        });
         steps.push({
           tool: 'USER_ACTION',
-          note: 'Sign the returned login phrase with your ZelID wallet/tooling to produce a signature.',
+          note: 'Sign the returned login phrase with your ZelID wallet/tooling to produce a signature (distinct from app registration signatures).',
         });
         steps.push({
           tool: 'flux_verify_login',
@@ -2312,8 +2443,19 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(out, { structuredContent: out });
       }
 
-      case 'flux_logs_tail': {
-        const appname = mustBeString(args['appname'], 'appname');
+       case 'flux_logs_tail': {
+         const appname = mustBeString(args['appname'], 'appname');
+
+         const z = client.getZelidauthSummary();
+         if (!z.present) {
+           const out = {
+             ok: false,
+             appname,
+             error: 'Authentication required (zelidauth not set).',
+             nextActions: [{ tool: 'flux_auth_flow', arguments: {} }],
+           };
+           return jsonResult(out, { isError: true, structuredContent: out });
+         }
 
         const linesRaw = asOptionalNumber(args['lines']);
         const linesValue = linesRaw === undefined ? 200 : Math.floor(linesRaw);
@@ -2335,29 +2477,104 @@ export async function callTool(name: string, rawArgs: unknown) {
           ? `/apps/applogpolling/${encodeURIComponent(appname)}/${lines}/${encodeURIComponent(since)}`
           : `/apps/applogpolling/${encodeURIComponent(appname)}/${lines}`;
 
-        const res = await client.request(path);
+        let res = await client.request(path);
+
+        const knownError = extractFluxErrorMessage(res.data);
+        const looksLikeWrongNode =
+          knownError === 'Cannot read properties of undefined (reading \'Id\')' ||
+          (typeof knownError === 'string' && knownError.includes("reading 'Id'"));
+
+         if ((!res.ok && looksLikeWrongNode) || (!res.ok && res.status === 503)) {
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            const attempt = await attemptOnCandidates(
+              resolved.candidates.map((c) => ({ baseUrl: c.baseUrl, host: c.host, apiPort: c.apiPort })),
+              async (baseUrl) => {
+                client.setBaseUrl(baseUrl);
+
+                const targets = [resolved.containerName, ...resolved.containerNames.filter((n) => n !== resolved.containerName)];
+
+                for (const t of targets) {
+                  const fallbackPath = since
+                    ? `/apps/applogpolling/${encodeURIComponent(t)}/${lines}/${encodeURIComponent(since)}`
+                    : `/apps/applogpolling/${encodeURIComponent(t)}/${lines}`;
+
+                  const r = await client.request(fallbackPath);
+                  if (r.ok && isFluxSuccess(r.data)) return r;
+                }
+
+                return client.request(`/apps/applogpolling/${encodeURIComponent(resolved.containerName)}/${lines}`);
+              }
+            );
+
+            if (attempt.ok) {
+              res = attempt.value;
+            }
+          }
+        }
+
         if (!res.ok) {
-          const out = { ok: false, appname, error: res.data };
+          const out = { ok: false, appname, status: res.status, error: extractFluxErrorMessage(res.data) ?? res.data };
           return jsonResult(out, { isError: true, structuredContent: out });
         }
 
         const payload = unwrapFluxEnvelope<unknown>(res.data);
         const obj = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined;
+
+        if (obj && typeof obj.name === 'string' && obj.name.toLowerCase() === 'unauthorized') {
+          const out = {
+            ok: false,
+            appname,
+            status: 401,
+            error: typeof obj.message === 'string' ? obj.message : 'Unauthorized',
+            nextActions: [{ tool: 'flux_auth_flow', arguments: {} }],
+          };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
+
         const logsValue = obj?.logs ?? obj?.data ?? payload;
 
-        let text = '';
-        if (typeof logsValue === 'string') text = logsValue;
-        else if (Array.isArray(logsValue) && logsValue.every((x) => typeof x === 'string')) text = (logsValue as string[]).join('\n');
-        else text = JSON.stringify(payload, null, 2);
+        let fullText = '';
+        if (typeof logsValue === 'string') fullText = logsValue;
+        else if (Array.isArray(logsValue) && logsValue.every((x) => typeof x === 'string')) fullText = (logsValue as string[]).join('\n');
+        else fullText = JSON.stringify(payload, null, 2);
+
+        const fullLines = fullText.split(/\r?\n/).filter((l) => l.length);
 
         let truncated = false;
-        if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+        let text = fullText;
+        if (Buffer.byteLength(fullText, 'utf8') > maxBytes) {
           truncated = true;
-          const buffer = Buffer.from(text, 'utf8');
+          const buffer = Buffer.from(fullText, 'utf8');
           text = buffer.subarray(buffer.length - maxBytes).toString('utf8');
         }
 
         const linesOut = text.split(/\r?\n/).filter((l) => l.length);
+
+        const looksLikeJsonError =
+          linesOut.length > 0 &&
+          linesOut.length <= 10 &&
+          (() => {
+            try {
+              const parsed: unknown = JSON.parse(linesOut.join('\n'));
+              if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+              const msg = extractFluxErrorMessage(parsed);
+              return typeof msg === 'string' && msg.length > 0;
+            } catch {
+              return false;
+            }
+          })();
+
+        if (looksLikeJsonError) {
+          const out = {
+            ok: false,
+            appname,
+            status: res.status,
+            error: extractFluxErrorMessage(res.data) ?? 'Flux log endpoint returned an error.',
+            nextActions: [{ tool: 'flux_apps_resolve_runtime_target', arguments: { appname } }],
+          };
+          return jsonResult(out, { isError: true, structuredContent: out });
+        }
 
         const nextSince =
           typeof obj?.sinceTimestamp === 'string'
@@ -2377,14 +2594,14 @@ export async function callTool(name: string, rawArgs: unknown) {
           next: nextSince ? { since: nextSince } : undefined,
         };
 
-        const logsText = linesOut.join('\n');
-        const link = resourceStore.putText({
-          kind: 'logs',
-          name: `${appname} logs`,
-          description: 'Full log payload from flux_logs_tail',
-          mimeType: 'text/plain',
-          text: logsText,
-        });
+         const logsText = fullLines.join('\n');
+         const link = resourceStore.putText({
+           kind: 'logs',
+           name: `${appname} logs`,
+           description: 'Full log payload from flux_logs_tail',
+           mimeType: 'text/plain',
+           text: logsText,
+         });
 
          const preview = linesOut.slice(-Math.min(linesOut.length, 50));
 
@@ -2415,8 +2632,19 @@ export async function callTool(name: string, rawArgs: unknown) {
          };
       }
 
-      case 'flux_app_health_report': {
-        const appname = mustBeString(args['appname'], 'appname');
+       case 'flux_app_health_report': {
+         const appname = mustBeString(args['appname'], 'appname');
+
+         const z = client.getZelidauthSummary();
+         if (!z.present) {
+           const out = {
+             ok: false,
+             appname,
+             error: 'Authentication required (zelidauth not set).',
+             nextActions: [{ tool: 'flux_auth_flow', arguments: {} }],
+           };
+           return jsonResult(out, { isError: true, structuredContent: out });
+         }
         const logsLinesRaw = asOptionalNumber(args['logsLines']);
         const logsLinesValue = logsLinesRaw === undefined ? 100 : Math.floor(logsLinesRaw);
         const logsLines = Math.min(300, Math.max(1, logsLinesValue));
@@ -5151,36 +5379,69 @@ export async function callTool(name: string, rawArgs: unknown) {
         const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
         const attemptedBaseUrl = client.getBaseUrl() ?? null;
 
-        if (resolved) client.setBaseUrl(resolved.baseUrl);
-        const target = resolved ? resolved.containerName : appname;
+        const targets = resolved
+          ? [resolved.containerName, ...resolved.containerNames.filter((n) => n !== resolved.containerName)]
+          : [appname, `fluxserver_${appname}`];
 
-        let res = await client.request('/apps/applog', { query: { appname: target, lines } });
-        let knownError = extractFluxErrorMessage(res.data);
+        const attempt = resolved
+          ? await attemptOnCandidates(
+              resolved.candidates.map((c) => ({ baseUrl: c.baseUrl, host: c.host, apiPort: c.apiPort })),
+              async (baseUrl) => {
+                client.setBaseUrl(baseUrl);
 
-        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
-          const fallback = `fluxserver_${appname}`;
-          if (fallback !== target) {
-            res = await client.request('/apps/applog', { query: { appname: fallback, lines } });
-            knownError = extractFluxErrorMessage(res.data);
+                for (const t of targets) {
+                  const r = await client.request('/apps/applog', { query: { appname: t, lines } });
+                  if (r.ok && isFluxSuccess(r.data)) return { res: r, target: t };
+                }
+
+                return { res: await client.request('/apps/applog', { query: { appname: targets[0], lines } }), target: targets[0] };
+              }
+            )
+          : null;
+
+        let res: FluxRequestResult;
+        let target: string;
+
+        if (resolved && attempt && attempt.ok) {
+          res = attempt.value.res;
+          target = attempt.value.target;
+        } else {
+          res = await client.request('/apps/applog', { query: { appname: appname, lines } });
+          target = appname;
+          if (!res.ok) {
+            const fallback = `fluxserver_${appname}`;
+            const r2 = await client.request('/apps/applog', { query: { appname: fallback, lines } });
+            if (r2.ok) {
+              res = r2;
+              target = fallback;
+            }
           }
         }
 
-        const link = resourceStore.putJson({
-          kind: 'apps/applog',
-          name: `${appname} applog`,
-          description: 'Raw /apps/applog response',
-          value: res,
-        });
+        let knownError = extractFluxErrorMessage(res.data);
+
+         const link = resourceStore.putJson({
+           kind: 'apps/applog',
+           name: `${appname} applog`,
+           description: 'Raw /apps/applog response',
+           value: res,
+         });
+
+        const payload = unwrapFluxEnvelope<unknown>(res.data);
+        const logText = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+        const logLines = logText.split(/\r?\n/).filter((l) => l.length);
+        const preview = logLines.slice(-Math.min(logLines.length, 50));
 
         const summary = {
           ok: res.ok,
           status: res.status,
           appname,
           resolved: resolved
-            ? { baseUrl: resolved.baseUrl, containerName: resolved.containerName, previousBaseUrl: attemptedBaseUrl }
+            ? { baseUrl: resolved.baseUrl, host: resolved.host, apiPort: resolved.apiPort, containerName: resolved.containerName, previousBaseUrl: attemptedBaseUrl }
             : null,
           target,
           lines,
+          preview: res.ok ? preview : null,
           error: res.ok ? null : knownError,
           resourceUri: link.uri,
           nextActions: res.ok

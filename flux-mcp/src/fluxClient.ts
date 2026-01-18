@@ -416,7 +416,24 @@ export class FluxClient {
       } catch (err: unknown) {
         clearTimeout(timeout);
 
-        if (!canRetry || attempt >= maxAttempts) throw err;
+        if (!canRetry || attempt >= maxAttempts) {
+          const message = err instanceof Error ? err.message : String(err);
+          const name = err instanceof Error ? err.name : 'Error';
+          const hint =
+            name === 'AbortError'
+              ? ' (timeout)'
+              : message.toLowerCase().includes('econnrefused')
+                ? ' (connection refused)'
+                : message.toLowerCase().includes('ehostunreach')
+                  ? ' (host unreachable)'
+                  : message.toLowerCase().includes('enotfound')
+                    ? ' (host not found)'
+                    : message.toLowerCase().includes('fetch failed')
+                      ? ' (network error)'
+                      : '';
+
+          throw new Error(`${name}: ${message}${hint}`);
+        }
 
         const message = err instanceof Error ? err.message : String(err);
         const retryable =
