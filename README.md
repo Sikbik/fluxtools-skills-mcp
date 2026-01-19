@@ -204,6 +204,8 @@ Many tools return `resource_link` blocks to keep chat output small.
   - `messageToSignBase64` (safe transport)
 - To avoid terminal wrapping, use:
   - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
+- To open Zelcore directly:
+  - `flux_build_zelcore_sign_link { "message": "<messageToSignRaw>" }`
 
 ### 5c) Renewals
 
@@ -296,6 +298,9 @@ Enterprise-key flow (Arcane nodes):
 Shortcut: `flux_enterprise_preflight { "appname": "<app>" }` does steps 1–4 and can optionally verify decrypt.
 
 Note: the response `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
+
+You can decrypt locally with:
+- `flux_enterprise_decrypt { "enterprise": "<base64>", "aesKeyBase64": "<base64>" }`
 
 ## Endpoint inventory (generated)
 

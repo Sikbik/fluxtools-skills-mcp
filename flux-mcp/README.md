@@ -244,6 +244,8 @@ Manual path:
 Shortcut: `flux_enterprise_preflight { "appname": "<app>" }` does steps 1–4 and can optionally verify decrypt.
 
 Note: the `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
+You can decrypt locally with:
+- `flux_enterprise_decrypt { "enterprise": "<base64>", "aesKeyBase64": "<base64>" }`
 
 ## Signing tips
 
@@ -253,6 +255,8 @@ Note: the `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyB
   - `messageToSignBase64` (safe transport)
 - To avoid terminal wrapping, use:
   - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
+- To open Zelcore directly:
+  - `flux_build_zelcore_sign_link { "message": "<messageToSignRaw>" }`
 
 ## Resources + large payloads
 
@@ -280,6 +284,8 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
 - `flux_enterprise_key_generate` — create enterprise-key header value + AES key from a public key.
 - `flux_enterprise_preflight` — fetch public key + generate enterprise-key + (optional) decrypt check.
 - `flux_write_message_to_sign` — write raw messageToSign to a file (avoid terminal wrapping).
+- `flux_build_zelcore_sign_link` — build a Zelcore signing deeplink (optionally with Flux Storage for long messages).
+- `flux_enterprise_decrypt` — decrypt enterprise payload using aesKeyBase64.
 - `flux_resource_read` — read resource URI content.
 - `flux_resource_prune` — prune/clear dynamic resources.
 

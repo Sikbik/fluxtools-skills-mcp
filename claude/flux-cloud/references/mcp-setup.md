@@ -173,6 +173,8 @@ FLUX_API_BASE_URL = "https://api.runonflux.io"
   - If you need to generate it: `flux_apps_get_public_key` + `flux_enterprise_key_generate`.
   - Shortcut: `flux_enterprise_preflight { "appname": "<app>" }`
   - Signing tip: use `messageToSignRaw` and `messageToSignSha256`, or write the message to a file with `flux_write_message_to_sign`.
+  - Zelcore link: `flux_build_zelcore_sign_link { "message": "<messageToSignRaw>" }`
+  - Enterprise decrypt: `flux_enterprise_decrypt { "enterprise": "<base64>", "aesKeyBase64": "<base64>" }`
 
 ## 4) Working with resource links
 

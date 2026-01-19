@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
-import { createPublicKey, publicEncrypt, randomBytes, constants, createHash } from 'node:crypto';
+import { createPublicKey, publicEncrypt, randomBytes, constants, createHash, createDecipheriv } from 'node:crypto';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -634,6 +634,43 @@ function buildMessageToSignDetails(messageToSign: string) {
     messageToSignJsonEscapedNoQuotes: jsonEscapedNoQuotes,
     messageToSignBytes: Buffer.byteLength(messageToSign, 'utf8'),
   };
+}
+
+function decryptEnterprisePayload(enterpriseBase64: string, aesKeyBase64: string): string {
+  const payload = Buffer.from(enterpriseBase64, 'base64');
+  if (payload.length < 12 + 16) {
+    throw new Error('enterprise payload is too short (expected nonce + ciphertext + tag).');
+  }
+
+  const nonce = payload.subarray(0, 12);
+  const tag = payload.subarray(payload.length - 16);
+  const ciphertext = payload.subarray(12, payload.length - 16);
+
+  const key = Buffer.from(aesKeyBase64, 'base64');
+  if (key.length !== 32) {
+    throw new Error('aesKeyBase64 must decode to 32 bytes for AES-256-GCM.');
+  }
+
+  const decipher = createDecipheriv('aes-256-gcm', key, nonce);
+  decipher.setAuthTag(tag);
+
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return decrypted.toString('utf8');
+}
+
+async function uploadToFluxStorage(message: string): Promise<string> {
+  const publicid = Math.floor(Math.random() * 999999999999999).toString();
+  const res = await fetch('https://storage.runonflux.io/v1/public', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ publicid, public: message }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Flux Storage upload failed (status ${res.status}).`);
+  }
+
+  return `https://storage.runonflux.io/v1/public/${publicid}`;
 }
 
 function buildSignedPayload(opts: {
@@ -1368,6 +1405,19 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_enterprise_decrypt',
+    description: 'Decrypt enterprise payload using AES-256-GCM (nonce+ciphertext+tag).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        enterprise: { type: 'string', description: 'Base64 enterprise payload from appspecifications.' },
+        aesKeyBase64: { type: 'string', description: 'Base64 AES-256 key returned by flux_enterprise_key_generate.' },
+        parseJson: { type: 'boolean', description: 'If true (default), parse decrypted JSON.', default: true },
+      },
+      required: ['enterprise', 'aesKeyBase64'],
+    },
+  },
+  {
     name: 'flux_clear_zelidauth',
     description: 'Clear the stored zelidauth header value for this MCP session.',
     inputSchema: { type: 'object', properties: {} },
@@ -1438,6 +1488,31 @@ export const tools: Tool[] = [
         timestamp: { type: 'number' },
       },
       required: ['type', 'version', 'spec', 'timestamp'],
+    },
+  },
+  {
+    name: 'flux_build_zelcore_sign_link',
+    description: 'Build a Zelcore deeplink for signing a message (zel:?action=sign&message=...).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        icon: {
+          type: 'string',
+          description: 'Optional icon URL (default ZelID icon).',
+        },
+        callback: {
+          type: 'string',
+          description: 'Optional callback URL (will be url-encoded).',
+        },
+        useFluxStorage: {
+          type: 'boolean',
+          description: 'If true, upload long messages to Flux Storage and sign FLUX_URL=... (requires confirm=true).',
+          default: false,
+        },
+        confirm: { type: 'boolean' },
+      },
+      required: ['message'],
     },
   },
   {
@@ -3338,6 +3413,59 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(summary, { structuredContent: summary, isError: verifyDecrypt ? !decryptOk : false });
       }
 
+      case 'flux_enterprise_decrypt': {
+        const enterprise = mustBeString(args['enterprise'], 'enterprise');
+        const aesKeyBase64 = mustBeString(args['aesKeyBase64'], 'aesKeyBase64');
+        const parseJson = (asOptionalBoolean(args['parseJson']) ?? true) === true;
+
+        const decrypted = decryptEnterprisePayload(enterprise, aesKeyBase64);
+        let parsed: unknown = null;
+        let parsedOk = false;
+        if (parseJson) {
+          try {
+            parsed = JSON.parse(decrypted);
+            parsedOk = true;
+          } catch (error) {
+            parsedOk = false;
+          }
+        }
+
+        const textLink = resourceStore.putText({
+          kind: 'enterprise/decrypted',
+          name: 'enterprise decrypted payload',
+          description: 'Decrypted enterprise payload (raw UTF-8)',
+          mimeType: 'text/plain',
+          text: decrypted,
+        });
+
+        let jsonLink: ReturnType<typeof resourceStore.putJson> | null = null;
+        if (parsedOk) {
+          jsonLink = resourceStore.putJson({
+            kind: 'enterprise/decrypted/json',
+            name: 'enterprise decrypted JSON',
+            description: 'Decrypted enterprise payload (parsed JSON)',
+            value: parsed,
+          });
+        }
+
+        const summary = {
+          ok: true,
+          parsedOk,
+          textResourceUri: textLink.uri,
+          jsonResourceUri: jsonLink?.uri ?? null,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...textLink },
+            ...(jsonLink ? [{ type: 'resource_link', ...jsonLink }] : []),
+          ],
+          structuredContent: summary,
+          isError: false,
+        };
+      }
+
       case 'flux_clear_enterprise_key':
         client.clearEnterpriseKey();
         return jsonResult({ ok: true, enterpriseKey: client.getEnterpriseKeySummary() });
@@ -3416,6 +3544,42 @@ export async function callTool(name: string, rawArgs: unknown) {
           structuredContent: out,
           isError: false,
         };
+      }
+
+      case 'flux_build_zelcore_sign_link': {
+        const message = mustBeString(args['message'], 'message');
+        const iconRaw = asOptionalString(args['icon']);
+        const callbackRaw = asOptionalString(args['callback']);
+        const useFluxStorage = (asOptionalBoolean(args['useFluxStorage']) ?? false) === true;
+        const icon = iconRaw ?? 'https://raw.githubusercontent.com/runonflux/flux/master/zelID.svg';
+
+        let messageToSign = message;
+        let storageUrl: string | null = null;
+        let warning: string | null = null;
+
+        if (message.length > 1800) {
+          if (useFluxStorage) {
+            requireConfirm(args, 'upload message to Flux Storage');
+            storageUrl = await uploadToFluxStorage(message);
+            messageToSign = `FLUX_URL=${storageUrl}`;
+          } else {
+            warning = 'Message length > 1800 chars. Zelcore may reject it. Re-run with useFluxStorage=true (confirm required) to upload and sign a FLUX_URL.';
+          }
+        }
+
+        const callback = callbackRaw ? `&callback=${encodeURIComponent(callbackRaw)}` : '';
+        const link = `zel:?action=sign&message=${encodeURIComponent(messageToSign)}&icon=${encodeURIComponent(icon)}${callback}`;
+
+        const out = {
+          ok: true,
+          link,
+          messageLength: message.length,
+          usedFluxStorage: Boolean(storageUrl),
+          storageUrl,
+          warning,
+        };
+
+        return jsonResult(out, { structuredContent: out });
       }
 
       case 'flux_write_message_to_sign': {
