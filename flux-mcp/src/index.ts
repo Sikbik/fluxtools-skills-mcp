@@ -868,6 +868,7 @@ const baseUrl = envBaseUrl && envBaseUrl.trim() ? envBaseUrl : 'https://api.runo
 const client = new FluxClient({
   baseUrl,
   zelidauth: process.env.FLUX_ZELIDAUTH,
+  enterpriseKey: process.env.FLUX_ENTERPRISE_KEY,
 });
 
 const resourceStore = new ResourceStore({
@@ -1117,8 +1118,27 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_set_enterprise_key',
+    description: 'Set the enterpriseKey header value for this MCP session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        enterpriseKey: {
+          type: 'string',
+          description: 'Enterprise key required by some enterprise renewal endpoints.',
+        },
+      },
+      required: ['enterpriseKey'],
+    },
+  },
+  {
     name: 'flux_clear_zelidauth',
     description: 'Clear the stored zelidauth header value for this MCP session.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'flux_clear_enterprise_key',
+    description: 'Clear the stored enterpriseKey header value for this MCP session.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -1520,6 +1540,14 @@ export const tools: Tool[] = [
         useStoredZelidauth: {
           type: 'boolean',
           description: 'If false, do not send stored zelidauth header (default true).',
+        },
+        enterpriseKey: {
+          type: 'string',
+          description: 'Override enterpriseKey for this request (optional). Uses stored value by default.',
+        },
+        useStoredEnterpriseKey: {
+          type: 'boolean',
+          description: 'If false, do not send stored enterpriseKey header (default true).',
         },
         timeoutMs: {
           type: 'number',
@@ -2156,6 +2184,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const out = {
           baseUrl: client.getBaseUrl(),
           zelidauth: client.getZelidauthSummary(),
+          enterpriseKey: client.getEnterpriseKeySummary(),
           httpDefaults: client.getHttpDefaults(),
           fluxDriveMwsBaseUrl: fluxDriveClient.baseUrl,
           endpointsInventory: inventory
@@ -2853,6 +2882,16 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_clear_zelidauth':
         client.clearZelidauth();
         return jsonResult({ ok: true, zelidauth: client.getZelidauthSummary() });
+
+      case 'flux_set_enterprise_key': {
+        const value = mustBeString(args['enterpriseKey'], 'enterpriseKey');
+        client.setEnterpriseKey(value);
+        return jsonResult({ ok: true, enterpriseKey: client.getEnterpriseKeySummary() });
+      }
+
+      case 'flux_clear_enterprise_key':
+        client.clearEnterpriseKey();
+        return jsonResult({ ok: true, enterpriseKey: client.getEnterpriseKeySummary() });
 
       case 'flux_get_login_phrase':
         return jsonResult(await client.request('/id/loginphrase'));
@@ -3660,6 +3699,8 @@ export async function callTool(name: string, rawArgs: unknown) {
         const body = args['body'];
         const zelidauth = args['zelidauth'];
         const useStoredZelidauth = asOptionalBoolean(args['useStoredZelidauth']);
+        const enterpriseKey = args['enterpriseKey'];
+        const useStoredEnterpriseKey = asOptionalBoolean(args['useStoredEnterpriseKey']);
         const timeoutMs = asOptionalNumber(args['timeoutMs']);
         const allowMutation = (asOptionalBoolean(args['allowMutation']) ?? false) === true;
         const responseType = asResponseType(args['responseType']);
@@ -3680,6 +3721,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             body,
             zelidauth,
             useStoredZelidauth,
+            enterpriseKey,
+            useStoredEnterpriseKey,
             timeoutMs,
             allowMutation,
             responseType,

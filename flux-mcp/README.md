@@ -191,6 +191,7 @@ Environment variables:
 - `FLUX_API_BASE_URL` (default: `https://api.runonflux.io`)
   - direct node API: `http://<node-ip>:16127`
 - `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
+- `FLUX_ENTERPRISE_KEY` (optional): enterpriseKey header for enterprise renewals
 - `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
 - `FLUX_ENDPOINTS_PATH` (optional): override the bundled endpoints inventory path
 
@@ -240,6 +241,7 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
 - `flux_check_privilege` — confirm privilege level.
 - `flux_build_zelidauth` — create header JSON string.
 - `flux_set_zelidauth` / `flux_clear_zelidauth` — manage stored auth.
+- `flux_set_enterprise_key` / `flux_clear_enterprise_key` — manage enterpriseKey header for renewals.
 - `flux_resource_read` — read resource URI content.
 - `flux_resource_prune` — prune/clear dynamic resources.
 
@@ -256,6 +258,7 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
   - `query`: object → query string.
   - `body`: JSON body for POST.
   - `allowMutation=true`: required for mutating calls.
+  - `enterpriseKey`: override enterpriseKey header for this request (optional).
   - `responseType=base64`: for downloads (returns base64 + headers).
 
 ### Node

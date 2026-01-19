@@ -265,10 +265,12 @@ Environment variables:
 - `FLUX_API_BASE_URL` (default): `https://api.runonflux.io`
   - For a direct node: `http://<node-ip>:16127`
 - `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
+- `FLUX_ENTERPRISE_KEY` (optional): enterpriseKey header for enterprise renewals
 - `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
 - `FLUX_ENDPOINTS_PATH` (optional): override bundled endpoints inventory path
 
 You can also set base URL and `zelidauth` at runtime via tools.
+For enterprise renewals, set the header via `FLUX_ENTERPRISE_KEY` or `flux_set_enterprise_key`.
 
 ## Endpoint inventory (generated)
 

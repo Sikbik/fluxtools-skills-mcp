@@ -152,11 +152,13 @@ export type FluxHttpDefaults = {
 export class FluxClient {
   private baseUrl: string | null;
   private zelidauth: ZelidauthValue | null;
+  private enterpriseKey: string | null;
   private httpDefaults: FluxHttpDefaults;
 
-  constructor(opts?: { baseUrl?: string; zelidauth?: unknown }) {
+  constructor(opts?: { baseUrl?: string; zelidauth?: unknown; enterpriseKey?: unknown }) {
     this.baseUrl = opts?.baseUrl ? normalizeBaseUrl(opts.baseUrl) : null;
     this.zelidauth = null;
+    this.enterpriseKey = null;
 
     const timeoutMs = Number(process.env.FLUX_HTTP_TIMEOUT_MS ?? '30000');
     this.httpDefaults = {
@@ -166,6 +168,7 @@ export class FluxClient {
     };
 
     if (opts?.zelidauth !== undefined) this.setZelidauth(opts.zelidauth);
+    if (opts?.enterpriseKey !== undefined) this.setEnterpriseKey(opts.enterpriseKey);
   }
 
   setBaseUrl(url: string) {
@@ -241,6 +244,26 @@ export class FluxClient {
     return { present: true };
   }
 
+  clearEnterpriseKey() {
+    this.enterpriseKey = null;
+  }
+
+  getEnterpriseKeyValue(): string | null {
+    return this.enterpriseKey;
+  }
+
+  setEnterpriseKey(value: unknown) {
+    if (typeof value === 'string' && value.trim()) {
+      this.enterpriseKey = value.trim();
+      return;
+    }
+    throw new Error('enterpriseKey must be a non-empty string');
+  }
+
+  getEnterpriseKeySummary(): { present: boolean } {
+    return this.enterpriseKey ? { present: true } : { present: false };
+  }
+
   async request(
     pathname: string,
     opts?: {
@@ -250,6 +273,8 @@ export class FluxClient {
       bodyType?: 'json' | 'form' | 'multipart' | 'fluxos';
       zelidauth?: unknown;
       useStoredZelidauth?: boolean;
+      enterpriseKey?: unknown;
+      useStoredEnterpriseKey?: boolean;
       timeoutMs?: number;
       allowMutation?: boolean;
       responseType?: FluxResponseType;
@@ -292,6 +317,18 @@ export class FluxClient {
       else throw new Error('zelidauth override must be a non-empty string or object');
     } else if (useStoredZelidauth && this.zelidauth) {
       headers.zelidauth = this.zelidauth;
+    }
+
+    const useStoredEnterpriseKey = opts?.useStoredEnterpriseKey !== false;
+
+    if (opts?.enterpriseKey !== undefined) {
+      if (typeof opts.enterpriseKey === 'string' && opts.enterpriseKey.trim()) {
+        headers.enterpriseKey = opts.enterpriseKey.trim();
+      } else {
+        throw new Error('enterpriseKey override must be a non-empty string');
+      }
+    } else if (useStoredEnterpriseKey && this.enterpriseKey) {
+      headers.enterpriseKey = this.enterpriseKey;
     }
 
     const bodyType = opts?.bodyType ?? (prefersFormBody(pathname) ? 'fluxos' : 'json');
