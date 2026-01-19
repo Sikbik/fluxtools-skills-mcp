@@ -2335,14 +2335,14 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         if (gatewayBaseUrl) {
           steps.push({
-            tool: 'flux_set_base_url',
-            arguments: { baseUrl: gatewayBaseUrl },
-            note: 'Use the public gateway as a starting point.',
+            tool: 'flux_resolve_gateway_node',
+            arguments: { gatewayBaseUrl },
+            note: 'Resolve the gateway to a direct node base URL.',
           });
           steps.push({
-            tool: 'flux_set_base_url_from_gateway',
-            arguments: { gatewayBaseUrl },
-            note: 'Resolve the gateway to a direct node and pin baseUrl there for the rest of this auth flow (prevents round-robin loginphrase/verify mismatch).',
+            tool: 'flux_set_base_url',
+            arguments: { baseUrl: '<DIRECT_NODE_BASE_URL>' },
+            note: 'Set baseUrl to the recommendedBaseUrl from the previous step (or use flux_set_base_url_from_gateway as a shortcut).',
           });
         } else {
           steps.push({

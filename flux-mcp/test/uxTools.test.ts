@@ -22,6 +22,7 @@ function json(res: ServerResponse, status: number, body: unknown) {
 
 describe.sequential('UX tools', () => {
   const seen: Seen[] = [];
+  let serverPort = 0;
 
   const server = createServer(async (req, res) => {
     const url = req.url ?? '';
@@ -92,7 +93,8 @@ describe.sequential('UX tools', () => {
     }
 
     if (url.startsWith('/apps/location/myapp')) {
-      return json(res, 200, { status: 'success', data: [{ ip: '1.2.3.4' }] });
+      const host = serverPort ? `127.0.0.1:${serverPort}` : '127.0.0.1';
+      return json(res, 200, { status: 'success', data: [{ ip: host }] });
     }
 
     if (url === '/apps/listrunningapps') {
@@ -109,10 +111,16 @@ describe.sequential('UX tools', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Failed to bind test server');
-    baseUrl = `http://127.0.0.1:${address.port}`;
+    serverPort = address.port;
+    baseUrl = `http://127.0.0.1:${serverPort}`;
 
     const r = await callTool('flux_set_base_url', { baseUrl });
     expect(r.isError).not.toBe(true);
+
+    const auth = await callTool('flux_set_zelidauth', {
+      zelidauth: { zelid: 'zelid', signature: 'sig', loginPhrase: 'phrase' },
+    });
+    expect(auth.isError).not.toBe(true);
   });
 
   afterAll(async () => {

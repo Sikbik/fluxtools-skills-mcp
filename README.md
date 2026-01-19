@@ -9,8 +9,6 @@ Tools and skills for operating Flux Cloud / FluxOS nodes and apps via MCP or Cod
 | `flux-mcp/` | MCP server (Node.js 20+, ESM). The main execution layer. |
 | `claude/flux-cloud/` | Claude Code skill wrapper and references. |
 | `codex/flux-cloud/` | Codex skill, references, and helper scripts. |
-| `flux/` | Upstream Flux repo (reference copy). |
-| `fluxos-frontend/` | Upstream Flux Gravity frontend (reference copy). |
 | `scripts/` | Skill packaging helper. |
 | `dist/` | Generated `.skill` artifacts (do not edit). |
 
@@ -239,7 +237,7 @@ You can also set base URL and `zelidauth` at runtime via tools.
 ## Endpoint inventory (generated)
 
 Source of truth in the public Flux repo:
-- `flux/ZelBack/src/routes.js`
+- `https://github.com/RunOnFlux/flux/blob/master/ZelBack/src/routes.js`
 
 Generated outputs:
 - `codex/flux-cloud/references/endpoints-inventory.md`
