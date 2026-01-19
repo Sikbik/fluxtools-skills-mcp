@@ -10,7 +10,6 @@ Tools and skills for operating Flux Cloud / FluxOS nodes and apps via MCP or Cod
 | `claude/flux-cloud/` | Claude Code skill wrapper and references. |
 | `codex/flux-cloud/` | Codex skill, references, and helper scripts. |
 | `scripts/` | Skill packaging helper. |
-| `dist/` | Generated `.skill` artifacts (do not edit). |
 
 ## What you can do
 
