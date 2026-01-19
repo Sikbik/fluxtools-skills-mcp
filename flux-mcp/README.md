@@ -156,6 +156,8 @@ In the Codex TUI, use:
 /mcp
 ```
 
+Note: `/mcp` is list-only in the Codex TUI. To add or edit servers, use `codex mcp` or edit `~/.codex/config.toml`.
+
 Option B: edit `~/.codex/config.toml`:
 
 ```toml
