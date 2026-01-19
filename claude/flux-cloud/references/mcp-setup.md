@@ -1,4 +1,4 @@
-# Flux MCP Setup (Claude Code / Claude Desktop / OpenCode)
+# Flux MCP Setup (Claude Code / Claude Desktop / Gemini CLI)
 
 This repository includes an MCP server at `flux-mcp/`.
 
@@ -26,14 +26,16 @@ npm run build
 
 This produces: `flux-mcp/dist/index.js`
 
+Default behavior: if `FLUX_API_BASE_URL` is not set, the MCP server uses `https://api.runonflux.io`.
+
 ## 2) Connect your client
 
-### Claude Code
-
-Example (stdio transport):
+### Claude Code (CLI)
 
 ```bash
-claude mcp add --transport stdio flux -- \
+claude mcp add --transport stdio \
+  --env FLUX_API_BASE_URL=https://api.runonflux.io \
+  flux -- \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
@@ -44,9 +46,19 @@ claude mcp list
 claude mcp get flux
 ```
 
+In the Claude Code UI, you can also run:
+
+```
+/mcp
+```
+
 ### Claude Desktop
 
-Add an MCP server entry (example):
+Open Claude Desktop, then:
+
+1) Settings -> Developer -> Edit Config
+2) Add a server entry (example below)
+3) Restart Claude Desktop
 
 ```json
 {
@@ -55,7 +67,7 @@ Add an MCP server entry (example):
       "command": "node",
       "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
       "env": {
-        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
+        "FLUX_API_BASE_URL": "https://api.runonflux.io"
       }
     }
   }
@@ -64,49 +76,57 @@ Add an MCP server entry (example):
 
 Restart Claude Desktop.
 
-### OpenCode
+### Gemini CLI
 
-OpenCode reads MCP servers from `opencode.json` / `opencode.jsonc`.
+Option A: use the CLI command (writes settings for you):
 
-You can configure it globally:
-- `~/.config/opencode/opencode.json`
+```bash
+gemini mcp add -s user \
+  -e FLUX_API_BASE_URL=https://api.runonflux.io \
+  flux node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
+```
 
-Or per-project (recommended):
-- `./opencode.json`
-- or `./.opencode/opencode.json`
+Option B: edit your settings file directly:
 
-Example config (local/stdio MCP server):
+- User scope: `~/.gemini/settings.json`
+- Project scope: `.gemini/settings.json`
 
-```jsonc
+```json
 {
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
+  "mcpServers": {
     "flux": {
-      "type": "local",
-      "command": [
-        "node",
-        "/absolute/path/to/flux-skills/flux-mcp/dist/index.js"
-      ],
-      "environment": {
-        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
-      },
-      "timeout": 30000
+      "command": "node",
+      "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
+      "env": {
+        "FLUX_API_BASE_URL": "https://api.runonflux.io"
+      }
     }
   }
 }
 ```
 
-Restart OpenCode.
+Verify:
+
+```bash
+gemini mcp list
+```
+
+In Gemini CLI, you can also run:
+
+```
+/mcp
+```
 
 Notes:
 - Use an absolute path for `flux-mcp/dist/index.js`.
-- If tools don’t show up, increase `timeout`.
+- If `gemini mcp` is not available yet, use the settings file method.
 
 ## 3) First tool calls
 
 - `flux_get_state`
-- If you didn’t set `FLUX_API_BASE_URL`: `flux_set_base_url { "baseUrl": "http://<node-ip>:16127" }`
-- If starting from gateway:
+- By default MCP uses the public gateway. To use a direct node:
+  - `flux_set_base_url { "baseUrl": "http://<node-ip>:16127" }`
+- To pin the gateway to its current node (avoids load balancing):
   - `flux_set_base_url_from_gateway { "gatewayBaseUrl": "https://api.runonflux.io" }`
 - Auth plan (recommended):
   - `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }`
@@ -119,3 +139,10 @@ Many tools return `resource_link` blocks to keep chat output compact.
 
 - To inspect a resource in clients that support MCP resources, use `resources/read` with the given URI.
 - If your client UI doesn’t expose resources well, use `flux_resource_read` with the same URI.
+
+## 5) Troubleshooting
+
+- Tools not showing: ensure Node.js 20+, run `npm ci && npm run build` in `flux-mcp/`, use an absolute path, and restart the client.
+- Base URL missing/invalid: set `FLUX_API_BASE_URL` or call `flux_set_base_url`.
+- Connection errors: verify `http://<node-ip>:16127` is reachable (not `16126`).
+- Auth errors: run `flux_auth_flow` to refresh `zelidauth`.

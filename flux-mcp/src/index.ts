@@ -862,8 +862,11 @@ const endpointsPath =
 
 const inventory = loadEndpointInventory(endpointsPath);
 
+const envBaseUrl = process.env.FLUX_API_BASE_URL;
+const baseUrl = envBaseUrl && envBaseUrl.trim() ? envBaseUrl : 'https://api.runonflux.io';
+
 const client = new FluxClient({
-  baseUrl: process.env.FLUX_API_BASE_URL,
+  baseUrl,
   zelidauth: process.env.FLUX_ZELIDAUTH,
 });
 

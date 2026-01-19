@@ -39,12 +39,16 @@ npm run build
 
 This produces: `dist/index.js`
 
+Default behavior: if `FLUX_API_BASE_URL` is not set, the MCP server uses `https://api.runonflux.io`.
+
 ## Connect your MCP client
 
-### Claude Code
+### Claude Code (CLI)
 
 ```bash
-claude mcp add --transport stdio flux -- \
+claude mcp add --transport stdio \
+  --env FLUX_API_BASE_URL=https://api.runonflux.io \
+  flux -- \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
@@ -55,9 +59,19 @@ claude mcp list
 claude mcp get flux
 ```
 
+In the Claude Code UI, you can also run:
+
+```
+/mcp
+```
+
 ### Claude Desktop
 
-Add an MCP server entry:
+Open Claude Desktop, then:
+
+1) Settings -> Developer -> Edit Config
+2) Add a server entry (example below)
+3) Restart Claude Desktop
 
 ```json
 {
@@ -66,69 +80,79 @@ Add an MCP server entry:
       "command": "node",
       "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
       "env": {
-        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
+        "FLUX_API_BASE_URL": "https://api.runonflux.io"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop.
+### Gemini CLI
 
-### OpenCode
+Option A: use the CLI command (writes settings for you):
 
-OpenCode reads MCP servers from `opencode.json` / `opencode.jsonc`.
+```bash
+gemini mcp add -s user \
+  -e FLUX_API_BASE_URL=https://api.runonflux.io \
+  flux node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
+```
 
-You can configure it globally:
-- `~/.config/opencode/opencode.json`
+Option B: edit your settings file directly:
 
-Or per-project (recommended):
-- `./opencode.json`
-- or `./.opencode/opencode.json`
+- User scope: `~/.gemini/settings.json`
+- Project scope: `.gemini/settings.json`
 
-Example config (local/stdio MCP server):
-
-```jsonc
+```json
 {
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
+  "mcpServers": {
     "flux": {
-      "type": "local",
-      "command": [
-        "node",
-        "/absolute/path/to/flux-skills/flux-mcp/dist/index.js"
-      ],
-      "environment": {
-        "FLUX_API_BASE_URL": "http://<node-ip>:16127"
-      },
-      "timeout": 30000
+      "command": "node",
+      "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
+      "env": {
+        "FLUX_API_BASE_URL": "https://api.runonflux.io"
+      }
     }
   }
 }
 ```
 
-Restart OpenCode.
+Verify:
+
+```bash
+gemini mcp list
+```
+
+In Gemini CLI, you can also run:
+
+```
+/mcp
+```
 
 Notes:
 - Use an absolute path for `dist/index.js`.
-- If tools don’t show up, increase `timeout`.
-- If you see permission prompts for every MCP tool call, configure OpenCode permissions to allow `mcp-*`.
+- If `gemini mcp` is not available yet, use the settings file method.
+
+### Other MCP clients (stdio)
+
+If your client supports stdio MCP servers, point it at:
+
+- Command: `node /absolute/path/to/flux-skills/flux-mcp/dist/index.js`
+- Environment: `FLUX_API_BASE_URL=https://api.runonflux.io`
 
 ## Run standalone (debug)
 
 ```bash
-FLUX_API_BASE_URL="http://<node-ip>:16127" node dist/index.js
-# or, via the public gateway:
-# FLUX_API_BASE_URL="https://api.runonflux.io" node dist/index.js
+FLUX_API_BASE_URL="https://api.runonflux.io" node dist/index.js
+# or, direct node:
+# FLUX_API_BASE_URL="http://<node-ip>:16127" node dist/index.js
 ```
 
 ## Configuration
 
 Environment variables:
 
-- `FLUX_API_BASE_URL`:
-  - direct node API (recommended): `http://<node-ip>:16127`
-  - public gateway: `https://api.runonflux.io`
+- `FLUX_API_BASE_URL` (default: `https://api.runonflux.io`)
+  - direct node API: `http://<node-ip>:16127`
 - `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
 - `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
 - `FLUX_ENDPOINTS_PATH` (optional): override the bundled endpoints inventory path
@@ -317,7 +341,9 @@ Mutating (requires `confirm=true` and usually admin/fluxteam privileges):
 
 ## Troubleshooting
 
-- “Base URL not set” → call `flux_set_base_url` or set `FLUX_API_BASE_URL`.
+- MCP tools not showing: ensure Node.js 20+, run `npm ci && npm run build` in `flux-mcp/`, use an absolute path, then restart the client.
+- Connection errors: verify the node API is reachable at `http://<node-ip>:16127` (not the UI port `16126`).
+- Base URL missing/invalid → call `flux_set_base_url` or set `FLUX_API_BASE_URL`.
 - Auth failures → get a fresh phrase, re-sign, and update `zelidauth`.
 - Signature mismatch → always use verify endpoints (`flux_apps_plan_*`) so JSON canonicalization matches what the node verifies.
 - Download too large → increase `maxBytes` for `*_download_*` tools or download a smaller path.

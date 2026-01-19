@@ -18,6 +18,7 @@ For a complete, generated endpoint list (all 400+ routes), see:
   - API: `http://<node-ip>:16127/`
 
 Tip: prefer a direct node for auth and troubleshooting; gateways can time out or route to different nodes.
+MCP default: if `FLUX_API_BASE_URL` is not set, the MCP server uses the API gateway (`https://api.runonflux.io`).
 
 ## Response envelope + exceptions
 
