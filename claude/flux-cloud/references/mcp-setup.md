@@ -1,4 +1,4 @@
-# Flux MCP Setup (Claude Code / Claude Desktop / Gemini CLI)
+# Flux MCP Setup (Claude Code / Claude Desktop / Gemini CLI / Codex)
 
 This repository includes an MCP server at `flux-mcp/`.
 
@@ -120,6 +120,41 @@ In Gemini CLI, you can also run:
 Notes:
 - Use an absolute path for `flux-mcp/dist/index.js`.
 - If `gemini mcp` is not available yet, use the settings file method.
+
+### Codex (CLI + IDE)
+
+Codex supports MCP in both the CLI and IDE extension. Configuration is shared via `~/.codex/config.toml`.
+
+Option A: use the CLI:
+
+```bash
+codex mcp add flux \
+  --env FLUX_API_BASE_URL=https://api.runonflux.io -- \
+  node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
+```
+
+Verify:
+
+```bash
+codex mcp list
+```
+
+In the Codex TUI, use:
+
+```
+/mcp
+```
+
+Option B: edit `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.flux]
+command = "node"
+args = ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"]
+
+[mcp_servers.flux.env]
+FLUX_API_BASE_URL = "https://api.runonflux.io"
+```
 
 ## 3) First tool calls
 
