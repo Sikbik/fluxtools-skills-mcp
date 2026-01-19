@@ -117,6 +117,7 @@ function isNonMutatingPostPath(method: string, pathname: string): boolean {
     '/apps/verifyappupdatespecifications',
     '/apps/calculateprice',
     '/apps/calculatefiatandfluxprice',
+    '/apps/getpublickey',
   ];
   return allowed.includes(path);
 }
@@ -323,12 +324,12 @@ export class FluxClient {
 
     if (opts?.enterpriseKey !== undefined) {
       if (typeof opts.enterpriseKey === 'string' && opts.enterpriseKey.trim()) {
-        headers.enterpriseKey = opts.enterpriseKey.trim();
+        headers['enterprise-key'] = opts.enterpriseKey.trim();
       } else {
         throw new Error('enterpriseKey override must be a non-empty string');
       }
     } else if (useStoredEnterpriseKey && this.enterpriseKey) {
-      headers.enterpriseKey = this.enterpriseKey;
+      headers['enterprise-key'] = this.enterpriseKey;
     }
 
     const bodyType = opts?.bodyType ?? (prefersFormBody(pathname) ? 'fluxos' : 'json');

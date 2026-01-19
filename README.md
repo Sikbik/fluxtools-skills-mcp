@@ -265,12 +265,21 @@ Environment variables:
 - `FLUX_API_BASE_URL` (default): `https://api.runonflux.io`
   - For a direct node: `http://<node-ip>:16127`
 - `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
-- `FLUX_ENTERPRISE_KEY` (optional): enterpriseKey header for enterprise renewals
+- `FLUX_ENTERPRISE_KEY` (optional): enterprise-key header value (base64 RSA-encrypted AES key)
 - `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
 - `FLUX_ENDPOINTS_PATH` (optional): override bundled endpoints inventory path
 
 You can also set base URL and `zelidauth` at runtime via tools.
 For enterprise renewals, set the header via `FLUX_ENTERPRISE_KEY` or `flux_set_enterprise_key`.
+
+Enterprise-key flow (Arcane nodes):
+1) (If needed) get original owner: `flux_request { "path": "/apps/apporiginalowner/<app>" }`
+2) `flux_apps_get_public_key { "owner": "<zelid>", "name": "<app>" }`
+3) `flux_enterprise_key_generate { "publicKey": "<base64>" }`
+4) `flux_set_enterprise_key { "enterpriseKey": "<base64>" }`
+5) `flux_apps_get_spec { "appname": "<app>", "decrypt": true }`
+
+Note: the response `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
 
 ## Endpoint inventory (generated)
 

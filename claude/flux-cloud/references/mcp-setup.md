@@ -169,7 +169,8 @@ FLUX_API_BASE_URL = "https://api.runonflux.io"
   - `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }`
 - Quick health check:
   - `flux_node_health`
-- Enterprise renewals: set `FLUX_ENTERPRISE_KEY` or call `flux_set_enterprise_key`.
+- Enterprise renewals: set `FLUX_ENTERPRISE_KEY` or call `flux_set_enterprise_key` (enterprise-key header).
+  - If you need to generate it: `flux_apps_get_public_key` + `flux_enterprise_key_generate`.
 
 ## 4) Working with resource links
 

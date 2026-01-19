@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
+import { createPublicKey, publicEncrypt, randomBytes, constants } from 'node:crypto';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -143,6 +144,28 @@ async function fluxDriveRequest(
 function mustBeString(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string`);
   return value;
+}
+
+const ENTERPRISE_KEY_HEADER = 'enterprise-key';
+
+function generateEnterpriseKey(publicKeyBase64: string): { enterpriseKey: string; aesKeyBase64: string } {
+  const aesKey = randomBytes(32);
+  const aesKeyBase64 = aesKey.toString('base64');
+  let key: ReturnType<typeof createPublicKey>;
+  try {
+    key = createPublicKey({
+      key: Buffer.from(publicKeyBase64, 'base64'),
+      format: 'der',
+      type: 'spki',
+    });
+  } catch (error) {
+    throw new Error('publicKey must be a base64-encoded SPKI DER RSA public key');
+  }
+  const encrypted = publicEncrypt(
+    { key, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+    Buffer.from(aesKeyBase64)
+  );
+  return { enterpriseKey: encrypted.toString('base64'), aesKeyBase64 };
 }
 
 function asOptionalString(value: unknown): string | undefined {
@@ -1119,16 +1142,31 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_set_enterprise_key',
-    description: 'Set the enterpriseKey header value for this MCP session.',
+    description: 'Set the enterprise-key header value for this MCP session.',
     inputSchema: {
       type: 'object',
       properties: {
         enterpriseKey: {
           type: 'string',
-          description: 'Enterprise key required by some enterprise renewal endpoints.',
+          description: 'Base64 RSA-encrypted AES session key for enterprise-key header.',
         },
       },
       required: ['enterpriseKey'],
+    },
+  },
+  {
+    name: 'flux_enterprise_key_generate',
+    description:
+      'Generate an AES-256 session key and wrap it with the RSA public key (RSA-OAEP SHA-256) for the enterprise-key header.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        publicKey: {
+          type: 'string',
+          description: 'Base64 SPKI DER public key from flux_apps_get_public_key.',
+        },
+      },
+      required: ['publicKey'],
     },
   },
   {
@@ -1138,7 +1176,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_clear_enterprise_key',
-    description: 'Clear the stored enterpriseKey header value for this MCP session.',
+    description: 'Clear the stored enterprise-key header value for this MCP session.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -1543,11 +1581,11 @@ export const tools: Tool[] = [
         },
         enterpriseKey: {
           type: 'string',
-          description: 'Override enterpriseKey for this request (optional). Uses stored value by default.',
+          description: 'Override enterprise-key for this request (optional). Uses stored value by default.',
         },
         useStoredEnterpriseKey: {
           type: 'boolean',
-          description: 'If false, do not send stored enterpriseKey header (default true).',
+          description: 'If false, do not send stored enterprise-key header (default true).',
         },
         timeoutMs: {
           type: 'number',
@@ -1641,14 +1679,26 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_apps_get_spec',
-    description: 'Fetch app specification (GET /apps/appspecifications/<appname>).',
+    description: 'Fetch app specification (GET /apps/appspecifications/<appname>). For enterprise specs with decrypt=true, send enterprise-key.',
     inputSchema: {
       type: 'object',
       properties: {
         appname: { type: 'string', description: 'Flux app name' },
-        decrypt: { type: 'boolean', description: 'Optional decrypt flag for enterprise specs' },
+        decrypt: { type: 'boolean', description: 'Optional decrypt flag for enterprise specs (requires enterprise-key header).' },
       },
       required: ['appname'],
+    },
+  },
+  {
+    name: 'flux_apps_get_public_key',
+    description: 'Fetch RSA public key for enterprise encryption (POST /apps/getpublickey). Requires zelidauth and Arcane node.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string', description: 'Original app owner (ZelID) used for enterprise encryption.' },
+        name: { type: 'string', description: 'App name.' },
+      },
+      required: ['owner', 'name'],
     },
   },
   {
@@ -2887,6 +2937,17 @@ export async function callTool(name: string, rawArgs: unknown) {
         const value = mustBeString(args['enterpriseKey'], 'enterpriseKey');
         client.setEnterpriseKey(value);
         return jsonResult({ ok: true, enterpriseKey: client.getEnterpriseKeySummary() });
+      }
+
+      case 'flux_enterprise_key_generate': {
+        const publicKey = mustBeString(args['publicKey'], 'publicKey');
+        const { enterpriseKey, aesKeyBase64 } = generateEnterpriseKey(publicKey);
+        return jsonResult({
+          ok: true,
+          headerName: ENTERPRISE_KEY_HEADER,
+          enterpriseKey,
+          aesKeyBase64,
+        });
       }
 
       case 'flux_clear_enterprise_key':
@@ -4500,6 +4561,18 @@ export async function callTool(name: string, rawArgs: unknown) {
           structuredContent: summary,
           isError: !logicalOk,
         };
+      }
+
+      case 'flux_apps_get_public_key': {
+        const owner = mustBeString(args['owner'], 'owner');
+        const name = mustBeString(args['name'], 'name');
+        return jsonResult(
+          await client.request('/apps/getpublickey', {
+            method: 'POST',
+            bodyType: 'json',
+            body: { owner, name },
+          })
+        );
       }
 
       case 'flux_apps_get_owner': {

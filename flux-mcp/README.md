@@ -191,7 +191,7 @@ Environment variables:
 - `FLUX_API_BASE_URL` (default: `https://api.runonflux.io`)
   - direct node API: `http://<node-ip>:16127`
 - `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
-- `FLUX_ENTERPRISE_KEY` (optional): enterpriseKey header for enterprise renewals
+- `FLUX_ENTERPRISE_KEY` (optional): enterprise-key header value (base64 RSA-encrypted AES key)
 - `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
 - `FLUX_ENDPOINTS_PATH` (optional): override the bundled endpoints inventory path
 
@@ -219,6 +219,30 @@ Manual path:
 - `flux_build_zelidauth`
 - `flux_set_zelidauth`
 
+## Enterprise-key flow (Arcane nodes)
+
+1) (If needed) get original owner:
+
+- `flux_request { "path": "/apps/apporiginalowner/<app>" }`
+
+2) Fetch RSA public key:
+
+- `flux_apps_get_public_key { "owner": "<zelid>", "name": "<app>" }`
+
+3) Generate header value:
+
+- `flux_enterprise_key_generate { "publicKey": "<base64>" }`
+
+4) Set header:
+
+- `flux_set_enterprise_key { "enterpriseKey": "<base64>" }`
+
+5) Fetch decrypted spec:
+
+- `flux_apps_get_spec { "appname": "<app>", "decrypt": true }`
+
+Note: the `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
+
 ## Resources + large payloads
 
 Many tools return `resource_link` blocks instead of dumping large JSON/log payloads into the chat.
@@ -241,7 +265,8 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
 - `flux_check_privilege` — confirm privilege level.
 - `flux_build_zelidauth` — create header JSON string.
 - `flux_set_zelidauth` / `flux_clear_zelidauth` — manage stored auth.
-- `flux_set_enterprise_key` / `flux_clear_enterprise_key` — manage enterpriseKey header for renewals.
+- `flux_set_enterprise_key` / `flux_clear_enterprise_key` — manage enterprise-key header for renewals.
+- `flux_enterprise_key_generate` — create enterprise-key header value + AES key from a public key.
 - `flux_resource_read` — read resource URI content.
 - `flux_resource_prune` — prune/clear dynamic resources.
 
@@ -258,7 +283,7 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
   - `query`: object → query string.
   - `body`: JSON body for POST.
   - `allowMutation=true`: required for mutating calls.
-  - `enterpriseKey`: override enterpriseKey header for this request (optional).
+  - `enterpriseKey`: override enterprise-key header for this request (optional).
   - `responseType=base64`: for downloads (returns base64 + headers).
 
 ### Node
@@ -275,6 +300,7 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
   - Options: `includeExpired` (default false), `limit` (default 50, max 200).
   - Output: Markdown table + JSON summary + `resource_link`.
 - `flux_apps_get_spec` — `GET /apps/appspecifications/<appname>`.
+- `flux_apps_get_public_key` — `POST /apps/getpublickey` (requires zelidauth + Arcane node).
 - `flux_apps_get_owner` — `GET /apps/appowner/<appname>`.
 - `flux_apps_registration_information` — `GET /apps/registrationinformation`.
 - `flux_apps_deployment_information` — `GET /apps/deploymentinformation`.
