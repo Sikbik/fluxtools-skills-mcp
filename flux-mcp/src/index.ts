@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
-import { createPublicKey, publicEncrypt, randomBytes, constants } from 'node:crypto';
+import { createPublicKey, publicEncrypt, randomBytes, constants, createHash } from 'node:crypto';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -74,6 +74,25 @@ async function attemptOnCandidates<T>(
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       failures.push({ baseUrl: c.baseUrl, error, hint: classifyRequestFailure(err) });
+    }
+  }
+
+  return { ok: false, failures };
+}
+
+async function attemptOnBaseUrls<T>(
+  baseUrls: string[],
+  fn: (baseUrl: string) => Promise<T>
+): Promise<{ ok: true; value: T; used: string; failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> } | { ok: false; failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> }> {
+  const failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+
+  for (const baseUrl of baseUrls) {
+    try {
+      const value = await fn(baseUrl);
+      return { ok: true, value, used: baseUrl, failures };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      failures.push({ baseUrl, error, hint: classifyRequestFailure(err) });
     }
   }
 
@@ -598,6 +617,25 @@ function buildMessageToSign(opts: {
   return `${opts.type}${opts.version}${specJson}${opts.timestamp}`;
 }
 
+function buildMessageToSignDetails(messageToSign: string) {
+  const base64 = Buffer.from(messageToSign, 'utf8').toString('base64');
+  const sha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+  const jsonEscaped = JSON.stringify(messageToSign);
+  const jsonEscapedNoQuotes =
+    jsonEscaped.length >= 2 && jsonEscaped.startsWith('"') && jsonEscaped.endsWith('"')
+      ? jsonEscaped.slice(1, -1)
+      : jsonEscaped;
+
+  return {
+    messageToSignRaw: messageToSign,
+    messageToSignBase64: base64,
+    messageToSignSha256: sha256,
+    messageToSignJsonEscaped: jsonEscaped,
+    messageToSignJsonEscapedNoQuotes: jsonEscapedNoQuotes,
+    messageToSignBytes: Buffer.byteLength(messageToSign, 'utf8'),
+  };
+}
+
 function buildSignedPayload(opts: {
   type: string;
   version: number;
@@ -658,6 +696,131 @@ function extractAppIdentity(spec: Record<string, unknown>): { appname?: string; 
   return {
     appname: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     owner: typeof owner === 'string' && owner.trim() ? owner.trim() : undefined,
+  };
+}
+
+function extractFluxAmountFromPrice(priceRes: FluxRequestResult): number | null {
+  if (!priceRes.ok || !isFluxSuccess(priceRes.data)) return null;
+  const priceData = unwrapFluxEnvelope<unknown>(priceRes.data);
+  if (!priceData || typeof priceData !== 'object' || Array.isArray(priceData)) return null;
+  const fluxRaw = (priceData as Record<string, unknown>)['flux'];
+  const flux = typeof fluxRaw === 'number' ? fluxRaw : Number(fluxRaw);
+  return Number.isFinite(flux) ? Number(flux.toFixed(2)) : null;
+}
+
+async function buildPaymentInfo(spec: Record<string, unknown>, memo: string | null) {
+  const [deploymentInfoRes, priceRes] = await Promise.all([
+    client.request('/apps/deploymentinformation'),
+    client.request('/apps/calculateprice', {
+      method: 'POST',
+      body: spec,
+      allowMutation: true,
+      timeoutMs: 5 * 60 * 1000,
+    }),
+  ]);
+
+  const deploymentInfo = unwrapFluxEnvelope<unknown>(deploymentInfoRes.data);
+  const paymentAddress =
+    deploymentInfo && typeof deploymentInfo === 'object' && !Array.isArray(deploymentInfo)
+      ? (deploymentInfo as Record<string, unknown>)['address']
+      : undefined;
+
+  const fluxAmount = extractFluxAmountFromPrice(priceRes);
+
+  return {
+    deploymentInformation: deploymentInfoRes,
+    price: priceRes,
+    payment: {
+      address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
+      amountFlux: fluxAmount,
+      memo,
+      note: memo
+        ? 'Pay to address with memo=hash.'
+        : 'After submission returns a hash, pay to address with memo=hash.',
+    },
+  };
+}
+
+async function buildPaymentInfoFromPrice(priceRes: FluxRequestResult, memo: string | null) {
+  const deploymentInfoRes = await client.request('/apps/deploymentinformation');
+  const deploymentInfo = unwrapFluxEnvelope<unknown>(deploymentInfoRes.data);
+  const paymentAddress =
+    deploymentInfo && typeof deploymentInfo === 'object' && !Array.isArray(deploymentInfo)
+      ? (deploymentInfo as Record<string, unknown>)['address']
+      : undefined;
+
+  const fluxAmount = extractFluxAmountFromPrice(priceRes);
+
+  return {
+    deploymentInformation: deploymentInfoRes,
+    price: priceRes,
+    payment: {
+      address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
+      amountFlux: fluxAmount,
+      memo,
+      note: memo
+        ? 'Pay to address with memo=hash.'
+        : 'After submission returns a hash, pay to address with memo=hash.',
+    },
+  };
+}
+
+function pickLatestGlobalSpec(apps: unknown[], appname: string, owner?: string) {
+  const filtered = apps.filter((app) => {
+    if (!app || typeof app !== 'object' || Array.isArray(app)) return false;
+    const obj = app as Record<string, unknown>;
+    const name = obj['name'];
+    const appOwner = obj['owner'];
+    if (typeof name !== 'string' || name !== appname) return false;
+    if (owner && typeof appOwner === 'string' && appOwner !== owner) return false;
+    return true;
+  }) as Array<Record<string, unknown>>;
+
+  if (filtered.length === 0) return null;
+  return filtered.reduce((latest, current) => {
+    const latestHeight = typeof latest['height'] === 'number' ? latest['height'] : Number(latest['height']);
+    const currentHeight = typeof current['height'] === 'number' ? current['height'] : Number(current['height']);
+    if (!Number.isFinite(latestHeight)) return current;
+    if (!Number.isFinite(currentHeight)) return latest;
+    return currentHeight >= latestHeight ? current : latest;
+  });
+}
+
+function computeAppExpiration(opts: {
+  app: Record<string, unknown>;
+  currentHeight: number;
+  blocksLasting: number;
+  daemonPONFork: number;
+}) {
+  const heightRaw = opts.app['height'];
+  const height = typeof heightRaw === 'number' ? heightRaw : Number(heightRaw);
+
+  const expireRaw = opts.app['expire'];
+  const expire = expireRaw === undefined || expireRaw === null
+    ? null
+    : (typeof expireRaw === 'number' ? expireRaw : Number(expireRaw));
+
+  const defaultExpire = height >= opts.daemonPONFork ? opts.blocksLasting * 4 : opts.blocksLasting;
+  const expireIn = Number.isFinite(expire as number) ? (expire as number) : defaultExpire;
+
+  const originalExpirationHeight = height + expireIn;
+  let expirationHeight = originalExpirationHeight;
+
+  if (height < opts.daemonPONFork && opts.currentHeight >= opts.daemonPONFork && originalExpirationHeight > opts.daemonPONFork) {
+    const blocksAfterFork = originalExpirationHeight - opts.daemonPONFork;
+    expirationHeight = opts.daemonPONFork + blocksAfterFork * 4;
+  }
+
+  const blocksRemaining = expirationHeight - opts.currentHeight;
+
+  return {
+    height: Number.isFinite(height) ? height : null,
+    expire: Number.isFinite(expire as number) ? (expire as number) : null,
+    defaultExpire,
+    expireIn,
+    originalExpirationHeight,
+    expirationHeight,
+    blocksRemaining,
   };
 }
 
@@ -790,6 +953,7 @@ async function pollMessagePropagation(opts: {
   hash: string;
   attempts: number;
   intervalMs: number;
+  timeoutMs?: number;
 }): Promise<{
   attemptsUsed: number;
   temporaryPresent: boolean;
@@ -807,8 +971,12 @@ async function pollMessagePropagation(opts: {
 
   for (let i = 0; i < attempts; i++) {
     const [temporaryRes, permanentRes] = await Promise.all([
-      client.request(`/apps/temporarymessages/${encodeURIComponent(opts.hash)}`),
-      client.request(`/apps/permanentmessages/${encodeURIComponent(opts.hash)}`),
+      client.request(`/apps/temporarymessages/${encodeURIComponent(opts.hash)}`, {
+        timeoutMs: opts.timeoutMs,
+      }),
+      client.request(`/apps/permanentmessages/${encodeURIComponent(opts.hash)}`, {
+        timeoutMs: opts.timeoutMs,
+      }),
     ]);
 
     if (!temporaryRes.ok || !permanentRes.ok) {
@@ -1170,6 +1338,36 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_enterprise_preflight',
+    description:
+      'Fetch enterprise public key, generate enterprise-key, and optionally verify decrypt. Supports baseUrl fallbacks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Flux app name.' },
+        owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
+        baseUrls: { type: 'array', items: { type: 'string' }, description: 'Optional list of base URLs to try in order.' },
+        setBaseUrlOnSuccess: {
+          type: 'boolean',
+          description: 'If true (default), set MCP baseUrl to the successful base URL.',
+          default: true,
+        },
+        setEnterpriseKey: {
+          type: 'boolean',
+          description: 'If true (default), store enterprise-key in MCP session.',
+          default: true,
+        },
+        verifyDecrypt: {
+          type: 'boolean',
+          description: 'If true (default), attempt /apps/appspecifications/<app>/true with generated key.',
+          default: true,
+        },
+        timeoutMs: { type: 'number', description: 'Timeout per request in ms (optional).' },
+      },
+      required: ['appname'],
+    },
+  },
+  {
     name: 'flux_clear_zelidauth',
     description: 'Clear the stored zelidauth header value for this MCP session.',
     inputSchema: { type: 'object', properties: {} },
@@ -1240,6 +1438,20 @@ export const tools: Tool[] = [
         timestamp: { type: 'number' },
       },
       required: ['type', 'version', 'spec', 'timestamp'],
+    },
+  },
+  {
+    name: 'flux_write_message_to_sign',
+    description: 'Write a messageToSign string to a local file (useful to avoid terminal wrapping). Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path to write (absolute or relative to cwd).' },
+        messageToSign: { type: 'string', description: 'Raw messageToSign bytes to write.' },
+        overwrite: { type: 'boolean', description: 'If true, overwrite existing file (default false).' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['path', 'messageToSign', 'confirm'],
     },
   },
   {
@@ -1831,6 +2043,31 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_apps_plan_renew',
+    description:
+      'Plan an update to extend app expiration. Computes expire using chain height + policy, verifies spec, calculates price, and builds message-to-sign.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Flux app name.' },
+        owner: { type: 'string', description: 'Optional owner filter for global spec lookup.' },
+        spec: { type: 'object', additionalProperties: true, description: 'Optional app spec to update (preferred for enterprise apps).' },
+        weeks: { type: 'number', description: 'Number of weeks to add (default 1).' },
+        blocksToAdd: { type: 'number', description: 'Override blocks to add (if set, weeks ignored).' },
+        mode: {
+          type: 'string',
+          enum: ['from_now', 'add_to_remaining'],
+          description: 'from_now = expire = blocksToAdd; add_to_remaining = expire = blocksRemaining + blocksToAdd (default).',
+        },
+        blocksPerWeek: { type: 'number', description: 'Blocks per week (default 22000).' },
+        secondsPerBlock: { type: 'number', description: 'Seconds per block for ETA display (default 30).' },
+        timestamp: { type: 'number', description: 'Optional ms epoch timestamp (default now).' },
+        typeVersion: { type: 'number', description: 'Message type version (default 1).' },
+      },
+      required: ['appname'],
+    },
+  },
+  {
     name: 'flux_apps_update',
     description: 'Submit app update (POST /apps/appupdate). Requires zelidauth and an owner signature over the message-to-sign.',
     inputSchema: {
@@ -1841,6 +2078,7 @@ export const tools: Tool[] = [
         timestamp: { type: 'number' },
         verifyFirst: { type: 'boolean', description: 'If true (default), canonicalize spec before submitting' },
         typeVersion: { type: 'number', description: 'Message type version (default 1)' },
+        includePayment: { type: 'boolean', description: 'If true (default), include payment info.', default: true },
       },
       required: ['spec', 'signature', 'timestamp'],
     },
@@ -1858,6 +2096,20 @@ export const tools: Tool[] = [
      },
    },
    {
+     name: 'flux_apps_wait_for_propagation',
+     description: 'Poll temporary/permanent messages for a hash until it appears or attempts exhausted.',
+     inputSchema: {
+       type: 'object',
+       properties: {
+         hash: { type: 'string' },
+         attempts: { type: 'number', description: 'Poll attempts (default 10).' },
+         intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000).' },
+         timeoutMs: { type: 'number', description: 'Timeout per request in ms (optional).' },
+       },
+       required: ['hash'],
+     },
+   },
+   {
      name: 'flux_apps_register_and_verify',
      description: 'Submit app registration and poll for message propagation. Returns ok=true when broadcast succeeds; use status to track phases.',
      inputSchema: {
@@ -1868,13 +2120,15 @@ export const tools: Tool[] = [
          timestamp: { type: 'number', description: 'Timestamp used to build the message-to-sign (ms epoch)' },
          verifyFirst: { type: 'boolean', description: 'If true (default), canonicalize spec before submitting' },
          typeVersion: { type: 'number', description: 'Message type version (default 1)' },
-         attempts: { type: 'number', description: 'Poll attempts (default 10)' },
-         intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
-         verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
-         confirm: { type: 'boolean', description: 'Required to submit registration' },
-       },
-       required: ['spec', 'signature', 'timestamp', 'confirm'],
-     },
+       attempts: { type: 'number', description: 'Poll attempts (default 10)' },
+       intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
+        poll: { type: 'boolean', description: 'If false, skip polling (return hash immediately).', default: true },
+        pollTimeoutMs: { type: 'number', description: 'Timeout per polling request in ms (optional).' },
+        verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
+        confirm: { type: 'boolean', description: 'Required to submit registration' },
+      },
+      required: ['spec', 'signature', 'timestamp', 'confirm'],
+    },
    },
    {
      name: 'flux_apps_test_install',
@@ -1900,13 +2154,16 @@ export const tools: Tool[] = [
          timestamp: { type: 'number', description: 'Timestamp used to build the message-to-sign (ms epoch)' },
          verifyFirst: { type: 'boolean', description: 'If true (default), canonicalize spec before submitting' },
          typeVersion: { type: 'number', description: 'Message type version (default 1)' },
-         attempts: { type: 'number', description: 'Poll attempts (default 10)' },
-         intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
-         verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
-         confirm: { type: 'boolean', description: 'Required to submit update' },
-       },
-       required: ['spec', 'signature', 'timestamp', 'confirm'],
-     },
+        attempts: { type: 'number', description: 'Poll attempts (default 10)' },
+        intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
+        poll: { type: 'boolean', description: 'If false, skip polling (return hash immediately).', default: true },
+        pollTimeoutMs: { type: 'number', description: 'Timeout per polling request in ms (optional).' },
+        verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
+        includePayment: { type: 'boolean', description: 'If true (default), include payment info.', default: true },
+        confirm: { type: 'boolean', description: 'Required to submit update' },
+      },
+      required: ['spec', 'signature', 'timestamp', 'confirm'],
+    },
    },
  
    // App lifecycle (mutating)
@@ -2950,6 +3207,137 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
       }
 
+      case 'flux_enterprise_preflight': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const ownerArg = asOptionalString(args['owner']);
+        const baseUrlsRaw = args['baseUrls'];
+        const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
+        const setEnterpriseKey = (asOptionalBoolean(args['setEnterpriseKey']) ?? true) === true;
+        const verifyDecrypt = (asOptionalBoolean(args['verifyDecrypt']) ?? true) === true;
+        const timeoutMs = asOptionalNumber(args['timeoutMs']);
+
+        const baseUrls = Array.isArray(baseUrlsRaw)
+          ? baseUrlsRaw.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean)
+          : [];
+
+        const currentBase = client.getBaseUrl();
+        if (baseUrls.length === 0 && currentBase) baseUrls.push(currentBase);
+
+        const normalized = Array.from(new Set(baseUrls.map((u) => normalizeHttpBaseUrl(u))));
+        if (normalized.length === 0) throw new Error('No baseUrl available (set FLUX_API_BASE_URL or pass baseUrls).');
+
+        const prevBase = client.getBaseUrl();
+        const runWithBaseUrl = async <T>(baseUrl: string, fn: () => Promise<T>) => {
+          client.setBaseUrl(baseUrl);
+          try {
+            return await fn();
+          } finally {
+            if (prevBase) client.setBaseUrl(prevBase);
+          }
+        };
+
+        let owner = ownerArg ?? null;
+        let ownerFailures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> | undefined;
+
+        if (!owner) {
+          const ownerAttempt = await attemptOnBaseUrls(normalized, (baseUrl) =>
+            runWithBaseUrl(baseUrl, async () => {
+              const res = await client.request(`/apps/apporiginalowner/${encodeURIComponent(appname)}`, { timeoutMs });
+              if (!res.ok || !isFluxSuccess(res.data)) {
+                throw new Error(extractFluxErrorMessage(res.data) ?? 'Failed to fetch app original owner');
+              }
+              const payload = unwrapFluxEnvelope<unknown>(res.data);
+              if (typeof payload !== 'string' || !payload.trim()) throw new Error('Invalid owner response');
+              return payload.trim();
+            })
+          );
+
+          if (!ownerAttempt.ok) {
+            ownerFailures = ownerAttempt.failures;
+          } else {
+            owner = ownerAttempt.value;
+          }
+        }
+
+        if (!owner) {
+          return jsonResult({
+            ok: false,
+            appname,
+            owner: null,
+            error: 'Unable to resolve app owner.',
+            failures: ownerFailures ?? [],
+          }, { isError: true });
+        }
+
+        const publicKeyAttempt = await attemptOnBaseUrls(normalized, (baseUrl) =>
+          runWithBaseUrl(baseUrl, async () => {
+            const res = await client.request('/apps/getpublickey', {
+              method: 'POST',
+              bodyType: 'json',
+              body: { owner, name: appname },
+              timeoutMs,
+            });
+            if (!res.ok || !isFluxSuccess(res.data)) {
+              throw new Error(extractFluxErrorMessage(res.data) ?? 'Failed to fetch public key');
+            }
+            const payload = unwrapFluxEnvelope<unknown>(res.data);
+            if (typeof payload !== 'string' || !payload.trim()) throw new Error('Invalid public key response');
+            return payload.trim();
+          })
+        );
+
+        if (!publicKeyAttempt.ok) {
+          return jsonResult(
+            {
+              ok: false,
+              appname,
+              owner,
+              error: 'Unable to fetch enterprise public key.',
+              failures: publicKeyAttempt.failures,
+            },
+            { isError: true }
+          );
+        }
+
+        const publicKey = publicKeyAttempt.value;
+        const baseUrlUsed = publicKeyAttempt.used;
+        const { enterpriseKey, aesKeyBase64 } = generateEnterpriseKey(publicKey);
+
+        if (setEnterpriseKey) client.setEnterpriseKey(enterpriseKey);
+        if (setBaseUrlOnSuccess) client.setBaseUrl(baseUrlUsed);
+
+        let decryptCheck: FluxRequestResult | null = null;
+        let decryptOk: boolean | null = null;
+        let decryptError: string | null = null;
+
+        if (verifyDecrypt) {
+          decryptCheck = await runWithBaseUrl(baseUrlUsed, async () =>
+            client.request(`/apps/appspecifications/${encodeURIComponent(appname)}/true`, {
+              enterpriseKey,
+              timeoutMs,
+            })
+          );
+          decryptOk = decryptCheck.ok && isFluxSuccess(decryptCheck.data);
+          decryptError = decryptOk ? null : extractFluxErrorMessage(decryptCheck.data) ?? 'Decrypt check failed';
+        }
+
+        const summary = {
+          ok: verifyDecrypt ? Boolean(decryptOk) : true,
+          appname,
+          owner,
+          baseUrlUsed,
+          publicKey,
+          enterpriseKey,
+          aesKeyBase64,
+          enterpriseKeySet: setEnterpriseKey,
+          baseUrlSet: setBaseUrlOnSuccess,
+          decryptOk,
+          decryptError,
+        };
+
+        return jsonResult(summary, { structuredContent: summary, isError: verifyDecrypt ? !decryptOk : false });
+      }
+
       case 'flux_clear_enterprise_key':
         client.clearEnterpriseKey();
         return jsonResult({ ok: true, enterpriseKey: client.getEnterpriseKeySummary() });
@@ -3004,8 +3392,45 @@ export async function callTool(name: string, rawArgs: unknown) {
         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
 
         const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
-        const out = { ok: true, type, version, timestamp, messageToSign };
-        return jsonResult(out, { structuredContent: out });
+        const details = buildMessageToSignDetails(messageToSign);
+        const link = resourceStore.putText({
+          kind: 'message_to_sign',
+          name: `messageToSign ${type}`,
+          description: 'Raw messageToSign bytes (exact data to sign)',
+          mimeType: 'text/plain',
+          text: messageToSign,
+        });
+
+        const out = {
+          ok: true,
+          type,
+          version,
+          timestamp,
+          messageToSign,
+          ...details,
+          messageToSignResourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: false,
+        };
+      }
+
+      case 'flux_write_message_to_sign': {
+        requireConfirm(args, 'write messageToSign to disk');
+        const path = mustBeString(args['path'], 'path');
+        const messageToSign = mustBeString(args['messageToSign'], 'messageToSign');
+        const overwrite = (asOptionalBoolean(args['overwrite']) ?? false) === true;
+        const details = buildMessageToSignDetails(messageToSign);
+
+        await fs.writeFile(path, messageToSign, {
+          encoding: 'utf8',
+          flag: overwrite ? 'w' : 'wx',
+        });
+
+        return jsonResult({ ok: true, path, ...details });
       }
 
       case 'flux_apps_signing_playbook': {
@@ -3020,11 +3445,19 @@ export async function callTool(name: string, rawArgs: unknown) {
         if (!Number.isFinite(timestamp)) throw new Error('timestamp must be a finite number');
 
         const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
+        const details = buildMessageToSignDetails(messageToSign);
+        const link = resourceStore.putText({
+          kind: 'message_to_sign',
+          name: `messageToSign ${type}`,
+          description: 'Raw messageToSign bytes (exact data to sign)',
+          mimeType: 'text/plain',
+          text: messageToSign,
+        });
 
         const nextActions = [
           { tool: 'flux_build_message_to_sign', arguments: { type, version, spec, timestamp } },
-          { tool: 'flux_apps_plan_registration', arguments: { timestamp, typeVersion: version } },
-          { tool: 'flux_apps_plan_update', arguments: { timestamp, typeVersion: version } },
+          { tool: 'flux_apps_plan_registration', arguments: { spec, timestamp, typeVersion: version } },
+          { tool: 'flux_apps_plan_update', arguments: { spec, timestamp, typeVersion: version } },
         ];
 
         const out = {
@@ -3033,10 +3466,20 @@ export async function callTool(name: string, rawArgs: unknown) {
           version,
           timestamp,
           messageToSign,
+          ...details,
+          messageToSignResourceUri: link.uri,
+          signatureNotes: {
+            loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+            appSignature: 'Sign messageToSign for app register/update.',
+          },
           nextActions,
         };
 
-        return jsonResult(out, { structuredContent: out });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: false,
+        };
       }
 
       case 'flux_list_endpoint_categories': {
@@ -4764,13 +5207,17 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const type = 'fluxappregister' as const;
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+        const messageDetails = buildMessageToSignDetails(messageToSign);
+        const messageLink = resourceStore.putText({
+          kind: 'message_to_sign',
+          name: `messageToSign ${type}`,
+          description: 'Raw messageToSign bytes (exact data to sign)',
+          mimeType: 'text/plain',
+          text: messageToSign,
+        });
         const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
 
-        const priceData = unwrapFluxEnvelope<unknown>(price.data);
-        const fluxPrice =
-          priceData && typeof priceData === 'object' && !Array.isArray(priceData)
-            ? Number((priceData as Record<string, unknown>)['flux'])
-            : NaN;
+        const fluxPrice = extractFluxAmountFromPrice(price);
 
         const deploymentInfo = unwrapFluxEnvelope<unknown>(deploymentInformation.data);
         const paymentAddress =
@@ -4780,7 +5227,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const payment = {
           address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
-          amountFlux: Number.isFinite(fluxPrice) ? Number(fluxPrice.toFixed(2)) : null,
+          amountFlux: fluxPrice,
           memo: '<REGISTRATION_HASH>',
           note: 'After flux_apps_register returns a hash, pay the amount to address with memo=hash.',
         };
@@ -4789,7 +5236,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           ? 'Before submitting registration, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app registration signature). You can sign both in one wallet session: first the login phrase (for zelidauth), then messageToSign (for app registration).'
           : null;
 
-        return jsonResult({
+        const out = {
           requiresAuth,
           authNote,
           verified,
@@ -4801,9 +5248,21 @@ export async function callTool(name: string, rawArgs: unknown) {
           type,
           typeVersion,
           messageToSign,
+          ...messageDetails,
+          messageToSignResourceUri: messageLink.uri,
           payload,
-          next: 'Sign messageToSign with the OWNER ZelID, then call flux_apps_register with signature + same timestamp. After registration returns a hash, run flux_apps_test_install (or flux_apps_test_install_pin if you are using a gateway) with that hash, then pay with the hash as memo.',
-        });
+          signatureNotes: {
+            loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+            appSignature: 'Sign messageToSign for registration.',
+          },
+          next: 'Sign messageToSign with the OWNER ZelID (distinct from login phrase signature), then call flux_apps_register with signature + same timestamp. After registration returns a hash, run flux_apps_test_install (or flux_apps_test_install_pin if you are using a gateway), then pay with memo=hash.',
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
+          structuredContent: out,
+          isError: false,
+        };
       }
 
         case 'flux_apps_register': {
@@ -4826,21 +5285,54 @@ export async function callTool(name: string, rawArgs: unknown) {
            : null;
 
  
-         const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+        const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
  
-         const type = 'fluxappregister' as const;
-         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-         const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+        const type = 'fluxappregister' as const;
+        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+        const messageDetails = buildMessageToSignDetails(messageToSign);
+        const messageLink = resourceStore.putText({
+          kind: 'message_to_sign',
+          name: `messageToSign ${type}`,
+          description: 'Raw messageToSign bytes (exact data to sign)',
+          mimeType: 'text/plain',
+          text: messageToSign,
+        });
+        const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
  
-         const submit = await client.request('/apps/appregister', {
-           method: 'POST',
-           body: payload,
-           allowMutation: true,
-         });
+        const submit = await client.request('/apps/appregister', {
+          method: 'POST',
+          body: payload,
+          allowMutation: true,
+        });
  
-         const hash = extractHashFromAppMessageResponse(submit.data);
- 
-         return jsonResult({ verified, submit, hash, messageToSign, payload });
+        const hash = extractHashFromAppMessageResponse(submit.data);
+
+         const paymentInfo = await buildPaymentInfo(spec, hash ?? null);
+
+         const out = {
+           verified,
+           submit,
+           hash,
+           messageToSign,
+           ...messageDetails,
+           messageToSignResourceUri: messageLink.uri,
+           payload,
+           payment: paymentInfo.payment,
+           paymentSources: {
+             deploymentInformation: paymentInfo.deploymentInformation,
+             price: paymentInfo.price,
+           },
+           signatureNotes: {
+             loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+             appSignature: 'Sign messageToSign for registration.',
+           },
+         };
+
+         return {
+           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
+           structuredContent: out,
+           isError: false,
+         };
        }
 
         case 'flux_apps_register_and_verify': {
@@ -4856,6 +5348,8 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const attempts = asOptionalNumber(args['attempts']) ?? 10;
          const intervalMs = asOptionalNumber(args['intervalMs']) ?? 3000;
+         const poll = (asOptionalBoolean(args['poll']) ?? true) === true;
+         const pollTimeoutMs = asOptionalNumber(args['pollTimeoutMs']);
          const verifyGlobal = (asOptionalBoolean(args['verifyGlobal']) ?? true) === true;
  
          const verified = verifyFirst
@@ -4871,6 +5365,14 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const type = 'fluxappregister' as const;
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const messageDetails = buildMessageToSignDetails(messageToSign);
+         const messageLink = resourceStore.putText({
+           kind: 'message_to_sign',
+           name: `messageToSign ${type}`,
+           description: 'Raw messageToSign bytes (exact data to sign)',
+           mimeType: 'text/plain',
+           text: messageToSign,
+         });
          const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
  
           const submit = await client.request('/apps/appregister', {
@@ -4886,7 +5388,9 @@ export async function callTool(name: string, rawArgs: unknown) {
             throw new Error(`Could not extract message hash from registration response.${hint}`);
           }
  
-         const propagation = await pollMessagePropagation({ hash, attempts, intervalMs });
+         const propagation = poll
+           ? await pollMessagePropagation({ hash, attempts, intervalMs, timeoutMs: pollTimeoutMs })
+           : null;
 
          let globalCheck: FluxRequestResult | null = null;
          let globalPresent: boolean | null = null;
@@ -4914,11 +5418,13 @@ export async function callTool(name: string, rawArgs: unknown) {
           const registered = submit.ok;
           const status = !registered
             ? 'error'
-            : propagation.permanentPresent !== true
-              ? 'awaiting_payment'
-              : globalPresent === false
-                ? 'verifying_global'
-                : 'verified';
+            : !poll
+              ? 'submitted'
+              : propagation?.permanentPresent !== true
+                ? 'awaiting_payment'
+                : globalPresent === false
+                  ? 'verifying_global'
+                  : 'verified';
 
           const done = status === 'verified';
           const ok = registered;
@@ -4933,6 +5439,7 @@ export async function callTool(name: string, rawArgs: unknown) {
               hash,
               attempts,
               intervalMs,
+              poll,
               verified,
               submit,
               propagation,
@@ -4945,6 +5452,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             ? []
             : [
                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                { tool: 'flux_apps_wait_for_propagation', arguments: { hash, attempts, intervalMs } },
                 appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
               ].filter(Boolean);
 
@@ -4975,13 +5483,15 @@ export async function callTool(name: string, rawArgs: unknown) {
             note: 'Pay to address with memo=hash (after optional test install).',
           };
 
-          const message = status === 'awaiting_payment'
-            ? 'Registration broadcasted. Next: (recommended) flux_apps_test_install with this hash, then pay with memo=hash.'
-            : status === 'verifying_global'
-              ? 'Registration appears permanent, but global app spec not visible yet. Re-check shortly.'
-              : status === 'error'
-                ? 'Registration submission failed.'
-                : 'Registration verified.';
+          const message = status === 'submitted'
+            ? 'Registration submitted. Poll for propagation with flux_apps_wait_for_propagation.'
+            : status === 'awaiting_payment'
+              ? 'Registration broadcasted. Next: (recommended) flux_apps_test_install with this hash, then pay with memo=hash.'
+              : status === 'verifying_global'
+                ? 'Registration appears permanent, but global app spec not visible yet. Re-check shortly.'
+                : status === 'error'
+                  ? 'Registration submission failed.'
+                  : 'Registration verified.';
 
           const summary = {
             ok,
@@ -4991,19 +5501,29 @@ export async function callTool(name: string, rawArgs: unknown) {
             appname: appname ?? null,
             owner: owner ?? null,
             hash,
-            attemptsUsed: propagation.attemptsUsed,
-            temporaryPresent: propagation.temporaryPresent,
-            permanentPresent: propagation.permanentPresent,
+            attemptsUsed: propagation?.attemptsUsed ?? 0,
+            temporaryPresent: propagation?.temporaryPresent ?? null,
+            permanentPresent: propagation?.permanentPresent ?? null,
             globalPresent,
             messageToSign,
+            ...messageDetails,
+            messageToSignResourceUri: messageLink.uri,
             message,
             payment,
             resourceUri: link.uri,
             nextActions,
+            signatureNotes: {
+              loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+              appSignature: 'Sign messageToSign for registration.',
+            },
           };
 
           return {
-            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            content: [
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...link },
+              { type: 'resource_link', ...messageLink },
+            ],
             structuredContent: summary,
             isError: status === 'error',
           };
@@ -5026,22 +5546,32 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
 
-        const price = await client.request('/apps/calculateprice', {
-          method: 'POST',
-          body: verifiedSpec,
-          allowMutation: true,
-          timeoutMs: 5 * 60 * 1000,
-        });
+       const price = await client.request('/apps/calculateprice', {
+         method: 'POST',
+         body: verifiedSpec,
+         allowMutation: true,
+         timeoutMs: 5 * 60 * 1000,
+       });
 
-        const type = 'fluxappupdate' as const;
-        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-        const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+       const type = 'fluxappupdate' as const;
+       const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+       const messageDetails = buildMessageToSignDetails(messageToSign);
+       const messageLink = resourceStore.putText({
+         kind: 'message_to_sign',
+         name: `messageToSign ${type}`,
+         description: 'Raw messageToSign bytes (exact data to sign)',
+         mimeType: 'text/plain',
+         text: messageToSign,
+       });
+       const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
 
-         const authNote = requiresAuth
-           ? 'Before submitting update, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app update signature).'
-           : null;
+       const authNote = requiresAuth
+         ? 'Before submitting update, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app update signature).'
+         : null;
 
-         return jsonResult({
+        const paymentInfo = await buildPaymentInfoFromPrice(price, '<UPDATE_HASH>');
+
+         const out = {
            requiresAuth,
            authNote,
            verified,
@@ -5050,9 +5580,218 @@ export async function callTool(name: string, rawArgs: unknown) {
            type,
            typeVersion,
            messageToSign,
+           ...messageDetails,
+           messageToSignResourceUri: messageLink.uri,
            payload,
-           next: 'Sign messageToSign with the OWNER ZelID, then call flux_apps_update with signature + same timestamp.',
+           payment: paymentInfo.payment,
+           paymentSources: {
+             deploymentInformation: paymentInfo.deploymentInformation,
+             price: paymentInfo.price,
+           },
+           signatureNotes: {
+             loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+             appSignature: 'Sign messageToSign for update.',
+           },
+           next: 'Sign messageToSign with the OWNER ZelID (distinct from login phrase signature), then call flux_apps_update with signature + same timestamp.',
+         };
+
+         return {
+           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
+           structuredContent: out,
+           isError: false,
+         };
+      }
+
+       case 'flux_apps_plan_renew': {
+         const requiresAuth = !client.getZelidauthSummary().present;
+
+         const appname = mustBeString(args['appname'], 'appname');
+         const ownerFilter = asOptionalString(args['owner']);
+         const specArg = args['spec'];
+         const specInput = specArg === undefined ? null : mustBeObject(specArg, 'spec');
+
+         const weeks = asOptionalNumber(args['weeks']) ?? 1;
+         const blocksToAddOverride = asOptionalNumber(args['blocksToAdd']);
+         const blocksPerWeek = asOptionalNumber(args['blocksPerWeek']) ?? 22000;
+         const secondsPerBlock = asOptionalNumber(args['secondsPerBlock']) ?? 30;
+         const mode = (asOptionalString(args['mode']) ?? 'add_to_remaining') as 'from_now' | 'add_to_remaining';
+         if (mode !== 'from_now' && mode !== 'add_to_remaining') {
+           throw new Error('mode must be one of: from_now, add_to_remaining');
+         }
+
+         const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
+         const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+
+         const [globalSpecsRes, scannedHeightRes, regInfoRes] = await Promise.all([
+           client.request('/apps/globalappsspecifications', { query: { appname } }),
+           client.request('/explorer/scannedheight'),
+           client.request('/apps/registrationinformation'),
+         ]);
+
+         const globalSpecs = unwrapFluxEnvelope<unknown[]>(globalSpecsRes.data);
+         const scanned = unwrapFluxEnvelope<Record<string, unknown>>(scannedHeightRes.data);
+         const regInfo = unwrapFluxEnvelope<Record<string, unknown>>(regInfoRes.data);
+
+         const currentHeightRaw = scanned?.['generalScannedHeight'];
+         const currentHeight = typeof currentHeightRaw === 'number' ? currentHeightRaw : Number(currentHeightRaw);
+         if (!Number.isFinite(currentHeight)) throw new Error('Could not parse explorer scanned height from /explorer/scannedheight');
+
+         const blocksLastingRaw = regInfo?.['blocksLasting'];
+         const daemonPONForkRaw = regInfo?.['daemonPONFork'];
+         const blocksLasting = typeof blocksLastingRaw === 'number' ? blocksLastingRaw : Number(blocksLastingRaw);
+         const daemonPONFork = typeof daemonPONForkRaw === 'number' ? daemonPONForkRaw : Number(daemonPONForkRaw);
+         if (!Number.isFinite(blocksLasting) || !Number.isFinite(daemonPONFork)) {
+           throw new Error('Could not parse blocksLasting/daemonPONFork from /apps/registrationinformation');
+         }
+
+         const apps = Array.isArray(globalSpecs)
+           ? globalSpecs.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+           : [];
+         const appEntry = pickLatestGlobalSpec(apps, appname, ownerFilter ?? undefined);
+         if (!appEntry) {
+           throw new Error(`App ${appname} not found in /apps/globalappsspecifications`);
+         }
+
+         const expiration = computeAppExpiration({
+           app: appEntry,
+           currentHeight,
+           blocksLasting,
+           daemonPONFork,
          });
+
+         const blocksRemaining = expiration.blocksRemaining;
+         const blocksToAdd = Number.isFinite(blocksToAddOverride) ? Math.floor(blocksToAddOverride) : Math.max(0, Math.floor(weeks * blocksPerWeek));
+         const baseRemaining = Number.isFinite(blocksRemaining) ? Math.max(0, Math.floor(blocksRemaining)) : 0;
+         const expireComputed = mode === 'from_now' ? blocksToAdd : baseRemaining + blocksToAdd;
+
+         let workingSpec: Record<string, unknown> | null = specInput;
+         let specSource: 'provided' | 'appspecifications' | null = specInput ? 'provided' : null;
+         let specWarning: string | null = null;
+         let isEnterprise = false;
+
+         if (!workingSpec) {
+           const specRes = await client.request(`/apps/appspecifications/${encodeURIComponent(appname)}`);
+           if (!specRes.ok || !isFluxSuccess(specRes.data)) {
+             throw new Error(extractFluxErrorMessage(specRes.data) ?? 'Failed to fetch app spec');
+           }
+           workingSpec = unwrapFluxEnvelope<Record<string, unknown>>(specRes.data);
+           specSource = 'appspecifications';
+         }
+
+         if (workingSpec) {
+           const version = workingSpec['version'];
+           const enterpriseField = workingSpec['enterprise'];
+           isEnterprise = typeof version === 'number'
+             ? version >= 8 && !!enterpriseField
+             : Number(version) >= 8 && !!enterpriseField;
+
+           if (isEnterprise && specSource === 'appspecifications') {
+             const compose = workingSpec['compose'];
+             if (Array.isArray(compose) && compose.length === 0) {
+               specWarning =
+                 'Enterprise app detected. appspecifications without decrypt omits compose/contacts; provide full spec or use enterprise decrypt flow before renewing.';
+             }
+           }
+         }
+
+         const updatedSpec = workingSpec && !specWarning
+           ? { ...workingSpec, expire: expireComputed }
+           : null;
+
+         let verified: FluxRequestResult | null = null;
+         let price: FluxRequestResult | null = null;
+         let messageToSign: string | null = null;
+         let messageDetails: ReturnType<typeof buildMessageToSignDetails> | null = null;
+         let messageLink: ReturnType<typeof resourceStore.putText> | null = null;
+         let payload: Record<string, unknown> | null = null;
+         let paymentInfo: Awaited<ReturnType<typeof buildPaymentInfo>> | null = null;
+
+         if (updatedSpec) {
+           verified = await client.request('/apps/verifyappupdatespecifications', {
+             method: 'POST',
+             body: updatedSpec,
+             allowMutation: true,
+             timeoutMs: 5 * 60 * 1000,
+           });
+
+           const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
+           price = await client.request('/apps/calculateprice', {
+             method: 'POST',
+             body: verifiedSpec,
+             allowMutation: true,
+             timeoutMs: 5 * 60 * 1000,
+           });
+
+           const type = 'fluxappupdate' as const;
+           messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+           messageDetails = buildMessageToSignDetails(messageToSign);
+           messageLink = resourceStore.putText({
+             kind: 'message_to_sign',
+             name: `messageToSign ${type}`,
+             description: 'Raw messageToSign bytes (exact data to sign)',
+             mimeType: 'text/plain',
+             text: messageToSign,
+           });
+           payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+           paymentInfo = await buildPaymentInfoFromPrice(price, '<UPDATE_HASH>');
+         }
+
+         const secondsRemaining = estimateSecondsFromBlocks(baseRemaining, secondsPerBlock);
+         const timeRemaining = formatDurationSeconds(secondsRemaining);
+
+         const out = {
+           ok: updatedSpec !== null,
+           requiresAuth,
+           appname,
+           ownerFilter: ownerFilter ?? null,
+           reference: {
+             currentHeight,
+             blocksRemainingAtReference: blocksRemaining,
+             timeRemaining,
+             blocksLasting,
+             daemonPONFork,
+           },
+           policy: {
+             mode,
+             weeks,
+             blocksPerWeek,
+             blocksToAdd,
+           },
+           expireComputed,
+           specSource,
+           specWarning,
+           isEnterprise,
+           updatedSpec,
+           verified,
+           price,
+           timestamp,
+           type: updatedSpec ? 'fluxappupdate' : null,
+           typeVersion: updatedSpec ? typeVersion : null,
+           messageToSign,
+           ...(messageDetails ?? {}),
+           messageToSignResourceUri: messageLink?.uri ?? null,
+           payload,
+           payment: paymentInfo?.payment ?? null,
+           paymentSources: paymentInfo
+             ? { deploymentInformation: paymentInfo.deploymentInformation, price: paymentInfo.price }
+             : null,
+           signatureNotes: {
+             loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+             appSignature: 'Sign messageToSign for update.',
+           },
+           next: updatedSpec
+             ? 'Sign messageToSign with the OWNER ZelID (distinct from login phrase signature), then call flux_apps_update with signature + same timestamp.'
+             : 'Provide a full spec (especially for enterprise apps) to proceed with renewal.',
+         };
+
+         const content = [{ type: 'text', text: JSON.stringify(out, null, 2) }];
+         if (messageLink) content.push({ type: 'resource_link', ...messageLink });
+
+         return {
+           content,
+           structuredContent: out,
+           isError: !out.ok,
+         };
       }
 
         case 'flux_apps_update': {
@@ -5064,6 +5803,7 @@ export async function callTool(name: string, rawArgs: unknown) {
          const verifyFirstRaw = args['verifyFirst'];
          const verifyFirst = verifyFirstRaw === undefined ? true : mustBeBoolean(verifyFirstRaw, 'verifyFirst');
          const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+         const includePayment = (asOptionalBoolean(args['includePayment']) ?? true) === true;
  
          const verified = verifyFirst
            ? await client.request('/apps/verifyappupdatespecifications', {
@@ -5078,6 +5818,14 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const type = 'fluxappupdate' as const;
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const messageDetails = buildMessageToSignDetails(messageToSign);
+         const messageLink = resourceStore.putText({
+           kind: 'message_to_sign',
+           name: `messageToSign ${type}`,
+           description: 'Raw messageToSign bytes (exact data to sign)',
+           mimeType: 'text/plain',
+           text: messageToSign,
+         });
          const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
  
          const submit = await client.request('/apps/appupdate', {
@@ -5087,8 +5835,32 @@ export async function callTool(name: string, rawArgs: unknown) {
          });
  
          const hash = extractHashFromAppMessageResponse(submit.data);
- 
-         return jsonResult({ verified, submit, hash, messageToSign, payload });
+
+         const paymentInfo = includePayment ? await buildPaymentInfo(spec, hash ?? null) : null;
+
+         const out = {
+           verified,
+           submit,
+           hash,
+           messageToSign,
+           ...messageDetails,
+           messageToSignResourceUri: messageLink.uri,
+           payload,
+           payment: paymentInfo?.payment ?? null,
+           paymentSources: paymentInfo
+             ? { deploymentInformation: paymentInfo.deploymentInformation, price: paymentInfo.price }
+             : null,
+           signatureNotes: {
+             loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+             appSignature: 'Sign messageToSign for update.',
+           },
+         };
+
+         return {
+           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
+           structuredContent: out,
+           isError: false,
+         };
        }
 
         case 'flux_apps_update_and_verify': {
@@ -5104,7 +5876,10 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const attempts = asOptionalNumber(args['attempts']) ?? 10;
          const intervalMs = asOptionalNumber(args['intervalMs']) ?? 3000;
+         const poll = (asOptionalBoolean(args['poll']) ?? true) === true;
+         const pollTimeoutMs = asOptionalNumber(args['pollTimeoutMs']);
          const verifyGlobal = (asOptionalBoolean(args['verifyGlobal']) ?? true) === true;
+         const includePayment = (asOptionalBoolean(args['includePayment']) ?? true) === true;
  
          const verified = verifyFirst
            ? await client.request('/apps/verifyappupdatespecifications', {
@@ -5119,6 +5894,14 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const type = 'fluxappupdate' as const;
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+         const messageDetails = buildMessageToSignDetails(messageToSign);
+         const messageLink = resourceStore.putText({
+           kind: 'message_to_sign',
+           name: `messageToSign ${type}`,
+           description: 'Raw messageToSign bytes (exact data to sign)',
+           mimeType: 'text/plain',
+           text: messageToSign,
+         });
          const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
  
          const submit = await client.request('/apps/appupdate', {
@@ -5134,7 +5917,9 @@ export async function callTool(name: string, rawArgs: unknown) {
             throw new Error(`Could not extract message hash from update response.${hint}`);
           }
  
-         const propagation = await pollMessagePropagation({ hash, attempts, intervalMs });
+         const propagation = poll
+           ? await pollMessagePropagation({ hash, attempts, intervalMs, timeoutMs: pollTimeoutMs })
+           : null;
 
          let globalCheck: FluxRequestResult | null = null;
          let globalPresent: boolean | null = null;
@@ -5162,11 +5947,13 @@ export async function callTool(name: string, rawArgs: unknown) {
           const updated = submit.ok;
           const status = !updated
             ? 'error'
-            : propagation.permanentPresent !== true
-              ? 'pending'
-              : globalPresent === false
-                ? 'verifying_global'
-                : 'verified';
+            : !poll
+              ? 'submitted'
+              : propagation?.permanentPresent !== true
+                ? 'pending'
+                : globalPresent === false
+                  ? 'verifying_global'
+                  : 'verified';
 
           const done = status === 'verified';
           const ok = updated;
@@ -5181,6 +5968,7 @@ export async function callTool(name: string, rawArgs: unknown) {
               hash,
               attempts,
               intervalMs,
+              poll,
               verified,
               submit,
               propagation,
@@ -5193,16 +5981,21 @@ export async function callTool(name: string, rawArgs: unknown) {
             ? []
             : [
                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                { tool: 'flux_apps_wait_for_propagation', arguments: { hash, attempts, intervalMs } },
                 appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
               ].filter(Boolean);
 
-          const message = status === 'pending'
-            ? 'Update broadcasted. Wait for propagation to permanent messages.'
-            : status === 'verifying_global'
-              ? 'Update appears permanent, but global app spec not visible yet. Re-check shortly.'
-              : status === 'error'
-                ? 'Update submission failed.'
-                : 'Update verified.';
+          const message = status === 'submitted'
+            ? 'Update submitted. Poll for propagation with flux_apps_wait_for_propagation.'
+            : status === 'pending'
+              ? 'Update broadcasted. Wait for propagation to permanent messages.'
+              : status === 'verifying_global'
+                ? 'Update appears permanent, but global app spec not visible yet. Re-check shortly.'
+                : status === 'error'
+                  ? 'Update submission failed.'
+                  : 'Update verified.';
+
+          const paymentInfo = includePayment ? await buildPaymentInfo(spec, hash ?? null) : null;
 
           const summary = {
             ok,
@@ -5212,18 +6005,32 @@ export async function callTool(name: string, rawArgs: unknown) {
             appname: appname ?? null,
             owner: owner ?? null,
             hash,
-            attemptsUsed: propagation.attemptsUsed,
-            temporaryPresent: propagation.temporaryPresent,
-            permanentPresent: propagation.permanentPresent,
+            attemptsUsed: propagation?.attemptsUsed ?? 0,
+            temporaryPresent: propagation?.temporaryPresent ?? null,
+            permanentPresent: propagation?.permanentPresent ?? null,
             globalPresent,
             messageToSign,
+            ...messageDetails,
+            messageToSignResourceUri: messageLink.uri,
             message,
+            payment: paymentInfo?.payment ?? null,
+            paymentSources: paymentInfo
+              ? { deploymentInformation: paymentInfo.deploymentInformation, price: paymentInfo.price }
+              : null,
             resourceUri: link.uri,
             nextActions,
+            signatureNotes: {
+              loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+              appSignature: 'Sign messageToSign for update.',
+            },
           };
 
           return {
-            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            content: [
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...link },
+              { type: 'resource_link', ...messageLink },
+            ],
             structuredContent: summary,
             isError: status === 'error',
           };
@@ -5291,6 +6098,39 @@ export async function callTool(name: string, rawArgs: unknown) {
           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
           structuredContent: summary,
           isError: !summary.ok,
+        };
+      }
+
+      case 'flux_apps_wait_for_propagation': {
+        const hash = mustBeString(args['hash'], 'hash');
+        const attempts = asOptionalNumber(args['attempts']) ?? 10;
+        const intervalMs = asOptionalNumber(args['intervalMs']) ?? 3000;
+        const timeoutMs = asOptionalNumber(args['timeoutMs']);
+
+        const propagation = await pollMessagePropagation({ hash, attempts, intervalMs, timeoutMs });
+        const status = propagation.permanentPresent ? 'permanent' : propagation.temporaryPresent ? 'temporary' : 'pending';
+
+        const link = resourceStore.putJson({
+          kind: 'apps/propagation',
+          name: `Propagation ${hash}`,
+          description: 'Polling result for temporary/permanent messages',
+          value: propagation,
+        });
+
+        const summary = {
+          ok: true,
+          hash,
+          status,
+          attemptsUsed: propagation.attemptsUsed,
+          temporaryPresent: propagation.temporaryPresent,
+          permanentPresent: propagation.permanentPresent,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: false,
         };
       }
 

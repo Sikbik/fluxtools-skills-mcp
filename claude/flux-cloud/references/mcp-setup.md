@@ -171,6 +171,8 @@ FLUX_API_BASE_URL = "https://api.runonflux.io"
   - `flux_node_health`
 - Enterprise renewals: set `FLUX_ENTERPRISE_KEY` or call `flux_set_enterprise_key` (enterprise-key header).
   - If you need to generate it: `flux_apps_get_public_key` + `flux_enterprise_key_generate`.
+  - Shortcut: `flux_enterprise_preflight { "appname": "<app>" }`
+  - Signing tip: use `messageToSignRaw` and `messageToSignSha256`, or write the message to a file with `flux_write_message_to_sign`.
 
 ## 4) Working with resource links
 

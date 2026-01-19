@@ -241,7 +241,18 @@ Manual path:
 
 - `flux_apps_get_spec { "appname": "<app>", "decrypt": true }`
 
+Shortcut: `flux_enterprise_preflight { "appname": "<app>" }` does steps 1–4 and can optionally verify decrypt.
+
 Note: the `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
+
+## Signing tips
+
+- Planning tools now return:
+  - `messageToSignRaw` (exact bytes to sign)
+  - `messageToSignSha256` (checksum)
+  - `messageToSignBase64` (safe transport)
+- To avoid terminal wrapping, use:
+  - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
 
 ## Resources + large payloads
 
@@ -267,6 +278,8 @@ Many tools return `resource_link` blocks instead of dumping large JSON/log paylo
 - `flux_set_zelidauth` / `flux_clear_zelidauth` — manage stored auth.
 - `flux_set_enterprise_key` / `flux_clear_enterprise_key` — manage enterprise-key header for renewals.
 - `flux_enterprise_key_generate` — create enterprise-key header value + AES key from a public key.
+- `flux_enterprise_preflight` — fetch public key + generate enterprise-key + (optional) decrypt check.
+- `flux_write_message_to_sign` — write raw messageToSign to a file (avoid terminal wrapping).
 - `flux_resource_read` — read resource URI content.
 - `flux_resource_prune` — prune/clear dynamic resources.
 
@@ -316,9 +329,13 @@ High-level signing workflow helpers:
 
 - `flux_apps_plan_registration` — verify + price + build `messageToSign` and payload scaffold.
 - `flux_apps_register` — submit `POST /apps/appregister` (requires owner signature + `zelidauth`).
+- `flux_apps_register_and_verify` — submit + poll propagation (optional).
 - `flux_apps_plan_update` — verify + price + build `messageToSign` and payload scaffold.
+- `flux_apps_plan_renew` — compute expire + verify + price + build `messageToSign` and payload scaffold.
 - `flux_apps_update` — submit `POST /apps/appupdate` (requires owner signature + `zelidauth`).
+- `flux_apps_update_and_verify` — submit + poll propagation (optional).
 - `flux_apps_get_messages` — check `temporarymessages` / `permanentmessages` for a hash.
+- `flux_apps_wait_for_propagation` — poll temporary/permanent messages for a hash.
 
 ### Apps: lifecycle (requires `confirm=true`)
 

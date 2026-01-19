@@ -196,6 +196,20 @@ Many tools return `resource_link` blocks to keep chat output small.
 - If your client supports MCP resources, use `resources/read` with the given URI.
 - Otherwise, call `flux_resource_read { "uri": "..." }`.
 
+### 5b) Signing tips (avoid bad signatures)
+
+- `flux_build_message_to_sign` and planning tools include:
+  - `messageToSignRaw` (exact bytes to sign)
+  - `messageToSignSha256` (checksum)
+  - `messageToSignBase64` (safe transport)
+- To avoid terminal wrapping, use:
+  - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
+
+### 5c) Renewals
+
+- `flux_apps_plan_renew` computes a safe `expire` for “add weeks” vs “add to remaining” and outputs a ready-to-sign update payload plus payment guidance.
+- `flux_apps_wait_for_propagation` polls temporary/permanent messages without long-running tool timeouts.
+
 ### 6) Troubleshooting (MCP)
 
 - Tools not showing up: make sure Node.js 20+ is installed, run `npm ci && npm run build` in `flux-mcp/`, and restart your client.
@@ -278,6 +292,8 @@ Enterprise-key flow (Arcane nodes):
 3) `flux_enterprise_key_generate { "publicKey": "<base64>" }`
 4) `flux_set_enterprise_key { "enterpriseKey": "<base64>" }`
 5) `flux_apps_get_spec { "appname": "<app>", "decrypt": true }`
+
+Shortcut: `flux_enterprise_preflight { "appname": "<app>" }` does steps 1–4 and can optionally verify decrypt.
 
 Note: the response `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
 
