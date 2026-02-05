@@ -1977,6 +1977,27 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_apps_get_spec_full',
+    description:
+      'Fetch an app spec; for v8+ enterprise apps, performs the Arcane enterprise decrypt flow and returns decrypted compose/contacts (requires zelidauth + Arcane node).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appname: { type: 'string', description: 'Flux app name' },
+        owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
+        baseUrls: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Optional base URLs to try for Arcane/enterprise operations (e.g. ["http://<ip>:16127", "https://<ip-with-dashes>-16127.node.api.runonflux.io"]).',
+        },
+        timeoutMs: { type: 'number', description: 'Optional request timeout override.' },
+        setBaseUrlOnSuccess: { type: 'boolean', description: 'If true (default), set MCP baseUrl to the successful Arcane node URL.' },
+      },
+      required: ['appname'],
+    },
+  },
+  {
     name: 'flux_apps_get_public_key',
     description: 'Fetch RSA public key for enterprise encryption (POST /apps/getpublickey). Requires zelidauth and Arcane node.',
     inputSchema: {
@@ -3250,8 +3271,10 @@ export async function callTool(name: string, rawArgs: unknown) {
           };
 
           return jsonResult(out, { structuredContent: out });
-        } finally {
+        } catch (error) {
+          // Only restore the previous baseUrl if we fail before setting the recommended direct node URL.
           if (prevBase) client.setBaseUrl(prevBase);
+          throw error;
         }
       }
 
@@ -3301,13 +3324,13 @@ export async function callTool(name: string, rawArgs: unknown) {
         const normalized = Array.from(new Set(baseUrls.map((u) => normalizeHttpBaseUrl(u))));
         if (normalized.length === 0) throw new Error('No baseUrl available (set FLUX_API_BASE_URL or pass baseUrls).');
 
-        const prevBase = client.getBaseUrl();
         const runWithBaseUrl = async <T>(baseUrl: string, fn: () => Promise<T>) => {
+          const restoreBase = client.getBaseUrl();
           client.setBaseUrl(baseUrl);
           try {
             return await fn();
           } finally {
-            if (prevBase) client.setBaseUrl(prevBase);
+            if (restoreBase) client.setBaseUrl(restoreBase);
           }
         };
 
@@ -5170,6 +5193,331 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
       }
 
+      case 'flux_apps_get_spec_full': {
+        const appname = mustBeString(args['appname'], 'appname');
+        const ownerArg = asOptionalString(args['owner']);
+        const baseUrlsRaw = args['baseUrls'];
+        const timeoutMs = asOptionalNumber(args['timeoutMs']);
+        const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
+
+        const baseUrls = Array.isArray(baseUrlsRaw)
+          ? baseUrlsRaw.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean)
+          : [];
+
+        const currentBase = client.getBaseUrl();
+        if (baseUrls.length === 0 && currentBase) baseUrls.push(currentBase);
+
+        const normalized = Array.from(new Set(baseUrls.map((u) => normalizeHttpBaseUrl(u))));
+        if (normalized.length === 0) throw new Error('No baseUrl available (set FLUX_API_BASE_URL or pass baseUrls).');
+
+        const withBaseUrl = async <T>(baseUrl: string, fn: () => Promise<T>) => {
+          const restoreBase = client.getBaseUrl();
+          client.setBaseUrl(baseUrl);
+          try {
+            return await fn();
+          } finally {
+            if (restoreBase) client.setBaseUrl(restoreBase);
+          }
+        };
+
+        // 1) Always fetch the base spec first (lets us detect non-enterprise apps without needing auth).
+        const baseSpecAttempt = await attemptOnBaseUrls(normalized, (baseUrl) =>
+          withBaseUrl(baseUrl, async () => {
+            const res = await client.request(`/apps/appspecifications/${encodeURIComponent(appname)}`, { timeoutMs });
+            if (!res.ok || !isFluxSuccess(res.data)) {
+              throw new Error(extractFluxErrorMessage(res.data) ?? 'Failed to fetch app spec');
+            }
+            const payload = unwrapFluxEnvelope<unknown>(res.data);
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+              throw new Error('Invalid app spec response');
+            }
+            return { res, spec: payload as Record<string, unknown> };
+          })
+        );
+
+        if (!baseSpecAttempt.ok) {
+          return jsonResult(
+            {
+              ok: false,
+              appname,
+              enterprise: null,
+              error: 'Unable to fetch app spec.',
+              failures: baseSpecAttempt.failures,
+            },
+            { isError: true }
+          );
+        }
+
+        const baseSpecRes = baseSpecAttempt.value.res;
+        const baseSpec = baseSpecAttempt.value.spec;
+        const baseUrlUsed = baseSpecAttempt.used;
+
+        const baseLink = resourceStore.putJson({
+          kind: 'apps/spec',
+          name: `${appname} spec (base)`,
+          description: 'Raw /apps/appspecifications response (non-decrypt)',
+          value: baseSpecRes,
+        });
+
+        const versionRaw = baseSpec['version'];
+        const version =
+          typeof versionRaw === 'number'
+            ? versionRaw
+            : typeof versionRaw === 'string'
+              ? Number(versionRaw)
+              : NaN;
+
+        const enterpriseRaw = baseSpec['enterprise'];
+        const enterprisePresent = typeof enterpriseRaw === 'string' && enterpriseRaw.trim().length > 0;
+        const isEnterprise = Number.isFinite(version) && version >= 8 && enterprisePresent;
+
+        if (!isEnterprise) {
+          const summary = {
+            ok: true,
+            appname,
+            enterprise: false,
+            baseUrlUsed,
+            resourceUri: baseLink.uri,
+          };
+
+          return {
+            content: [
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...baseLink },
+            ],
+            structuredContent: summary,
+            isError: false,
+          };
+        }
+
+        // 2) Enterprise apps require an authenticated Arcane node for the decrypt flow.
+        if (!client.getZelidauthSummary().present) {
+          const summary = {
+            ok: false,
+            appname,
+            enterprise: true,
+            error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
+            baseUrlUsed,
+            resourceUri: baseLink.uri,
+          };
+
+          return {
+            content: [
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...baseLink },
+            ],
+            structuredContent: summary,
+            isError: true,
+          };
+        }
+
+        const preferred = [baseUrlUsed, ...normalized.filter((u) => u !== baseUrlUsed)];
+
+        // 2a) Resolve original owner (needed for /apps/getpublickey).
+        let owner = ownerArg ?? null;
+        if (!owner) {
+          const ownerAttempt = await attemptOnBaseUrls(preferred, (baseUrl) =>
+            withBaseUrl(baseUrl, async () => {
+              const res = await client.request(`/apps/apporiginalowner/${encodeURIComponent(appname)}`, { timeoutMs });
+              if (!res.ok || !isFluxSuccess(res.data)) {
+                throw new Error(extractFluxErrorMessage(res.data) ?? 'Failed to fetch app original owner');
+              }
+              const payload = unwrapFluxEnvelope<unknown>(res.data);
+              if (typeof payload !== 'string' || !payload.trim()) throw new Error('Invalid owner response');
+              return payload.trim();
+            })
+          );
+
+          if (!ownerAttempt.ok) {
+            const summary = {
+              ok: false,
+              appname,
+              enterprise: true,
+              error: 'Unable to resolve app original owner.',
+              failures: ownerAttempt.failures,
+              resourceUri: baseLink.uri,
+            };
+
+            return {
+              content: [
+                { type: 'text', text: JSON.stringify(summary, null, 2) },
+                { type: 'resource_link', ...baseLink },
+              ],
+              structuredContent: summary,
+              isError: true,
+            };
+          }
+
+          owner = ownerAttempt.value;
+        }
+
+        // 2b) Fetch RSA public key from an Arcane node.
+        const publicKeyAttempt = await attemptOnBaseUrls(preferred, (baseUrl) =>
+          withBaseUrl(baseUrl, async () => {
+            const res = await client.request('/apps/getpublickey', {
+              method: 'POST',
+              bodyType: 'json',
+              body: { owner, name: appname },
+              timeoutMs,
+            });
+            if (!res.ok || !isFluxSuccess(res.data)) {
+              throw new Error(extractFluxErrorMessage(res.data) ?? 'Failed to fetch public key');
+            }
+            const payload = unwrapFluxEnvelope<unknown>(res.data);
+            if (typeof payload !== 'string' || !payload.trim()) throw new Error('Invalid public key response');
+            return payload.trim();
+          })
+        );
+
+        if (!publicKeyAttempt.ok) {
+          const summary = {
+            ok: false,
+            appname,
+            enterprise: true,
+            owner,
+            error: 'Unable to fetch enterprise public key (Arcane node + zelidauth required).',
+            failures: publicKeyAttempt.failures,
+            resourceUri: baseLink.uri,
+          };
+
+          return {
+            content: [
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...baseLink },
+            ],
+            structuredContent: summary,
+            isError: true,
+          };
+        }
+
+        const publicKey = publicKeyAttempt.value;
+        const arcaneBaseUrlUsed = publicKeyAttempt.used;
+        const { enterpriseKey, aesKeyBase64 } = generateEnterpriseKey(publicKey);
+
+        // 2c) Fetch session-encrypted enterprise payload from the Arcane node.
+        const encryptedRes = await (async () => {
+          if (setBaseUrlOnSuccess) {
+            client.setBaseUrl(arcaneBaseUrlUsed);
+            return await client.request(`/apps/appspecifications/${encodeURIComponent(appname)}/true`, {
+              enterpriseKey,
+              timeoutMs,
+            });
+          }
+
+          return await withBaseUrl(arcaneBaseUrlUsed, async () =>
+            client.request(`/apps/appspecifications/${encodeURIComponent(appname)}/true`, {
+              enterpriseKey,
+              timeoutMs,
+            })
+          );
+        })();
+
+        const encryptedLink = resourceStore.putJson({
+          kind: 'apps/spec/enterprise_encrypted',
+          name: `${appname} spec (enterprise encrypted)`,
+          description: 'Raw /apps/appspecifications/<app>/true response (enterprise session ciphertext)',
+          value: encryptedRes,
+        });
+
+        if (!encryptedRes.ok || !isFluxSuccess(encryptedRes.data)) {
+          const summary = {
+            ok: false,
+            appname,
+            enterprise: true,
+            owner,
+            baseUrlUsed: arcaneBaseUrlUsed,
+            error: extractFluxErrorMessage(encryptedRes.data) ?? 'Failed to fetch enterprise encrypted spec',
+            resources: {
+              baseSpec: baseLink.uri,
+              encryptedSpec: encryptedLink.uri,
+            },
+          };
+
+          return {
+            content: [
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...baseLink },
+              { type: 'resource_link', ...encryptedLink },
+            ],
+            structuredContent: summary,
+            isError: true,
+          };
+        }
+
+        const encryptedPayload = unwrapFluxEnvelope<unknown>(encryptedRes.data);
+        if (!encryptedPayload || typeof encryptedPayload !== 'object' || Array.isArray(encryptedPayload)) {
+          throw new Error('Invalid encrypted spec response');
+        }
+
+        const encryptedSpec = encryptedPayload as Record<string, unknown>;
+        const enterpriseCiphertext = encryptedSpec['enterprise'];
+        if (typeof enterpriseCiphertext !== 'string' || !enterpriseCiphertext.trim()) {
+          throw new Error('Encrypted response missing enterprise payload');
+        }
+
+        // 3) Decrypt the enterprise payload locally (AES-256-GCM) and merge into an inspection-friendly spec.
+        const decryptedText = decryptEnterprisePayload(enterpriseCiphertext, aesKeyBase64);
+        let decryptedEnterprise: unknown = null;
+        try {
+          decryptedEnterprise = JSON.parse(decryptedText);
+        } catch (error) {
+          throw new Error('Enterprise payload decrypted but was not valid JSON');
+        }
+
+        if (!decryptedEnterprise || typeof decryptedEnterprise !== 'object' || Array.isArray(decryptedEnterprise)) {
+          throw new Error('Enterprise payload JSON must be an object');
+        }
+
+        const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
+
+        const mergedSpec: Record<string, unknown> = { ...encryptedSpec };
+        if ('compose' in enterpriseObj) mergedSpec.compose = enterpriseObj.compose;
+        if ('contacts' in enterpriseObj) mergedSpec.contacts = enterpriseObj.contacts;
+
+        const enterpriseLink = resourceStore.putJson({
+          kind: 'enterprise/decrypted/json',
+          name: `${appname} enterprise decrypted`,
+          description: 'Decrypted enterprise payload (parsed JSON)',
+          value: enterpriseObj,
+        });
+
+        const mergedLink = resourceStore.putJson({
+          kind: 'apps/spec/full',
+          name: `${appname} spec (full)`,
+          description: 'Inspection-friendly spec with decrypted enterprise compose/contacts merged in',
+          value: mergedSpec,
+        });
+
+        const summary = {
+          ok: true,
+          appname,
+          enterprise: true,
+          owner,
+          baseUrlUsed: arcaneBaseUrlUsed,
+          baseUrlSet: setBaseUrlOnSuccess,
+          warning:
+            'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
+          resources: {
+            baseSpec: baseLink.uri,
+            encryptedSpec: encryptedLink.uri,
+            enterpriseDecrypted: enterpriseLink.uri,
+            mergedSpec: mergedLink.uri,
+          },
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...baseLink },
+            { type: 'resource_link', ...encryptedLink },
+            { type: 'resource_link', ...enterpriseLink },
+            { type: 'resource_link', ...mergedLink },
+          ],
+          structuredContent: summary,
+          isError: false,
+        };
+      }
+
       case 'flux_apps_get_public_key': {
         const owner = mustBeString(args['owner'], 'owner');
         const name = mustBeString(args['name'], 'name');
@@ -5824,7 +6172,9 @@ export async function callTool(name: string, rawArgs: unknown) {
          });
 
          const blocksRemaining = expiration.blocksRemaining;
-         const blocksToAdd = Number.isFinite(blocksToAddOverride) ? Math.floor(blocksToAddOverride) : Math.max(0, Math.floor(weeks * blocksPerWeek));
+         const blocksToAdd = blocksToAddOverride === undefined
+           ? Math.max(0, Math.floor(weeks * blocksPerWeek))
+           : Math.floor(blocksToAddOverride);
          const baseRemaining = Number.isFinite(blocksRemaining) ? Math.max(0, Math.floor(blocksRemaining)) : 0;
          const expireComputed = mode === 'from_now' ? blocksToAdd : baseRemaining + blocksToAdd;
 
@@ -5948,7 +6298,10 @@ export async function callTool(name: string, rawArgs: unknown) {
              : 'Provide a full spec (especially for enterprise apps) to proceed with renewal.',
          };
 
-         const content = [{ type: 'text', text: JSON.stringify(out, null, 2) }];
+         const content: Array<
+           | { type: 'text'; text: string }
+           | { type: 'resource_link'; uri: string; name: string; description?: string; mimeType?: string }
+         > = [{ type: 'text', text: JSON.stringify(out, null, 2) }];
          if (messageLink) content.push({ type: 'resource_link', ...messageLink });
 
          return {
