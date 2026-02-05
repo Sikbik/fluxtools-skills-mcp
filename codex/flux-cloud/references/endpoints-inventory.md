@@ -4,32 +4,32 @@ Generated from:
 - Repo: `https://github.com/RunOnFlux/flux`
 - Ref: `master`
 - File: `ZelBack/src/routes.js`
-- Generated: `2026-01-17T17:07:24.669Z`
+- Generated: `2026-02-05T23:27:11.596Z`
 
 ## Summary
 
-- Total routes: **465**
+- Total routes: **467**
 
 ### Categories
 
 - `daemon`: 162
 - `apps`: 85
-- `flux`: 81
+- `flux`: 82
 - `syncthing`: 79
 - `explorer`: 14
+- `benchmark`: 13
 - `id`: 12
 - `zelid`: 12
-- `benchmark`: 12
 - `backup`: 5
 - `payment`: 2
 - `ioutils`: 1
 
 ### Access sections (as labeled in `routes.js`)
 
-- `GET PUBLIC methods`: 129
+- `GET PUBLIC methods`: 130
 - `GET PROTECTED API - Fluxnode Owner`: 88
 - `GET PROTECTED API - FluxTeam`: 88
-- `GET PROTECTED API - User level`: 76
+- `GET PROTECTED API - User level`: 77
 - `POST PROTECTED API - FluxTeam`: 42
 - `POST PUBLIC methods route`: 24
 - `POST PROTECTED API - FluxNode owner level`: 11
@@ -301,7 +301,7 @@ Generated from:
 </details>
 
 <details>
-<summary><strong>flux (81)</strong></summary>
+<summary><strong>flux (82)</strong></summary>
 
 | Method | Path | Access | Cache | Local | Deprecated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -334,6 +334,7 @@ Generated from:
 | GET | `/flux/dosstate` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | GET | `/flux/enterdevelopment` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
 | GET | `/flux/entermaster` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
+| GET | `/flux/enterpriseappowners` | `GET PUBLIC methods` | `1 hour` |  |  |  |
 | GET | `/flux/errorlog` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
 | GET | `/flux/fluxids` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
 | GET | `/flux/geolocation` | `GET PUBLIC methods` | `30 seconds` |  |  |  |
@@ -499,6 +500,27 @@ Generated from:
 </details>
 
 <details>
+<summary><strong>benchmark (13)</strong></summary>
+
+| Method | Path | Access | Cache | Local | Deprecated | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| GET | `/benchmark/getbenchmarks` | `GET PROTECTED API - User level` | `30 seconds` |  |  |  |
+| GET | `/benchmark/getinfo` | `GET PROTECTED API - User level` | `30 seconds` |  |  |  |
+| GET | `/benchmark/getstatus` | `GET PROTECTED API - User level` | `30 seconds` |  |  |  |
+| GET | `/benchmark/getstoredbenchmark` | `GET PROTECTED API - User level` | `1 hour` |  |  |  |
+| GET | `/benchmark/help/:command?` | `GET PROTECTED API - User level` | `1 hour` |  |  |  |
+| GET | `/benchmark/restart` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
+| GET | `/benchmark/restartnodebenchmarks` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
+| POST | `/benchmark/signfluxnodetransaction` | `POST PROTECTED API - FluxNode owner level` |  |  |  |  |
+| GET | `/benchmark/signfluxnodetransaction/:hexstring?` | `GET PROTECTED API - Fluxnode Owner` |  |  |  |  |
+| POST | `/benchmark/signzelnodetransaction` | `POST PROTECTED API - FluxNode owner level` |  |  | yes | DEPRECATED |
+| GET | `/benchmark/signzelnodetransaction/:hexstring?` | `GET PROTECTED API - Fluxnode Owner` |  |  | yes | DEPRECATED |
+| GET | `/benchmark/start` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
+| GET | `/benchmark/stop` | `GET PROTECTED API - Fluxnode Owner` |  |  |  |  |
+
+</details>
+
+<details>
 <summary><strong>id (12)</strong></summary>
 
 | Method | Path | Access | Cache | Local | Deprecated | Notes |
@@ -535,26 +557,6 @@ Generated from:
 | POST | `/zelid/logoutspecificsession` | `POST PROTECTED API - USER LEVEL` |  |  | yes | DEPRECATED |
 | POST | `/zelid/providesign` | `POST PUBLIC methods route` |  |  | yes | DEPRECATED |
 | POST | `/zelid/verifylogin` | `POST PUBLIC methods route` |  |  | yes | DEPRECATED |
-
-</details>
-
-<details>
-<summary><strong>benchmark (12)</strong></summary>
-
-| Method | Path | Access | Cache | Local | Deprecated | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| GET | `/benchmark/getbenchmarks` | `GET PROTECTED API - User level` | `30 seconds` |  |  |  |
-| GET | `/benchmark/getinfo` | `GET PROTECTED API - User level` | `30 seconds` |  |  |  |
-| GET | `/benchmark/getstatus` | `GET PROTECTED API - User level` | `30 seconds` |  |  |  |
-| GET | `/benchmark/help/:command?` | `GET PROTECTED API - User level` | `1 hour` |  |  |  |
-| GET | `/benchmark/restart` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
-| GET | `/benchmark/restartnodebenchmarks` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
-| POST | `/benchmark/signfluxnodetransaction` | `POST PROTECTED API - FluxNode owner level` |  |  |  |  |
-| GET | `/benchmark/signfluxnodetransaction/:hexstring?` | `GET PROTECTED API - Fluxnode Owner` |  |  |  |  |
-| POST | `/benchmark/signzelnodetransaction` | `POST PROTECTED API - FluxNode owner level` |  |  | yes | DEPRECATED |
-| GET | `/benchmark/signzelnodetransaction/:hexstring?` | `GET PROTECTED API - Fluxnode Owner` |  |  | yes | DEPRECATED |
-| GET | `/benchmark/start` | `GET PROTECTED API - FluxTeam` |  |  |  |  |
-| GET | `/benchmark/stop` | `GET PROTECTED API - Fluxnode Owner` |  |  |  |  |
 
 </details>
 

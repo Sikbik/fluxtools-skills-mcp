@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-01-17T17:07:24.669Z",
+  "generatedAt": "2026-02-05T23:27:11.596Z",
   "sourceRef": "master",
   "sourceFile": "ZelBack/src/routes.js",
-  "routeCount": 465,
+  "routeCount": 467,
   "routes": [
     {
       "method": "GET",
@@ -1098,6 +1098,20 @@
     },
     {
       "method": "GET",
+      "path": "/flux/enterpriseappowners",
+      "category": "flux",
+      "access": "GET PUBLIC methods",
+      "cache": "1 hour",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 298
+      }
+    },
+    {
+      "method": "GET",
       "path": "/flux/marketplaceurl",
       "category": "flux",
       "access": "GET PUBLIC methods",
@@ -1107,7 +1121,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 298
+        "line": 301
       }
     },
     {
@@ -1121,7 +1135,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 301
+        "line": 304
       }
     },
     {
@@ -1135,7 +1149,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 304
+        "line": 307
       }
     },
     {
@@ -1149,7 +1163,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 307
+        "line": 310
       }
     },
     {
@@ -1163,7 +1177,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 310
+        "line": 313
       }
     },
     {
@@ -1177,7 +1191,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 313
+        "line": 316
       }
     },
     {
@@ -1191,7 +1205,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 316
+        "line": 319
       }
     },
     {
@@ -1205,7 +1219,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 319
+        "line": 322
       }
     },
     {
@@ -1219,7 +1233,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 322
+        "line": 325
       }
     },
     {
@@ -1233,7 +1247,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 325
+        "line": 328
       }
     },
     {
@@ -1247,7 +1261,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 330
+        "line": 333
       }
     },
     {
@@ -1261,7 +1275,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 333
+        "line": 336
       }
     },
     {
@@ -1275,7 +1289,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 336
+        "line": 339
       }
     },
     {
@@ -1289,7 +1303,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 339
+        "line": 342
       }
     },
     {
@@ -1303,7 +1317,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 342
+        "line": 345
       }
     },
     {
@@ -1317,7 +1331,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 345
+        "line": 348
       }
     },
     {
@@ -1331,7 +1345,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 348
+        "line": 351
       }
     },
     {
@@ -1345,7 +1359,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 351
+        "line": 354
       }
     },
     {
@@ -1359,7 +1373,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 354
+        "line": 357
       }
     },
     {
@@ -1373,7 +1387,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 357
+        "line": 360
       }
     },
     {
@@ -1387,7 +1401,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 360
+        "line": 363
       }
     },
     {
@@ -1401,7 +1415,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 363
+        "line": 366
       }
     },
     {
@@ -1415,7 +1429,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 366
+        "line": 369
       }
     },
     {
@@ -1429,7 +1443,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 369
+        "line": 372
       }
     },
     {
@@ -1443,7 +1457,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 372
+        "line": 375
       }
     },
     {
@@ -1457,7 +1471,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 375
+        "line": 378
       }
     },
     {
@@ -1471,7 +1485,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 378
+        "line": 381
       }
     },
     {
@@ -1485,7 +1499,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 381
+        "line": 384
       }
     },
     {
@@ -1499,7 +1513,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 384
+        "line": 387
       }
     },
     {
@@ -1513,7 +1527,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 387
+        "line": 390
       }
     },
     {
@@ -1527,7 +1541,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 390
+        "line": 393
       }
     },
     {
@@ -1541,7 +1555,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 393
+        "line": 396
       }
     },
     {
@@ -1555,7 +1569,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 396
+        "line": 399
       }
     },
     {
@@ -1569,7 +1583,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 399
+        "line": 402
       }
     },
     {
@@ -1583,7 +1597,7 @@
       "comment": "returns price in flux for both new registration of app and update of app",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 402
+        "line": 405
       }
     },
     {
@@ -1597,7 +1611,7 @@
       "comment": "returns price in usd and flux for both new registration of app and update of app",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 405
+        "line": 408
       }
     },
     {
@@ -1611,7 +1625,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 408
+        "line": 411
       }
     },
     {
@@ -1625,7 +1639,7 @@
       "comment": "returns formatted app specifications",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 411
+        "line": 414
       }
     },
     {
@@ -1639,7 +1653,7 @@
       "comment": "returns formatted app specifications",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 414
+        "line": 417
       }
     },
     {
@@ -1653,7 +1667,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 417
+        "line": 420
       }
     },
     {
@@ -1667,7 +1681,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 420
+        "line": 423
       }
     },
     {
@@ -1681,7 +1695,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 423
+        "line": 426
       }
     },
     {
@@ -1695,7 +1709,7 @@
       "comment": "app.get('/explorer/allutxos', (req, res) => {",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 427
+        "line": 430
       }
     },
     {
@@ -1709,7 +1723,7 @@
       "comment": "app.get('/explorer/alladdresseswithtransactions', (req, res) => {",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 430
+        "line": 433
       }
     },
     {
@@ -1723,7 +1737,7 @@
       "comment": "app.get('/explorer/alladdresses', (req, res) => {",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 433
+        "line": 436
       }
     },
     {
@@ -1737,7 +1751,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 437
+        "line": 440
       }
     },
     {
@@ -1751,7 +1765,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 440
+        "line": 443
       }
     },
     {
@@ -1765,7 +1779,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 443
+        "line": 446
       }
     },
     {
@@ -1779,7 +1793,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 446
+        "line": 449
       }
     },
     {
@@ -1793,7 +1807,7 @@
       "comment": "app.get('/explorer/fusion/coinbase/all', cache('30 seconds'), (req, res) => {",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 449
+        "line": 452
       }
     },
     {
@@ -1807,7 +1821,7 @@
       "comment": "deprecated",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 452
+        "line": 455
       }
     },
     {
@@ -1821,7 +1835,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 457
+        "line": 460
       }
     },
     {
@@ -1835,7 +1849,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 460
+        "line": 463
       }
     },
     {
@@ -1849,7 +1863,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 464
+        "line": 467
       }
     },
     {
@@ -1863,7 +1877,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 467
+        "line": 470
       }
     },
     {
@@ -1877,7 +1891,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 470
+        "line": 473
       }
     },
     {
@@ -1891,7 +1905,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 473
+        "line": 476
       }
     },
     {
@@ -1905,7 +1919,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 476
+        "line": 479
       }
     },
     {
@@ -1919,7 +1933,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 479
+        "line": 482
       }
     },
     {
@@ -1933,7 +1947,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 483
+        "line": 486
       }
     },
     {
@@ -1947,7 +1961,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 486
+        "line": 489
       }
     },
     {
@@ -1961,7 +1975,21 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 489
+        "line": 492
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/benchmark/getstoredbenchmark",
+      "category": "benchmark",
+      "access": "GET PROTECTED API - User level",
+      "cache": "1 hour",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 495
       }
     },
     {
@@ -1975,7 +2003,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 492
+        "line": 498
       }
     },
     {
@@ -1989,7 +2017,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 496
+        "line": 502
       }
     },
     {
@@ -2003,7 +2031,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 499
+        "line": 505
       }
     },
     {
@@ -2017,7 +2045,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 502
+        "line": 508
       }
     },
     {
@@ -2031,7 +2059,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 505
+        "line": 511
       }
     },
     {
@@ -2045,7 +2073,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 508
+        "line": 514
       }
     },
     {
@@ -2059,7 +2087,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 511
+        "line": 517
       }
     },
     {
@@ -2073,7 +2101,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 514
+        "line": 520
       }
     },
     {
@@ -2087,7 +2115,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 517
+        "line": 523
       }
     },
     {
@@ -2101,7 +2129,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 520
+        "line": 526
       }
     },
     {
@@ -2115,7 +2143,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 523
+        "line": 529
       }
     },
     {
@@ -2129,7 +2157,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 526
+        "line": 532
       }
     },
     {
@@ -2143,7 +2171,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 529
+        "line": 535
       }
     },
     {
@@ -2157,7 +2185,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 532
+        "line": 538
       }
     },
     {
@@ -2171,7 +2199,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 535
+        "line": 541
       }
     },
     {
@@ -2185,7 +2213,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 538
+        "line": 544
       }
     },
     {
@@ -2199,7 +2227,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 541
+        "line": 547
       }
     },
     {
@@ -2213,7 +2241,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 544
+        "line": 550
       }
     },
     {
@@ -2227,7 +2255,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 547
+        "line": 553
       }
     },
     {
@@ -2241,40 +2269,12 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 550
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/syncthing/system/upgrade",
-      "category": "syncthing",
-      "access": "GET PROTECTED API - User level",
-      "cache": "30 seconds",
-      "localOnly": false,
-      "deprecated": false,
-      "comment": "",
-      "source": {
-        "file": "ZelBack/src/routes.js",
-        "line": 553
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/syncthing/system/version",
-      "category": "syncthing",
-      "access": "GET PROTECTED API - User level",
-      "cache": "30 seconds",
-      "localOnly": false,
-      "deprecated": false,
-      "comment": "",
-      "source": {
-        "file": "ZelBack/src/routes.js",
         "line": 556
       }
     },
     {
       "method": "GET",
-      "path": "/syncthing/config",
+      "path": "/syncthing/system/upgrade",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2288,7 +2288,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/restart-required",
+      "path": "/syncthing/system/version",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2302,7 +2302,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/folders/:id?",
+      "path": "/syncthing/config",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2316,7 +2316,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/devices/:id?",
+      "path": "/syncthing/config/restart-required",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2330,7 +2330,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/defaults/folder",
+      "path": "/syncthing/config/folders/:id?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2344,7 +2344,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/defaults/device",
+      "path": "/syncthing/config/devices/:id?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2358,7 +2358,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/defaults/ignores",
+      "path": "/syncthing/config/defaults/folder",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2372,7 +2372,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/options",
+      "path": "/syncthing/config/defaults/device",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2386,7 +2386,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/ldap",
+      "path": "/syncthing/config/defaults/ignores",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2400,7 +2400,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/config/gui",
+      "path": "/syncthing/config/options",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2414,7 +2414,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/stats/device",
+      "path": "/syncthing/config/ldap",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2428,7 +2428,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/stats/folder",
+      "path": "/syncthing/config/gui",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2442,7 +2442,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/cluster/pending/devices",
+      "path": "/syncthing/stats/device",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2456,7 +2456,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/cluster/pending/folders",
+      "path": "/syncthing/stats/folder",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2470,7 +2470,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/folder/errors/:folder?",
+      "path": "/syncthing/cluster/pending/devices",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2484,7 +2484,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/folder/versions/:folder?",
+      "path": "/syncthing/cluster/pending/folders",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2498,7 +2498,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/browse/:folder?/:levels?/:prefix?",
+      "path": "/syncthing/folder/errors/:folder?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2512,7 +2512,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/completion/:folder?/:device?",
+      "path": "/syncthing/folder/versions/:folder?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2526,7 +2526,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/file/:folder?/:file?",
+      "path": "/syncthing/db/browse/:folder?/:levels?/:prefix?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2540,7 +2540,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/ignores/:folder?",
+      "path": "/syncthing/db/completion/:folder?/:device?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2554,7 +2554,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/localchanged/:folder?",
+      "path": "/syncthing/db/file/:folder?/:file?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2568,7 +2568,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/need/:folder?",
+      "path": "/syncthing/db/ignores/:folder?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2582,7 +2582,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/remoteneed/:folder?/:device?",
+      "path": "/syncthing/db/localchanged/:folder?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2596,7 +2596,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/db/status/:folder?",
+      "path": "/syncthing/db/need/:folder?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2610,7 +2610,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/events/disk",
+      "path": "/syncthing/db/remoteneed/:folder?/:device?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2624,7 +2624,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/events/:events?/:since?/:limit?/:timeout?",
+      "path": "/syncthing/db/status/:folder?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2638,7 +2638,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/svc/random/string/:length?",
+      "path": "/syncthing/events/disk",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2652,7 +2652,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/svc/report",
+      "path": "/syncthing/events/:events?/:since?/:limit?/:timeout?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2666,7 +2666,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/svc/:deviceid?",
+      "path": "/syncthing/svc/random/string/:length?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2680,7 +2680,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/debug/peercompletion",
+      "path": "/syncthing/svc/report",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2694,7 +2694,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/debug/httpmetrics",
+      "path": "/syncthing/svc/:deviceid?",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2708,7 +2708,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/debug/cpuprof",
+      "path": "/syncthing/debug/peercompletion",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2722,7 +2722,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/debug/heapprof",
+      "path": "/syncthing/debug/httpmetrics",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2736,7 +2736,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/debug/support",
+      "path": "/syncthing/debug/cpuprof",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2750,7 +2750,7 @@
     },
     {
       "method": "GET",
-      "path": "/syncthing/debug/file",
+      "path": "/syncthing/debug/heapprof",
       "category": "syncthing",
       "access": "GET PROTECTED API - User level",
       "cache": "30 seconds",
@@ -2764,35 +2764,35 @@
     },
     {
       "method": "GET",
+      "path": "/syncthing/debug/support",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 664
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/syncthing/debug/file",
+      "category": "syncthing",
+      "access": "GET PROTECTED API - User level",
+      "cache": "30 seconds",
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 667
+      }
+    },
+    {
+      "method": "GET",
       "path": "/backup/getvolumedataofcomponent/:appname?/:component?/:multiplier?/:decimal?/:fields?",
-      "category": "backup",
-      "access": "GET PROTECTED API - User level",
-      "cache": null,
-      "localOnly": false,
-      "deprecated": false,
-      "comment": "",
-      "source": {
-        "file": "ZelBack/src/routes.js",
-        "line": 666
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/backup/getremotefilesize/:fileurl?/:multiplier?/:decimal?/:number?/:appname?",
-      "category": "backup",
-      "access": "GET PROTECTED API - User level",
-      "cache": null,
-      "localOnly": false,
-      "deprecated": false,
-      "comment": "",
-      "source": {
-        "file": "ZelBack/src/routes.js",
-        "line": 669
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/backup/getlocalbackuplist/:path?/:multiplier?/:decimal?/:number?/:appname?",
       "category": "backup",
       "access": "GET PROTECTED API - User level",
       "cache": null,
@@ -2806,7 +2806,7 @@
     },
     {
       "method": "GET",
-      "path": "/backup/removebackupfile/:filepath?/:appname?",
+      "path": "/backup/getremotefilesize/:fileurl?/:multiplier?/:decimal?/:number?/:appname?",
       "category": "backup",
       "access": "GET PROTECTED API - User level",
       "cache": null,
@@ -2820,7 +2820,7 @@
     },
     {
       "method": "GET",
-      "path": "/backup/downloadlocalfile/:filepath?/:appname?",
+      "path": "/backup/getlocalbackuplist/:path?/:multiplier?/:decimal?/:number?/:appname?",
       "category": "backup",
       "access": "GET PROTECTED API - User level",
       "cache": null,
@@ -2830,6 +2830,34 @@
       "source": {
         "file": "ZelBack/src/routes.js",
         "line": 678
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/backup/removebackupfile/:filepath?/:appname?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 681
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/backup/downloadlocalfile/:filepath?/:appname?",
+      "category": "backup",
+      "access": "GET PROTECTED API - User level",
+      "cache": null,
+      "localOnly": false,
+      "deprecated": false,
+      "comment": "",
+      "source": {
+        "file": "ZelBack/src/routes.js",
+        "line": 684
       }
     },
     {
@@ -2843,7 +2871,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 681
+        "line": 687
       }
     },
     {
@@ -2857,7 +2885,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 685
+        "line": 691
       }
     },
     {
@@ -2871,7 +2899,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 689
+        "line": 695
       }
     },
     {
@@ -2885,7 +2913,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 694
+        "line": 700
       }
     },
     {
@@ -2899,7 +2927,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 697
+        "line": 703
       }
     },
     {
@@ -2913,7 +2941,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 700
+        "line": 706
       }
     },
     {
@@ -2927,7 +2955,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 703
+        "line": 709
       }
     },
     {
@@ -2941,7 +2969,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 706
+        "line": 712
       }
     },
     {
@@ -2955,7 +2983,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 709
+        "line": 715
       }
     },
     {
@@ -2969,7 +2997,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 712
+        "line": 718
       }
     },
     {
@@ -2983,7 +3011,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 715
+        "line": 721
       }
     },
     {
@@ -2997,7 +3025,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 718
+        "line": 724
       }
     },
     {
@@ -3011,7 +3039,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 721
+        "line": 727
       }
     },
     {
@@ -3025,7 +3053,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 724
+        "line": 730
       }
     },
     {
@@ -3039,7 +3067,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 727
+        "line": 733
       }
     },
     {
@@ -3053,7 +3081,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 730
+        "line": 736
       }
     },
     {
@@ -3067,7 +3095,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 733
+        "line": 739
       }
     },
     {
@@ -3081,7 +3109,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 736
+        "line": 742
       }
     },
     {
@@ -3095,7 +3123,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 739
+        "line": 745
       }
     },
     {
@@ -3109,7 +3137,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 742
+        "line": 748
       }
     },
     {
@@ -3123,7 +3151,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 745
+        "line": 751
       }
     },
     {
@@ -3137,7 +3165,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 748
+        "line": 754
       }
     },
     {
@@ -3151,7 +3179,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 751
+        "line": 757
       }
     },
     {
@@ -3165,7 +3193,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 754
+        "line": 760
       }
     },
     {
@@ -3179,7 +3207,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 757
+        "line": 763
       }
     },
     {
@@ -3193,7 +3221,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 760
+        "line": 766
       }
     },
     {
@@ -3207,7 +3235,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 763
+        "line": 769
       }
     },
     {
@@ -3221,7 +3249,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 766
+        "line": 772
       }
     },
     {
@@ -3235,7 +3263,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 769
+        "line": 775
       }
     },
     {
@@ -3249,7 +3277,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 772
+        "line": 778
       }
     },
     {
@@ -3263,7 +3291,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 775
+        "line": 781
       }
     },
     {
@@ -3277,7 +3305,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 778
+        "line": 784
       }
     },
     {
@@ -3291,7 +3319,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 781
+        "line": 787
       }
     },
     {
@@ -3305,7 +3333,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 784
+        "line": 790
       }
     },
     {
@@ -3319,7 +3347,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 787
+        "line": 793
       }
     },
     {
@@ -3333,7 +3361,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 790
+        "line": 796
       }
     },
     {
@@ -3347,7 +3375,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 793
+        "line": 799
       }
     },
     {
@@ -3361,7 +3389,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 796
+        "line": 802
       }
     },
     {
@@ -3375,7 +3403,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 799
+        "line": 805
       }
     },
     {
@@ -3389,7 +3417,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 802
+        "line": 808
       }
     },
     {
@@ -3403,7 +3431,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 805
+        "line": 811
       }
     },
     {
@@ -3417,7 +3445,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 808
+        "line": 814
       }
     },
     {
@@ -3431,7 +3459,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 811
+        "line": 817
       }
     },
     {
@@ -3445,7 +3473,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 814
+        "line": 820
       }
     },
     {
@@ -3459,7 +3487,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 817
+        "line": 823
       }
     },
     {
@@ -3473,7 +3501,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 820
+        "line": 826
       }
     },
     {
@@ -3487,7 +3515,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 823
+        "line": 829
       }
     },
     {
@@ -3501,7 +3529,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 826
+        "line": 832
       }
     },
     {
@@ -3515,7 +3543,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 829
+        "line": 835
       }
     },
     {
@@ -3529,7 +3557,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 832
+        "line": 838
       }
     },
     {
@@ -3543,7 +3571,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 835
+        "line": 841
       }
     },
     {
@@ -3557,7 +3585,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 838
+        "line": 844
       }
     },
     {
@@ -3571,7 +3599,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 841
+        "line": 847
       }
     },
     {
@@ -3585,7 +3613,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 844
+        "line": 850
       }
     },
     {
@@ -3599,7 +3627,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 847
+        "line": 853
       }
     },
     {
@@ -3613,7 +3641,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 850
+        "line": 856
       }
     },
     {
@@ -3627,7 +3655,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 853
+        "line": 859
       }
     },
     {
@@ -3641,7 +3669,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 856
+        "line": 862
       }
     },
     {
@@ -3655,7 +3683,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 859
+        "line": 865
       }
     },
     {
@@ -3669,7 +3697,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 862
+        "line": 868
       }
     },
     {
@@ -3683,7 +3711,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 865
+        "line": 871
       }
     },
     {
@@ -3697,7 +3725,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 868
+        "line": 874
       }
     },
     {
@@ -3711,7 +3739,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 871
+        "line": 877
       }
     },
     {
@@ -3725,7 +3753,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 874
+        "line": 880
       }
     },
     {
@@ -3739,7 +3767,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 877
+        "line": 883
       }
     },
     {
@@ -3753,7 +3781,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 880
+        "line": 886
       }
     },
     {
@@ -3767,7 +3795,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 883
+        "line": 889
       }
     },
     {
@@ -3781,7 +3809,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 886
+        "line": 892
       }
     },
     {
@@ -3795,7 +3823,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 889
+        "line": 895
       }
     },
     {
@@ -3809,7 +3837,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 892
+        "line": 898
       }
     },
     {
@@ -3823,7 +3851,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 895
+        "line": 901
       }
     },
     {
@@ -3837,7 +3865,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 898
+        "line": 904
       }
     },
     {
@@ -3851,7 +3879,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 901
+        "line": 907
       }
     },
     {
@@ -3865,7 +3893,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 904
+        "line": 910
       }
     },
     {
@@ -3879,7 +3907,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 907
+        "line": 913
       }
     },
     {
@@ -3893,7 +3921,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 910
+        "line": 916
       }
     },
     {
@@ -3907,7 +3935,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 914
+        "line": 920
       }
     },
     {
@@ -3921,7 +3949,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 917
+        "line": 923
       }
     },
     {
@@ -3935,7 +3963,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 920
+        "line": 926
       }
     },
     {
@@ -3949,7 +3977,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 923
+        "line": 929
       }
     },
     {
@@ -3963,7 +3991,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 926
+        "line": 932
       }
     },
     {
@@ -3977,7 +4005,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 929
+        "line": 935
       }
     },
     {
@@ -3991,7 +4019,7 @@
       "comment": "note this essentially rebuilds flux use with caution!",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 933
+        "line": 939
       }
     },
     {
@@ -4005,7 +4033,7 @@
       "comment": "note this essentially rebuilds flux use with caution!",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 936
+        "line": 942
       }
     },
     {
@@ -4019,7 +4047,7 @@
       "comment": "note this essentially rebuilds flux use with caution!",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 939
+        "line": 945
       }
     },
     {
@@ -4033,7 +4061,7 @@
       "comment": "note this essentially rebuilds flux use with caution!",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 942
+        "line": 948
       }
     },
     {
@@ -4047,7 +4075,7 @@
       "comment": "note this essentially rebuilds flux use with caution!",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 945
+        "line": 951
       }
     },
     {
@@ -4061,7 +4089,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 948
+        "line": 954
       }
     },
     {
@@ -4075,7 +4103,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 952
+        "line": 958
       }
     },
     {
@@ -4089,7 +4117,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 955
+        "line": 961
       }
     },
     {
@@ -4103,7 +4131,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 958
+        "line": 964
       }
     },
     {
@@ -4117,7 +4145,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 963
+        "line": 969
       }
     },
     {
@@ -4131,7 +4159,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 966
+        "line": 972
       }
     },
     {
@@ -4145,7 +4173,7 @@
       "comment": "we do not want this to be issued by anyone.",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 969
+        "line": 975
       }
     },
     {
@@ -4159,7 +4187,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 972
+        "line": 978
       }
     },
     {
@@ -4173,7 +4201,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 975
+        "line": 981
       }
     },
     {
@@ -4187,7 +4215,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 978
+        "line": 984
       }
     },
     {
@@ -4201,7 +4229,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 982
+        "line": 988
       }
     },
     {
@@ -4215,7 +4243,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 985
+        "line": 991
       }
     },
     {
@@ -4229,7 +4257,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 988
+        "line": 994
       }
     },
     {
@@ -4243,7 +4271,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 991
+        "line": 997
       }
     },
     {
@@ -4257,7 +4285,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 994
+        "line": 1000
       }
     },
     {
@@ -4271,7 +4299,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 997
+        "line": 1003
       }
     },
     {
@@ -4285,7 +4313,7 @@
       "comment": "method shall be called only if flux version is obsolete.",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1000
+        "line": 1006
       }
     },
     {
@@ -4299,7 +4327,7 @@
       "comment": "method shall be called only if flux version is obsolete.",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1003
+        "line": 1009
       }
     },
     {
@@ -4313,7 +4341,7 @@
       "comment": "method shall be called only if flux version is obsolete.",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1006
+        "line": 1012
       }
     },
     {
@@ -4327,7 +4355,7 @@
       "comment": "method shall be called only if flux version is obsolete and updatezeflux is not working correctly",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1009
+        "line": 1015
       }
     },
     {
@@ -4341,7 +4369,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1012
+        "line": 1018
       }
     },
     {
@@ -4355,7 +4383,7 @@
       "comment": "method shall be called only if daemon version is obsolete",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1015
+        "line": 1021
       }
     },
     {
@@ -4369,7 +4397,7 @@
       "comment": "method shall be called only if benchamrk version is obsolete",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1018
+        "line": 1024
       }
     },
     {
@@ -4383,7 +4411,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1021
+        "line": 1027
       }
     },
     {
@@ -4397,7 +4425,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1024
+        "line": 1030
       }
     },
     {
@@ -4411,7 +4439,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1027
+        "line": 1033
       }
     },
     {
@@ -4425,7 +4453,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1030
+        "line": 1036
       }
     },
     {
@@ -4439,7 +4467,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1033
+        "line": 1039
       }
     },
     {
@@ -4453,7 +4481,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1036
+        "line": 1042
       }
     },
     {
@@ -4467,7 +4495,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1039
+        "line": 1045
       }
     },
     {
@@ -4481,7 +4509,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1042
+        "line": 1048
       }
     },
     {
@@ -4495,7 +4523,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1045
+        "line": 1051
       }
     },
     {
@@ -4509,7 +4537,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1048
+        "line": 1054
       }
     },
     {
@@ -4523,7 +4551,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1051
+        "line": 1057
       }
     },
     {
@@ -4537,7 +4565,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1054
+        "line": 1060
       }
     },
     {
@@ -4551,7 +4579,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1058
+        "line": 1064
       }
     },
     {
@@ -4565,7 +4593,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1061
+        "line": 1067
       }
     },
     {
@@ -4579,7 +4607,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1064
+        "line": 1070
       }
     },
     {
@@ -4593,7 +4621,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1067
+        "line": 1073
       }
     },
     {
@@ -4607,7 +4635,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1070
+        "line": 1076
       }
     },
     {
@@ -4621,7 +4649,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1073
+        "line": 1079
       }
     },
     {
@@ -4635,7 +4663,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1076
+        "line": 1082
       }
     },
     {
@@ -4649,7 +4677,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1079
+        "line": 1085
       }
     },
     {
@@ -4663,7 +4691,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1082
+        "line": 1088
       }
     },
     {
@@ -4677,7 +4705,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1085
+        "line": 1091
       }
     },
     {
@@ -4691,7 +4719,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1088
+        "line": 1094
       }
     },
     {
@@ -4705,7 +4733,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1091
+        "line": 1097
       }
     },
     {
@@ -4719,7 +4747,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1094
+        "line": 1100
       }
     },
     {
@@ -4733,7 +4761,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1097
+        "line": 1103
       }
     },
     {
@@ -4747,7 +4775,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1100
+        "line": 1106
       }
     },
     {
@@ -4761,7 +4789,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1103
+        "line": 1109
       }
     },
     {
@@ -4775,7 +4803,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1106
+        "line": 1112
       }
     },
     {
@@ -4789,7 +4817,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1109
+        "line": 1115
       }
     },
     {
@@ -4803,7 +4831,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1113
+        "line": 1119
       }
     },
     {
@@ -4817,7 +4845,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1116
+        "line": 1122
       }
     },
     {
@@ -4831,7 +4859,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1119
+        "line": 1125
       }
     },
     {
@@ -4845,7 +4873,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1123
+        "line": 1129
       }
     },
     {
@@ -4859,7 +4887,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1126
+        "line": 1132
       }
     },
     {
@@ -4873,7 +4901,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1129
+        "line": 1135
       }
     },
     {
@@ -4887,7 +4915,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1132
+        "line": 1138
       }
     },
     {
@@ -4901,7 +4929,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1136
+        "line": 1142
       }
     },
     {
@@ -4915,7 +4943,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1139
+        "line": 1145
       }
     },
     {
@@ -4929,7 +4957,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1142
+        "line": 1148
       }
     },
     {
@@ -4943,7 +4971,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1145
+        "line": 1151
       }
     },
     {
@@ -4957,7 +4985,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1148
+        "line": 1154
       }
     },
     {
@@ -4971,7 +4999,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1151
+        "line": 1157
       }
     },
     {
@@ -4985,7 +5013,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1154
+        "line": 1160
       }
     },
     {
@@ -4999,7 +5027,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1157
+        "line": 1163
       }
     },
     {
@@ -5013,7 +5041,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1160
+        "line": 1166
       }
     },
     {
@@ -5027,7 +5055,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1163
+        "line": 1169
       }
     },
     {
@@ -5041,7 +5069,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1166
+        "line": 1172
       }
     },
     {
@@ -5055,7 +5083,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1169
+        "line": 1175
       }
     },
     {
@@ -5069,7 +5097,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1172
+        "line": 1178
       }
     },
     {
@@ -5083,7 +5111,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1175
+        "line": 1181
       }
     },
     {
@@ -5097,7 +5125,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1178
+        "line": 1184
       }
     },
     {
@@ -5111,7 +5139,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1181
+        "line": 1187
       }
     },
     {
@@ -5125,7 +5153,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1184
+        "line": 1190
       }
     },
     {
@@ -5139,7 +5167,7 @@
       "comment": "Install app locally (install locally, installapplocally)",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1187
+        "line": 1193
       }
     },
     {
@@ -5153,7 +5181,7 @@
       "comment": "Test install / image pull verification (test install, testappinstall, install check)",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1190
+        "line": 1196
       }
     },
     {
@@ -5167,7 +5195,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1193
+        "line": 1199
       }
     },
     {
@@ -5181,7 +5209,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1196
+        "line": 1202
       }
     },
     {
@@ -5195,7 +5223,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1199
+        "line": 1205
       }
     },
     {
@@ -5209,7 +5237,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1202
+        "line": 1208
       }
     },
     {
@@ -5223,7 +5251,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1205
+        "line": 1211
       }
     },
     {
@@ -5237,7 +5265,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1208
+        "line": 1214
       }
     },
     {
@@ -5251,7 +5279,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1211
+        "line": 1217
       }
     },
     {
@@ -5265,7 +5293,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1214
+        "line": 1220
       }
     },
     {
@@ -5279,7 +5307,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1217
+        "line": 1223
       }
     },
     {
@@ -5293,7 +5321,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1221
+        "line": 1227
       }
     },
     {
@@ -5307,7 +5335,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1224
+        "line": 1230
       }
     },
     {
@@ -5321,7 +5349,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1227
+        "line": 1233
       }
     },
     {
@@ -5335,7 +5363,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1230
+        "line": 1236
       }
     },
     {
@@ -5349,7 +5377,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1235
+        "line": 1241
       }
     },
     {
@@ -5363,7 +5391,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1238
+        "line": 1244
       }
     },
     {
@@ -5377,7 +5405,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1241
+        "line": 1247
       }
     },
     {
@@ -5391,7 +5419,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1244
+        "line": 1250
       }
     },
     {
@@ -5405,7 +5433,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1247
+        "line": 1253
       }
     },
     {
@@ -5419,7 +5447,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1250
+        "line": 1256
       }
     },
     {
@@ -5433,7 +5461,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1255
+        "line": 1261
       }
     },
     {
@@ -5447,7 +5475,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1258
+        "line": 1264
       }
     },
     {
@@ -5461,7 +5489,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1262
+        "line": 1268
       }
     },
     {
@@ -5475,7 +5503,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1265
+        "line": 1271
       }
     },
     {
@@ -5489,7 +5517,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1268
+        "line": 1274
       }
     },
     {
@@ -5503,7 +5531,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1271
+        "line": 1277
       }
     },
     {
@@ -5517,7 +5545,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1274
+        "line": 1280
       }
     },
     {
@@ -5531,7 +5559,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1277
+        "line": 1283
       }
     },
     {
@@ -5545,7 +5573,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1280
+        "line": 1286
       }
     },
     {
@@ -5559,7 +5587,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1283
+        "line": 1289
       }
     },
     {
@@ -5573,7 +5601,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1286
+        "line": 1292
       }
     },
     {
@@ -5587,7 +5615,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1289
+        "line": 1295
       }
     },
     {
@@ -5601,7 +5629,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1292
+        "line": 1298
       }
     },
     {
@@ -5615,7 +5643,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1295
+        "line": 1301
       }
     },
     {
@@ -5629,7 +5657,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1298
+        "line": 1304
       }
     },
     {
@@ -5643,7 +5671,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1301
+        "line": 1307
       }
     },
     {
@@ -5657,7 +5685,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1304
+        "line": 1310
       }
     },
     {
@@ -5671,7 +5699,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1307
+        "line": 1313
       }
     },
     {
@@ -5685,7 +5713,7 @@
       "comment": "requires the knowledge of a session loginPhrase so users level is sufficient and user cannot logout another user as he does not know the loginPhrase.",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1312
+        "line": 1318
       }
     },
     {
@@ -5699,7 +5727,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1315
+        "line": 1321
       }
     },
     {
@@ -5713,7 +5741,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1319
+        "line": 1325
       }
     },
     {
@@ -5727,7 +5755,7 @@
       "comment": "DEPRECATED: check docker image accessibility (deprecated)",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1323
+        "line": 1329
       }
     },
     {
@@ -5741,7 +5769,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1326
+        "line": 1332
       }
     },
     {
@@ -5755,7 +5783,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1329
+        "line": 1335
       }
     },
     {
@@ -5769,7 +5797,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1332
+        "line": 1338
       }
     },
     {
@@ -5783,7 +5811,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1337
+        "line": 1343
       }
     },
     {
@@ -5797,7 +5825,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1340
+        "line": 1346
       }
     },
     {
@@ -5811,7 +5839,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1343
+        "line": 1349
       }
     },
     {
@@ -5825,7 +5853,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1346
+        "line": 1352
       }
     },
     {
@@ -5839,7 +5867,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1349
+        "line": 1355
       }
     },
     {
@@ -5853,7 +5881,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1352
+        "line": 1358
       }
     },
     {
@@ -5867,7 +5895,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1355
+        "line": 1361
       }
     },
     {
@@ -5881,7 +5909,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1358
+        "line": 1364
       }
     },
     {
@@ -5895,7 +5923,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1361
+        "line": 1367
       }
     },
     {
@@ -5909,7 +5937,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1365
+        "line": 1371
       }
     },
     {
@@ -5923,7 +5951,7 @@
       "comment": "DEPRECATED",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1368
+        "line": 1374
       }
     },
     {
@@ -5937,7 +5965,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1373
+        "line": 1379
       }
     },
     {
@@ -5951,7 +5979,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1376
+        "line": 1382
       }
     },
     {
@@ -5965,7 +5993,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1379
+        "line": 1385
       }
     },
     {
@@ -5979,7 +6007,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1383
+        "line": 1389
       }
     },
     {
@@ -5993,7 +6021,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1386
+        "line": 1392
       }
     },
     {
@@ -6007,7 +6035,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1389
+        "line": 1395
       }
     },
     {
@@ -6021,7 +6049,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1392
+        "line": 1398
       }
     },
     {
@@ -6035,7 +6063,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1395
+        "line": 1401
       }
     },
     {
@@ -6049,7 +6077,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1398
+        "line": 1404
       }
     },
     {
@@ -6063,7 +6091,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1401
+        "line": 1407
       }
     },
     {
@@ -6077,7 +6105,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1404
+        "line": 1410
       }
     },
     {
@@ -6091,7 +6119,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1407
+        "line": 1413
       }
     },
     {
@@ -6105,7 +6133,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1410
+        "line": 1416
       }
     },
     {
@@ -6119,7 +6147,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1413
+        "line": 1419
       }
     },
     {
@@ -6133,7 +6161,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1416
+        "line": 1422
       }
     },
     {
@@ -6147,7 +6175,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1419
+        "line": 1425
       }
     },
     {
@@ -6161,7 +6189,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1422
+        "line": 1428
       }
     },
     {
@@ -6175,7 +6203,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1425
+        "line": 1431
       }
     },
     {
@@ -6189,7 +6217,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1428
+        "line": 1434
       }
     },
     {
@@ -6203,7 +6231,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1431
+        "line": 1437
       }
     },
     {
@@ -6217,7 +6245,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1434
+        "line": 1440
       }
     },
     {
@@ -6231,7 +6259,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1437
+        "line": 1443
       }
     },
     {
@@ -6245,7 +6273,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1442
+        "line": 1448
       }
     },
     {
@@ -6259,7 +6287,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1445
+        "line": 1451
       }
     },
     {
@@ -6273,7 +6301,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1448
+        "line": 1454
       }
     },
     {
@@ -6287,7 +6315,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1451
+        "line": 1457
       }
     },
     {
@@ -6301,7 +6329,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1454
+        "line": 1460
       }
     },
     {
@@ -6315,7 +6343,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1457
+        "line": 1463
       }
     },
     {
@@ -6329,7 +6357,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1460
+        "line": 1466
       }
     },
     {
@@ -6343,7 +6371,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1463
+        "line": 1469
       }
     },
     {
@@ -6357,7 +6385,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1466
+        "line": 1472
       }
     },
     {
@@ -6371,7 +6399,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1469
+        "line": 1475
       }
     },
     {
@@ -6385,7 +6413,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1472
+        "line": 1478
       }
     },
     {
@@ -6399,7 +6427,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1475
+        "line": 1481
       }
     },
     {
@@ -6413,7 +6441,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1478
+        "line": 1484
       }
     },
     {
@@ -6427,7 +6455,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1482
+        "line": 1488
       }
     },
     {
@@ -6441,7 +6469,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1485
+        "line": 1491
       }
     },
     {
@@ -6455,7 +6483,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1488
+        "line": 1494
       }
     },
     {
@@ -6469,7 +6497,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1491
+        "line": 1497
       }
     },
     {
@@ -6483,7 +6511,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1494
+        "line": 1500
       }
     },
     {
@@ -6497,7 +6525,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1497
+        "line": 1503
       }
     },
     {
@@ -6511,7 +6539,7 @@
       "comment": "",
       "source": {
         "file": "ZelBack/src/routes.js",
-        "line": 1500
+        "line": 1506
       }
     }
   ]
