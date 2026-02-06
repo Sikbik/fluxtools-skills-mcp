@@ -6,7 +6,7 @@ export type ToolNextAction = { tool: string; arguments: Record<string, unknown> 
 
 export type ToolSummaryBase = {
   ok: boolean;
-  status?: string;
+  status?: string | number;
   count?: number;
   shown?: number;
   resourceUri?: string;
@@ -37,24 +37,11 @@ export function buildTableResult(opts: {
     status: opts.summary.status ?? (opts.summary.ok === true ? 'ok' : 'error'),
   };
 
-  const content: Array<{ type: 'text'; text: string } | ({ type: 'resource_link' } & ResourceDescriptor)> = [
-    { type: 'text', text: table },
-    { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-  ];
+  const truncated = typeof summary.count === 'number' && Number.isFinite(summary.count) && summary.count > shown;
+  const tableText = truncated ? `${table}\n\n(shown ${shown}/${summary.count})` : table;
 
-  if (opts.resource) {
-    content.push({ type: 'resource_link', ...opts.resource });
-    content.push({
-      type: 'text',
-      text: "\n\nTip: If your client doesn't automatically open resource links, run flux_resource_read with the returned resourceUri.",
-    });
-    if (summary.nextActions && summary.nextActions.length > 0) {
-      content.push({
-        type: 'text',
-        text: `\n\nNext actions:\n${summary.nextActions.map((a) => `- ${a.tool} ${JSON.stringify(a.arguments)}`).join('\n')}`,
-      });
-    }
-  }
+  const content: Array<{ type: 'text'; text: string } | ({ type: 'resource_link' } & ResourceDescriptor)> = [{ type: 'text', text: tableText }];
+  if (opts.resource) content.push({ type: 'resource_link', ...opts.resource });
 
   return {
     content,

@@ -4455,25 +4455,18 @@ export async function callTool(name: string, rawArgs: unknown) {
           return [app, component, status, ip, port];
         });
 
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 50 });
-
         const summary = {
           ok: res.ok,
           status: res.status,
           count: items.length,
-          shown,
-          resourceUri: link.uri,
         };
-
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 50,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_apps_list_all': {
@@ -4493,25 +4486,18 @@ export async function callTool(name: string, rawArgs: unknown) {
         const headers = ['App'];
         const rows = names.map((n) => [n]);
 
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 100 });
-
         const summary = {
           ok: res.ok,
           status: res.status,
           count: names.length,
-          shown,
-          resourceUri: link.uri,
         };
-
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 100,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_apps_list_global_specs': {
@@ -4656,8 +4642,6 @@ export async function callTool(name: string, rawArgs: unknown) {
           return [name, blocksRemaining, timeLeft, expired, expiresAt, updatedAt, expireIn];
         });
 
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: limit });
-
         const link = resourceStore.putJson({
           kind: 'apps/by_zelid_with_expiry',
           name: `Apps for ${zelid} with expiry`,
@@ -4678,29 +4662,24 @@ export async function callTool(name: string, rawArgs: unknown) {
           },
         });
 
-        const preview = filtered.slice(0, limit);
         const summary = {
           ok: globalSpecsRes.ok && scannedHeightRes.ok && registrationInfoRes.ok,
           zelid,
           options: { includeExpired, estimateTimeRemaining, secondsPerBlock, limit },
-          count: computed.length,
-          shown,
+          count: filtered.length,
+          total: computed.length,
           currentHeight,
           blocksLasting,
           daemonPONFork,
-          preview,
-          resourceUri: link.uri,
         };
 
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !summary.ok,
-        };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: limit,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_apps_global_status': {
@@ -4976,10 +4955,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           resourceUri: link.uri,
         };
 
+        const truncated = computed.length > shown;
+        const footer = truncated ? `\n(shown ${shown}/${computed.length})` : '';
+
         return {
           content: [
-            { type: 'text', text: `${table}\n\n${propagationLine}` },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
+            { type: 'text', text: `${table}\n\n${propagationLine}${footer}` },
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
@@ -7309,19 +7290,14 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const headers = ['OK', 'Message'];
         const rows = [[String(okValue ?? '-'), typeof messageValue === 'string' ? messageValue : '-']];
-
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 1 });
-
-        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        const summary = { ok: res.ok, status: res.status };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 1,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_syncthing_system_status': {
@@ -7367,19 +7343,14 @@ export async function callTool(name: string, rawArgs: unknown) {
               : '-';
           return [id, label, p, type, rescan];
         });
-
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 100 });
-
-        const summary = { ok: res.ok, status: res.status, count: folders.length, shown, resourceUri: link.uri };
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        const summary = { ok: res.ok, status: res.status, count: folders.length };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 100,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_syncthing_list_devices': {
@@ -7407,19 +7378,14 @@ export async function callTool(name: string, rawArgs: unknown) {
           const paused = d.paused === true ? 'yes' : 'no';
           return [name, deviceID, addresses, introducer, paused];
         });
-
-        const { table, shown } = renderMarkdownTable({ headers, rows, maxRows: 100 });
-
-        const summary = { ok: res.ok, status: res.status, count: devices.length, shown, resourceUri: link.uri };
-        return {
-          content: [
-            { type: 'text', text: table },
-            { type: 'text', text: `\n\n${JSON.stringify(summary, null, 2)}` },
-            { type: 'resource_link', ...link },
-          ],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        const summary = { ok: res.ok, status: res.status, count: devices.length };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 100,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_syncthing_db_browse': {
