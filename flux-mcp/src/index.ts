@@ -4643,20 +4643,38 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
+        const data = unwrapFluxEnvelope<unknown>(res.data);
+        const items = Array.isArray(data)
+          ? data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const headers = ['App', 'Owner', 'Instances', 'Updated (height)', 'Expire (blocks)', 'Hash'];
+        const rows = items.map((x) => {
+          const name = typeof x.name === 'string' ? x.name : '-';
+          const owner = typeof x.owner === 'string' ? x.owner : '-';
+          const instances = typeof x.instances === 'number' ? String(x.instances) : typeof x.instances === 'string' ? x.instances : '-';
+          const height = typeof x.height === 'number' ? String(x.height) : typeof x.height === 'string' ? x.height : '-';
+          const expire = typeof x.expire === 'number' ? String(x.expire) : typeof x.expire === 'string' ? x.expire : '-';
+          const hash = typeof x.hash === 'string' ? x.hash : '-';
+          return [name, owner, instances, height, expire, hash];
+        });
+
         const summary = {
           ok: res.ok,
           status: res.status,
           hash: hash ?? null,
           owner: owner ?? null,
           appname: appname ?? null,
-          resourceUri: link.uri,
+          count: items.length,
         };
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 50,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_apps_list_by_zelid_with_expiry': {
