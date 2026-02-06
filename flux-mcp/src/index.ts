@@ -2494,7 +2494,7 @@ export const tools: Tool[] = [
 	        includeSecrets: {
 	          type: 'boolean',
 	          description:
-	            'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires FLUX_MCP_ALLOW_SECRETS=1 and confirm=true.',
+	            'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires confirm=true. Can be globally disabled by setting FLUX_MCP_ALLOW_SECRETS=0.',
 	          default: false,
 	        },
 	        confirm: {
@@ -6310,10 +6310,13 @@ export async function callTool(name: string, rawArgs: unknown) {
 	        const confirm = (asOptionalBoolean(args['confirm']) ?? false) === true;
 
 	        if (includeSecrets) {
-	          const allowed = process.env.FLUX_MCP_ALLOW_SECRETS === '1' || process.env.FLUX_MCP_ALLOW_SECRETS === 'true';
+	          // Secrets are always opt-in per call via includeSecrets + confirm.
+	          // Operators can still disable secrets entirely via FLUX_MCP_ALLOW_SECRETS=0.
+	          const allowEnv = String(process.env.FLUX_MCP_ALLOW_SECRETS ?? '1').trim().toLowerCase();
+	          const allowed = !(allowEnv === '0' || allowEnv === 'false' || allowEnv === 'no');
 	          if (!allowed) {
 	            throw new Error(
-	              'Refusing to include secrets in decrypted output by default. To allow, set FLUX_MCP_ALLOW_SECRETS=1 and pass confirm=true.'
+	              'Secrets are disabled for this MCP server (set FLUX_MCP_ALLOW_SECRETS=1 to allow).'
 	            );
 	          }
 	          if (!confirm) {
