@@ -1503,6 +1503,11 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {
         message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        messageResourceUri: {
+          type: 'string',
+          description:
+            'Resource URI containing the raw message to sign (preferred: avoids pasting messageToSign into chat).',
+        },
         icon: {
           type: 'string',
           description: 'Optional icon URL (default ZelID icon).',
@@ -1518,7 +1523,7 @@ export const tools: Tool[] = [
         },
         confirm: { type: 'boolean' },
       },
-      required: ['message'],
+      anyOf: [{ required: ['message'] }, { required: ['messageResourceUri'] }],
     },
   },
   {
@@ -3601,7 +3606,21 @@ export async function callTool(name: string, rawArgs: unknown) {
       }
 
       case 'flux_build_zelcore_sign_link': {
-        const message = mustBeString(args['message'], 'message');
+        const messageResourceUriRaw = asOptionalString(args['messageResourceUri']);
+        const messageResourceUri = messageResourceUriRaw ? messageResourceUriRaw.trim() : null;
+
+        let message: string;
+        let messageSource: 'argument' | 'resource' = 'argument';
+
+        if (messageResourceUri) {
+          const r = resourceStore.read(messageResourceUri);
+          if (!r) throw new Error(`Resource not found: ${messageResourceUri}`);
+          message = r.text;
+          messageSource = 'resource';
+        } else {
+          message = mustBeString(args['message'], 'message');
+        }
+
         const iconRaw = asOptionalString(args['icon']);
         const callbackRaw = asOptionalString(args['callback']);
         const useFluxStorage = (asOptionalBoolean(args['useFluxStorage']) ?? false) === true;
@@ -3631,6 +3650,8 @@ export async function callTool(name: string, rawArgs: unknown) {
           usedFluxStorage: Boolean(storageUrl),
           storageUrl,
           warning,
+          messageSource,
+          messageResourceUri: messageSource === 'resource' ? messageResourceUri : null,
         };
 
         return jsonResult(out, { structuredContent: out });

@@ -256,7 +256,7 @@ You can decrypt locally with:
 - To view/copy the raw `messageToSign`, open the `resource_link` in your client or run:
   - `flux_resource_read { "uri": "<messageToSignResourceUri>" }`
 - To open Zelcore directly (recommended for long messages):
-  - `flux_build_zelcore_sign_link { "message": "<raw messageToSign>", "useFluxStorage": true, "confirm": true }`
+  - `flux_build_zelcore_sign_link { "messageResourceUri": "<messageToSignResourceUri>", "useFluxStorage": true, "confirm": true }`
 - To avoid terminal wrapping, you can also write the message to a file:
   - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
 

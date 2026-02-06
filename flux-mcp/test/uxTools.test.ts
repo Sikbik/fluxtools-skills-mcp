@@ -335,6 +335,28 @@ describe.sequential('UX tools', () => {
     expect(typeof payload.messageToSignBytes).toBe('number');
   });
 
+  it('flux_build_zelcore_sign_link supports messageResourceUri', async () => {
+    const built = await callTool('flux_build_message_to_sign', {
+      type: 'fluxappupdate',
+      version: 1,
+      spec: { name: 'x' },
+      timestamp: 1,
+    });
+    expect(built.isError).not.toBe(true);
+
+    const builtPayload = JSON.parse(built.content[0]?.text ?? '{}') as Record<string, unknown>;
+    const uri = builtPayload.messageToSignResourceUri;
+    expect(typeof uri).toBe('string');
+
+    const r = await callTool('flux_build_zelcore_sign_link', { messageResourceUri: uri });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(typeof payload.link).toBe('string');
+    expect((payload.link as string).startsWith('zel:?action=sign&message=')).toBe(true);
+    expect(payload.messageSource).toBe('resource');
+  });
+
   it('flux_apps_signing_playbook returns messageToSignResourceUri + nextActions by default', async () => {
     const r = await callTool('flux_apps_signing_playbook', {
       type: 'fluxappregister',
