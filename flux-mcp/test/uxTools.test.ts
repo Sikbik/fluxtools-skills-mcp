@@ -22,7 +22,9 @@ function json(res: ServerResponse, status: number, body: unknown) {
 
 describe.sequential('UX tools', () => {
   const seen: Seen[] = [];
+  const seen2: Seen[] = [];
   let serverPort = 0;
+  let server2Port = 0;
 
   const server = createServer(async (req, res) => {
     const url = req.url ?? '';
@@ -124,8 +126,34 @@ describe.sequential('UX tools', () => {
     }
 
     if (url.startsWith('/apps/location/myapp')) {
-      const host = serverPort ? `127.0.0.1:${serverPort}` : '127.0.0.1';
-      return json(res, 200, { status: 'success', data: [{ ip: host }] });
+      const host1 = serverPort ? `127.0.0.1:${serverPort}` : '127.0.0.1';
+      const host2 = server2Port ? `127.0.0.1:${server2Port}` : null;
+      const data = [{ ip: host1 }, ...(host2 ? [{ ip: host2 }] : [])];
+      return json(res, 200, { status: 'success', data });
+    }
+
+    if (url.startsWith('/apps/getfolderinfo')) {
+      return json(res, 200, { status: 'error', data: 'Application volume not found' });
+    }
+
+    if (url.startsWith('/apps/createfolder')) {
+      return json(res, 200, { status: 'error', data: 'Application volume not found' });
+    }
+
+    if (url.startsWith('/apps/renameobject')) {
+      return json(res, 200, { status: 'error', data: 'Application volume not found' });
+    }
+
+    if (url.startsWith('/apps/removeobject')) {
+      return json(res, 200, { status: 'error', data: 'Application volume not found' });
+    }
+
+    if (url.startsWith('/apps/downloadfile')) {
+      return json(res, 200, { status: 'error', data: 'Application volume not found' });
+    }
+
+    if (url.startsWith('/apps/downloadfolder')) {
+      return json(res, 200, { status: 'error', data: 'Application volume not found' });
     }
 
     if (url === '/apps/listrunningapps') {
@@ -173,6 +201,63 @@ describe.sequential('UX tools', () => {
     return json(res, 404, { status: 'error', data: 'not found' });
   });
 
+  const server2 = createServer(async (req, res) => {
+    const url = req.url ?? '';
+    seen2.push({ method: req.method ?? '', url });
+
+    if (url.startsWith('/apps/getfolderinfo')) {
+      return json(res, 200, {
+        status: 'success',
+        data: [
+          {
+            name: 'hello.txt',
+            size: 5,
+            isDirectory: false,
+            isFile: true,
+            isSymbolicLink: false,
+            createdAt: '2020-01-01T00:00:00.000Z',
+            modifiedAt: '2020-01-01T00:00:00.000Z',
+          },
+        ],
+      });
+    }
+
+    if (url.startsWith('/apps/createfolder')) {
+      return json(res, 200, { status: 'success', data: 'Folder Created' });
+    }
+
+    if (url.startsWith('/apps/renameobject')) {
+      return json(res, 200, { status: 'success', data: 'Rename successful' });
+    }
+
+    if (url.startsWith('/apps/removeobject')) {
+      return json(res, 200, { status: 'success', data: 'File Removed' });
+    }
+
+    if (url.startsWith('/apps/downloadfile')) {
+      const body = Buffer.from('hello', 'utf-8');
+      res.statusCode = 200;
+      res.setHeader('content-type', 'text/plain');
+      res.setHeader('content-disposition', 'attachment; filename=hello.txt');
+      res.setHeader('content-length', String(body.length));
+      res.end(body);
+      return;
+    }
+
+    if (url.startsWith('/apps/downloadfolder')) {
+      const body = Buffer.from('zip', 'utf-8');
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/zip');
+      res.setHeader('content-disposition', 'attachment; filename=folder.zip');
+      res.setHeader('content-length', String(body.length));
+      res.end(body);
+      return;
+    }
+
+    await readBody(req);
+    return json(res, 404, { status: 'error', data: 'not found' });
+  });
+
   let baseUrl: string;
 
   beforeAll(async () => {
@@ -180,6 +265,12 @@ describe.sequential('UX tools', () => {
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Failed to bind test server');
     serverPort = address.port;
+
+    await new Promise<void>((resolve) => server2.listen(0, '127.0.0.1', () => resolve()));
+    const address2 = server2.address();
+    if (!address2 || typeof address2 === 'string') throw new Error('Failed to bind test server 2');
+    server2Port = address2.port;
+
     baseUrl = `http://127.0.0.1:${serverPort}`;
 
     const r = await callTool('flux_set_base_url', { baseUrl });
@@ -193,6 +284,7 @@ describe.sequential('UX tools', () => {
 
   afterAll(async () => {
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    await new Promise<void>((resolve, reject) => server2.close((err) => (err ? reject(err) : resolve())));
   });
 
   it('flux_auth_flow returns an ordered plan', async () => {
@@ -526,6 +618,81 @@ describe.sequential('UX tools', () => {
 
     const links = r.content.filter((c) => c.type === 'resource_link');
     expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_list_folder auto-resolves when volume is not on the current node', async () => {
+    const baseUrl1 = `http://127.0.0.1:${serverPort}`;
+    const reset = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
+    expect(reset.isError).not.toBe(true);
+
+    const r = await callTool('flux_apps_list_folder', { appname: 'myapp', component: 'web', folder: '' });
+    expect(r.isError).not.toBe(true);
+
+    expect(r.content[0]?.type).toBe('text');
+    const tableText = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
+    expect(tableText.includes('Name')).toBe(true);
+    expect(tableText.includes('hello.txt')).toBe(true);
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.ok).toBe(true);
+    expect(structured?.count).toBe(1);
+
+    const resolved = structured?.resolved as Record<string, unknown> | null | undefined;
+    expect(resolved).toBeTruthy();
+
+    expect(seen.some((x) => x.url.startsWith('/apps/getfolderinfo'))).toBe(true);
+    expect(seen2.some((x) => x.url.startsWith('/apps/getfolderinfo'))).toBe(true);
+
+    // Restore baseUrl for subsequent tests.
+    const restore = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
+    expect(restore.isError).not.toBe(true);
+  });
+
+  it('flux_apps_download_file detects error envelopes in base64 mode and retries candidates', async () => {
+    // Reset baseUrl so first attempt hits server1 (which returns JSON error).
+    const baseUrl1 = `http://127.0.0.1:${serverPort}`;
+    const reset = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
+    expect(reset.isError).not.toBe(true);
+
+    const r = await callTool('flux_apps_download_file', { appname: 'myapp', component: 'web', file: 'hello.txt' });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.resourceUri).toBe('string');
+
+    expect(seen.some((x) => x.url.startsWith('/apps/downloadfile'))).toBe(true);
+    expect(seen2.some((x) => x.url.startsWith('/apps/downloadfile'))).toBe(true);
+
+    // Restore baseUrl for subsequent tests.
+    const restore = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
+    expect(restore.isError).not.toBe(true);
+  });
+
+  it('flux_apps_create_folder retries candidates when volume is not on the current node', async () => {
+    // Reset baseUrl so first attempt hits server1.
+    const baseUrl1 = `http://127.0.0.1:${serverPort}`;
+    const reset = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
+    expect(reset.isError).not.toBe(true);
+
+    const r = await callTool('flux_apps_create_folder', {
+      appname: 'myapp',
+      component: 'web',
+      folder: 'x',
+      confirm: true,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.resourceUri).toBe('string');
+
+    expect(seen.some((x) => x.url.startsWith('/apps/createfolder'))).toBe(true);
+    expect(seen2.some((x) => x.url.startsWith('/apps/createfolder'))).toBe(true);
+
+    // Restore baseUrl for subsequent tests.
+    const restore = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
+    expect(restore.isError).not.toBe(true);
   });
 
   it('flux_apps_update_and_verify returns summary + resource links', async () => {

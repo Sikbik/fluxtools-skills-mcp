@@ -225,6 +225,11 @@ function isSensitivePath(p: string): boolean {
   return false;
 }
 
+function isVolumeNotFoundError(message: string | null): boolean {
+  if (!message) return false;
+  return message.toLowerCase().includes('application volume not found');
+}
+
 type ParsedProgressOutput = {
   raw: string;
   events: string[];
@@ -399,6 +404,75 @@ async function resolveContainerOnCorrectNode(opts: ResolveContainerOptions): Pro
     containerName,
     candidates: resolved.candidates,
   };
+}
+
+async function getLocationCandidates(opts: {
+  client: FluxClient;
+  appname: string;
+  preferHost?: string;
+}): Promise<
+  | { ok: true; candidates: Array<{ host: string; apiPort: number; baseUrl: string }>; locations: unknown }
+  | { ok: false; candidates: Array<{ host: string; apiPort: number; baseUrl: string }>; error: string; locations: unknown }
+> {
+  const locationRes = await opts.client.request(`/apps/location/${encodeURIComponent(opts.appname)}`);
+  const locations = unwrapFluxEnvelope<unknown>(locationRes.data);
+  const candidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+
+  if (!locationRes.ok || !isFluxSuccess(locationRes.data)) {
+    return {
+      ok: false,
+      candidates,
+      locations,
+      error: extractFluxErrorMessage(locationRes.data) ?? 'Location lookup failed',
+    };
+  }
+
+  const list = Array.isArray(locations)
+    ? locations.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+    : [];
+
+  const defaultApiPort = 16127;
+
+  for (const x of list) {
+    const ip = x['ip'];
+    const ipString = typeof ip === 'string' ? ip : '';
+    const parsed = ipString ? parseHostPort(ipString) : { host: '', port: null };
+    const apiPort = parsed.port ?? defaultApiPort;
+    const baseUrl = parsed.host ? `http://${parsed.host}:${apiPort}` : null;
+    if (!baseUrl) continue;
+
+    candidates.push({ host: parsed.host, apiPort, baseUrl });
+  }
+
+  const ordered = opts.preferHost
+    ? [...candidates.filter((c) => c.host === opts.preferHost), ...candidates.filter((c) => c.host !== opts.preferHost)]
+    : candidates;
+
+  return { ok: true, candidates: ordered, locations };
+}
+
+function parseFluxErrorFromBase64Download(blob: Record<string, unknown>): { parsed: unknown; error: string | null; fluxOk: boolean | null } | null {
+  const base64 = typeof blob.base64 === 'string' ? blob.base64 : null;
+  if (!base64) return null;
+
+  // Successful downloads from /apps/downloadfile|downloadfolder set Content-Disposition.
+  const contentDisposition = typeof blob.contentDisposition === 'string' ? blob.contentDisposition : '';
+
+  const likelySuccess = contentDisposition.toLowerCase().includes('attachment');
+  if (likelySuccess) return null;
+
+  try {
+    const decoded = Buffer.from(base64, 'base64').toString('utf-8').trim();
+    if (!decoded.startsWith('{')) return null;
+
+    const parsed: unknown = JSON.parse(decoded);
+    const fluxOk = isFluxSuccess(parsed);
+    const error = fluxOk ? null : extractFluxErrorMessage(parsed);
+    if (error) return { parsed, fluxOk, error };
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveRuntimeTarget(opts: {
@@ -7703,29 +7777,139 @@ export async function callTool(name: string, rawArgs: unknown) {
         const component = mustBeString(args['component'], 'component');
         const folder = asOptionalString(args['folder']) ?? '';
 
-        const res = await client.request('/apps/getfolderinfo', { query: { appname, component, folder } });
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let res = await client.request('/apps/getfolderinfo', { query: { appname, component, folder } });
+        let fluxOk = res.ok ? isFluxSuccess(res.data) : false;
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: { baseUrl: string; host: string; apiPort: number; previousBaseUrl: string | null } | null = null;
+        let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+        let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+        let locationRaw: unknown = null;
+
+        if (res.ok && !fluxOk && isVolumeNotFoundError(knownError)) {
+          const located = await getLocationCandidates({ client, appname });
+          locationCandidates = located.candidates;
+          locationRaw = located.locations;
+
+          if (located.ok && located.candidates.length > 0) {
+            const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
+              const tmp = new FluxClient({
+                baseUrl,
+                zelidauth: client.getZelidauthValue() ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+              });
+              tmp.setHttpDefaults(client.getHttpDefaults());
+
+              const r = await tmp.request('/apps/getfolderinfo', { query: { appname, component, folder } });
+              if (!r.ok || !isFluxSuccess(r.data)) {
+                throw new Error(extractFluxErrorMessage(r.data) ?? 'getfolderinfo failed');
+              }
+              return r;
+            });
+
+            failures = attempt.failures;
+
+            if (attempt.ok) {
+              res = attempt.value;
+              fluxOk = true;
+              knownError = null;
+              client.setBaseUrl(attempt.used.baseUrl);
+              resolvedInfo = {
+                baseUrl: attempt.used.baseUrl,
+                host: attempt.used.host,
+                apiPort: attempt.used.apiPort,
+                previousBaseUrl: attemptedBaseUrl,
+              };
+            }
+          }
+        }
+
+        const ok = res.ok && fluxOk;
+
+        const payload = unwrapFluxEnvelope<unknown>(res.data);
+        const items = Array.isArray(payload)
+          ? payload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const formatTime = (value: unknown): string => {
+          if (typeof value !== 'string' || !value.trim()) return '-';
+          return value.length > 19 ? value.slice(0, 19).replace('T', ' ') : value;
+        };
+
+        const headers = ['Name', 'Type', 'Size (bytes)', 'Modified'];
+        const rows = items.map((x) => {
+          const name = typeof x['name'] === 'string' ? x['name'] : '-';
+          const isDirectory = x['isDirectory'] === true;
+          const isFile = x['isFile'] === true;
+          const isSymbolicLink = x['isSymbolicLink'] === true;
+
+          const type = isDirectory ? 'dir' : isFile ? 'file' : isSymbolicLink ? 'link' : '-';
+
+          const sizeRaw = x['size'];
+          const size = typeof sizeRaw === 'number' ? sizeRaw : Number(sizeRaw);
+
+          const modifiedAt = formatTime(x['modifiedAt']);
+
+          return [
+            String(name),
+            type,
+            Number.isFinite(size) ? String(Math.trunc(size)) : '-',
+            modifiedAt,
+          ];
+        });
 
         const link = resourceStore.putJson({
           kind: 'apps/getfolderinfo',
           name: `${appname} folder listing`,
           description: 'Raw /apps/getfolderinfo response',
-          value: res,
+          value: {
+            request: { appname, component, folder },
+            response: res,
+            resolved: resolvedInfo,
+            locationCandidates,
+            locationRaw,
+            failures,
+          },
         });
 
         const summary = {
-          ok: res.ok,
+          ok,
           status: res.status,
           appname,
           component,
           folder,
+          count: items.length,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
           resourceUri: link.uri,
+          nextActions: ok
+            ? []
+            : [
+                ...(locationCandidates.length > 0
+                  ? [{ tool: 'flux_set_base_url', arguments: { baseUrl: locationCandidates[0].baseUrl } }]
+                  : []),
+                { tool: 'flux_auth_flow', arguments: {} },
+                { tool: 'flux_apps_resolve_runtime_target', arguments: { appname, requireRunning: false } },
+              ],
         };
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
-          structuredContent: summary,
-          isError: !res.ok,
-        };
+        if (!ok) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: summary,
+            isError: true,
+          };
+        }
+
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 50,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_apps_download_file': {
@@ -7738,18 +7922,98 @@ export async function callTool(name: string, rawArgs: unknown) {
           requireConfirm(args, `apps/downloadfile sensitive path: ${file}`);
         }
 
-        const res = await client.request('/apps/downloadfile', {
-          query: { appname, component, file },
-          responseType: 'base64',
-          maxBytes,
-        });
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
 
-        if (!res.ok) {
-          const out = { ok: false, status: res.status, appname, component, file, error: res.data };
-          return jsonResult(out, { structuredContent: out, isError: true });
+        const downloadOnce = async (baseUrl: string | null): Promise<FluxRequestResult> => {
+          if (baseUrl) {
+            const tmp = new FluxClient({
+              baseUrl,
+              zelidauth: client.getZelidauthValue() ?? undefined,
+              enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+            });
+            tmp.setHttpDefaults(client.getHttpDefaults());
+            return tmp.request('/apps/downloadfile', { query: { appname, component, file }, responseType: 'base64', maxBytes });
+          }
+          return client.request('/apps/downloadfile', { query: { appname, component, file }, responseType: 'base64', maxBytes });
+        };
+
+        let res = await downloadOnce(null);
+        let blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        let parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
+        let knownError = parsedError?.error ?? (res.ok ? null : String(res.data));
+
+        let resolvedInfo: { baseUrl: string; host: string; apiPort: number; previousBaseUrl: string | null } | null = null;
+        let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+        let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+        let locationRaw: unknown = null;
+
+        if (parsedError && isVolumeNotFoundError(parsedError.error)) {
+          const located = await getLocationCandidates({ client, appname });
+          locationCandidates = located.candidates;
+          locationRaw = located.locations;
+
+          if (located.ok && located.candidates.length > 0) {
+            const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
+              const r = await downloadOnce(baseUrl);
+              const b = r.data && typeof r.data === 'object' && !Array.isArray(r.data) ? (r.data as Record<string, unknown>) : null;
+              const err = b ? parseFluxErrorFromBase64Download(b) : null;
+              if (!r.ok) throw new Error(`downloadfile failed: http ${r.status}`);
+              if (err) throw new Error(err.error ?? 'downloadfile returned an error envelope');
+              return r;
+            });
+
+            failures = attempt.failures;
+
+            if (attempt.ok) {
+              res = attempt.value;
+              blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+              parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
+              knownError = parsedError?.error ?? null;
+              client.setBaseUrl(attempt.used.baseUrl);
+              resolvedInfo = {
+                baseUrl: attempt.used.baseUrl,
+                host: attempt.used.host,
+                apiPort: attempt.used.apiPort,
+                previousBaseUrl: attemptedBaseUrl,
+              };
+            }
+          }
         }
 
-        const blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        if (!res.ok || parsedError) {
+          const link = resourceStore.putJson({
+            kind: 'apps/downloadfile_error',
+            name: `${appname}/${component}/${file} download error`,
+            description: 'Error response from /apps/downloadfile',
+            value: {
+              request: { appname, component, file, maxBytes: maxBytes ?? null },
+              response: res,
+              parsedError: parsedError?.parsed ?? null,
+              resolved: resolvedInfo,
+              locationCandidates,
+              locationRaw,
+              failures,
+            },
+          });
+
+          const out = {
+            ok: false,
+            status: res.status,
+            appname,
+            component,
+            file,
+            resolved: resolvedInfo,
+            error: knownError ?? (res.ok ? 'downloadfile returned an error envelope' : String(res.data)),
+            resourceUri: link.uri,
+          };
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: out,
+            isError: true,
+          };
+        }
+
         const base64 = blob && typeof blob.base64 === 'string' ? blob.base64 : null;
         const bytes = blob && typeof blob.bytes === 'number' ? blob.bytes : null;
         const contentType = blob && typeof blob.contentType === 'string' ? blob.contentType : 'application/octet-stream';
@@ -7770,6 +8034,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           file,
           bytes,
           mimeType: contentType,
+          resolved: resolvedInfo,
           resourceUri: link.uri,
         };
 
@@ -7787,18 +8052,98 @@ export async function callTool(name: string, rawArgs: unknown) {
         const folder = mustBeString(args['folder'], 'folder');
         const maxBytes = asOptionalNumber(args['maxBytes']);
 
-        const res = await client.request('/apps/downloadfolder', {
-          query: { appname, component, folder },
-          responseType: 'base64',
-          maxBytes,
-        });
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
 
-        if (!res.ok) {
-          const out = { ok: false, status: res.status, appname, component, folder, error: res.data };
-          return jsonResult(out, { structuredContent: out, isError: true });
+        const downloadOnce = async (baseUrl: string | null): Promise<FluxRequestResult> => {
+          if (baseUrl) {
+            const tmp = new FluxClient({
+              baseUrl,
+              zelidauth: client.getZelidauthValue() ?? undefined,
+              enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+            });
+            tmp.setHttpDefaults(client.getHttpDefaults());
+            return tmp.request('/apps/downloadfolder', { query: { appname, component, folder }, responseType: 'base64', maxBytes });
+          }
+          return client.request('/apps/downloadfolder', { query: { appname, component, folder }, responseType: 'base64', maxBytes });
+        };
+
+        let res = await downloadOnce(null);
+        let blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        let parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
+        let knownError = parsedError?.error ?? (res.ok ? null : String(res.data));
+
+        let resolvedInfo: { baseUrl: string; host: string; apiPort: number; previousBaseUrl: string | null } | null = null;
+        let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+        let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+        let locationRaw: unknown = null;
+
+        if (parsedError && isVolumeNotFoundError(parsedError.error)) {
+          const located = await getLocationCandidates({ client, appname });
+          locationCandidates = located.candidates;
+          locationRaw = located.locations;
+
+          if (located.ok && located.candidates.length > 0) {
+            const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
+              const r = await downloadOnce(baseUrl);
+              const b = r.data && typeof r.data === 'object' && !Array.isArray(r.data) ? (r.data as Record<string, unknown>) : null;
+              const err = b ? parseFluxErrorFromBase64Download(b) : null;
+              if (!r.ok) throw new Error(`downloadfolder failed: http ${r.status}`);
+              if (err) throw new Error(err.error ?? 'downloadfolder returned an error envelope');
+              return r;
+            });
+
+            failures = attempt.failures;
+
+            if (attempt.ok) {
+              res = attempt.value;
+              blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+              parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
+              knownError = parsedError?.error ?? null;
+              client.setBaseUrl(attempt.used.baseUrl);
+              resolvedInfo = {
+                baseUrl: attempt.used.baseUrl,
+                host: attempt.used.host,
+                apiPort: attempt.used.apiPort,
+                previousBaseUrl: attemptedBaseUrl,
+              };
+            }
+          }
         }
 
-        const blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        if (!res.ok || parsedError) {
+          const link = resourceStore.putJson({
+            kind: 'apps/downloadfolder_error',
+            name: `${appname}/${component}/${folder} download error`,
+            description: 'Error response from /apps/downloadfolder',
+            value: {
+              request: { appname, component, folder, maxBytes: maxBytes ?? null },
+              response: res,
+              parsedError: parsedError?.parsed ?? null,
+              resolved: resolvedInfo,
+              locationCandidates,
+              locationRaw,
+              failures,
+            },
+          });
+
+          const out = {
+            ok: false,
+            status: res.status,
+            appname,
+            component,
+            folder,
+            resolved: resolvedInfo,
+            error: knownError ?? (res.ok ? 'downloadfolder returned an error envelope' : String(res.data)),
+            resourceUri: link.uri,
+          };
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: out,
+            isError: true,
+          };
+        }
+
         const base64 = blob && typeof blob.base64 === 'string' ? blob.base64 : null;
         const bytes = blob && typeof blob.bytes === 'number' ? blob.bytes : null;
         const contentType = blob && typeof blob.contentType === 'string' ? blob.contentType : 'application/zip';
@@ -7819,6 +8164,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           folder,
           bytes,
           mimeType: contentType,
+          resolved: resolvedInfo,
           resourceUri: link.uri,
         };
 
@@ -7835,13 +8181,92 @@ export async function callTool(name: string, rawArgs: unknown) {
         const component = mustBeString(args['component'], 'component');
         const folder = mustBeString(args['folder'], 'folder');
 
-        return jsonResult(
-          await client.request('/apps/createfolder', {
-            method: 'GET',
-            query: { appname, component, folder },
-            allowMutation: true,
-          })
-        );
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let res = await client.request('/apps/createfolder', {
+          method: 'GET',
+          query: { appname, component, folder },
+          allowMutation: true,
+        });
+
+        let fluxOk = res.ok ? isFluxSuccess(res.data) : false;
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: { baseUrl: string; host: string; apiPort: number; previousBaseUrl: string | null } | null = null;
+        let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+        let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+        let locationRaw: unknown = null;
+
+        if (res.ok && !fluxOk && isVolumeNotFoundError(knownError)) {
+          const located = await getLocationCandidates({ client, appname });
+          locationCandidates = located.candidates;
+          locationRaw = located.locations;
+
+          if (located.ok && located.candidates.length > 0) {
+            const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
+              const tmp = new FluxClient({
+                baseUrl,
+                zelidauth: client.getZelidauthValue() ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+              });
+              tmp.setHttpDefaults(client.getHttpDefaults());
+
+              const r = await tmp.request('/apps/createfolder', { method: 'GET', query: { appname, component, folder }, allowMutation: true });
+              if (!r.ok || !isFluxSuccess(r.data)) {
+                throw new Error(extractFluxErrorMessage(r.data) ?? 'createfolder failed');
+              }
+              return r;
+            });
+
+            failures = attempt.failures;
+
+            if (attempt.ok) {
+              res = attempt.value;
+              fluxOk = true;
+              knownError = null;
+              client.setBaseUrl(attempt.used.baseUrl);
+              resolvedInfo = {
+                baseUrl: attempt.used.baseUrl,
+                host: attempt.used.host,
+                apiPort: attempt.used.apiPort,
+                previousBaseUrl: attemptedBaseUrl,
+              };
+            }
+          }
+        }
+
+        const ok = res.ok && fluxOk;
+
+        const link = resourceStore.putJson({
+          kind: 'apps/createfolder',
+          name: `${appname} create folder`,
+          description: 'Raw /apps/createfolder response',
+          value: {
+            request: { appname, component, folder },
+            response: res,
+            resolved: resolvedInfo,
+            locationCandidates,
+            locationRaw,
+            failures,
+          },
+        });
+
+        const out = {
+          ok,
+          status: res.status,
+          appname,
+          component,
+          folder,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: !ok,
+        };
       }
 
       case 'flux_apps_rename_object': {
@@ -7851,13 +8276,93 @@ export async function callTool(name: string, rawArgs: unknown) {
         const oldpath = mustBeString(args['oldpath'], 'oldpath');
         const newname = mustBeString(args['newname'], 'newname');
 
-        return jsonResult(
-          await client.request('/apps/renameobject', {
-            method: 'GET',
-            query: { appname, component, oldpath, newname },
-            allowMutation: true,
-          })
-        );
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let res = await client.request('/apps/renameobject', {
+          method: 'GET',
+          query: { appname, component, oldpath, newname },
+          allowMutation: true,
+        });
+
+        let fluxOk = res.ok ? isFluxSuccess(res.data) : false;
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: { baseUrl: string; host: string; apiPort: number; previousBaseUrl: string | null } | null = null;
+        let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+        let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+        let locationRaw: unknown = null;
+
+        if (res.ok && !fluxOk && isVolumeNotFoundError(knownError)) {
+          const located = await getLocationCandidates({ client, appname });
+          locationCandidates = located.candidates;
+          locationRaw = located.locations;
+
+          if (located.ok && located.candidates.length > 0) {
+            const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
+              const tmp = new FluxClient({
+                baseUrl,
+                zelidauth: client.getZelidauthValue() ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+              });
+              tmp.setHttpDefaults(client.getHttpDefaults());
+
+              const r = await tmp.request('/apps/renameobject', { method: 'GET', query: { appname, component, oldpath, newname }, allowMutation: true });
+              if (!r.ok || !isFluxSuccess(r.data)) {
+                throw new Error(extractFluxErrorMessage(r.data) ?? 'renameobject failed');
+              }
+              return r;
+            });
+
+            failures = attempt.failures;
+
+            if (attempt.ok) {
+              res = attempt.value;
+              fluxOk = true;
+              knownError = null;
+              client.setBaseUrl(attempt.used.baseUrl);
+              resolvedInfo = {
+                baseUrl: attempt.used.baseUrl,
+                host: attempt.used.host,
+                apiPort: attempt.used.apiPort,
+                previousBaseUrl: attemptedBaseUrl,
+              };
+            }
+          }
+        }
+
+        const ok = res.ok && fluxOk;
+
+        const link = resourceStore.putJson({
+          kind: 'apps/renameobject',
+          name: `${appname} rename object`,
+          description: 'Raw /apps/renameobject response',
+          value: {
+            request: { appname, component, oldpath, newname },
+            response: res,
+            resolved: resolvedInfo,
+            locationCandidates,
+            locationRaw,
+            failures,
+          },
+        });
+
+        const out = {
+          ok,
+          status: res.status,
+          appname,
+          component,
+          oldpath,
+          newname,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: !ok,
+        };
       }
 
       case 'flux_apps_remove_object': {
@@ -7866,13 +8371,92 @@ export async function callTool(name: string, rawArgs: unknown) {
         const component = mustBeString(args['component'], 'component');
         const object = mustBeString(args['object'], 'object');
 
-        return jsonResult(
-          await client.request('/apps/removeobject', {
-            method: 'GET',
-            query: { appname, component, object },
-            allowMutation: true,
-          })
-        );
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let res = await client.request('/apps/removeobject', {
+          method: 'GET',
+          query: { appname, component, object },
+          allowMutation: true,
+        });
+
+        let fluxOk = res.ok ? isFluxSuccess(res.data) : false;
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: { baseUrl: string; host: string; apiPort: number; previousBaseUrl: string | null } | null = null;
+        let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
+        let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
+        let locationRaw: unknown = null;
+
+        if (res.ok && !fluxOk && isVolumeNotFoundError(knownError)) {
+          const located = await getLocationCandidates({ client, appname });
+          locationCandidates = located.candidates;
+          locationRaw = located.locations;
+
+          if (located.ok && located.candidates.length > 0) {
+            const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
+              const tmp = new FluxClient({
+                baseUrl,
+                zelidauth: client.getZelidauthValue() ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+              });
+              tmp.setHttpDefaults(client.getHttpDefaults());
+
+              const r = await tmp.request('/apps/removeobject', { method: 'GET', query: { appname, component, object }, allowMutation: true });
+              if (!r.ok || !isFluxSuccess(r.data)) {
+                throw new Error(extractFluxErrorMessage(r.data) ?? 'removeobject failed');
+              }
+              return r;
+            });
+
+            failures = attempt.failures;
+
+            if (attempt.ok) {
+              res = attempt.value;
+              fluxOk = true;
+              knownError = null;
+              client.setBaseUrl(attempt.used.baseUrl);
+              resolvedInfo = {
+                baseUrl: attempt.used.baseUrl,
+                host: attempt.used.host,
+                apiPort: attempt.used.apiPort,
+                previousBaseUrl: attemptedBaseUrl,
+              };
+            }
+          }
+        }
+
+        const ok = res.ok && fluxOk;
+
+        const link = resourceStore.putJson({
+          kind: 'apps/removeobject',
+          name: `${appname} remove object`,
+          description: 'Raw /apps/removeobject response',
+          value: {
+            request: { appname, component, object },
+            response: res,
+            resolved: resolvedInfo,
+            locationCandidates,
+            locationRaw,
+            failures,
+          },
+        });
+
+        const out = {
+          ok,
+          status: res.status,
+          appname,
+          component,
+          object,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: !ok,
+        };
       }
 
       case 'flux_syncthing_metrics': {
