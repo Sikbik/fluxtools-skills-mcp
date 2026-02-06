@@ -25,6 +25,16 @@ FluxOS exposes many endpoints as `GET` routes (including state-changing actions)
 Common gotcha:
 - `https://cloud.runonflux.com/` is the UI, not the node API base URL.
 
+## One-command setup (recommended)
+
+From the repo root:
+
+```bash
+node scripts/setup.js
+```
+
+This builds `flux-mcp` (if needed) and prints ready-to-paste MCP client config snippets.
+
 ## Build (one-time)
 
 From the repo root:

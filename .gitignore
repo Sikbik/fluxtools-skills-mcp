@@ -39,6 +39,9 @@ dist/*.skill
 issues.md
 issue3.md
 
+# Local (project-scoped) agent config / skill installs
+.codex/
+.claude/
+
 # Reference clones (not part of this repo)
 /fluxos-frontend/
-

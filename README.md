@@ -25,6 +25,26 @@ Tools and skills for operating Flux Cloud / FluxOS nodes and apps via MCP or Cod
 
 ## Quick start: MCP server (Claude, Gemini, other MCP clients)
 
+### 0) One-command setup (recommended)
+
+From the repo root:
+
+```bash
+node scripts/setup.js
+```
+
+This will:
+
+- build `flux-mcp` (if needed)
+- install the Codex + Claude skills (project-scoped)
+- print ready-to-paste MCP client config snippets with your absolute paths
+
+User-scoped install (all projects):
+
+```bash
+node scripts/setup.js --scope user
+```
+
 ### 1) Prereqs
 
 - Node.js 20+
