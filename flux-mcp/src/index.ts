@@ -1065,27 +1065,79 @@ function decryptEnterprisePayload(enterpriseBase64: string, aesKeyBase64: string
 
 const DEFAULT_ZELCORE_ICON = 'https://raw.githubusercontent.com/runonflux/flux/master/zelID.svg';
 
-function buildZelcoreDeeplink(opts: { message: string; icon?: string; callback?: string }): string {
+function isOsc8Enabled(): boolean {
+  // Default on: most modern terminals (including VS Code) support OSC8 links.
+  // Can be disabled if the client renders escape sequences literally.
+  const raw = String(process.env.FLUX_MCP_OSC8_LINKS ?? '1').trim().toLowerCase();
+  return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off';
+}
+
+function buildOsc8Link(url: string, label: string): string {
+  // OSC8 hyperlink sequence: ESC ] 8 ; ; URL ST <label> ESC ] 8 ; ; ST
+  // ST is ESC \\
+  const esc = '\u001b';
+  const st = `${esc}\\`;
+  return `${esc}]8;;${url}${st}${label}${esc}]8;;${st}`;
+}
+
+function buildZelcoreDeeplinks(opts: { message: string; icon?: string; callback?: string }): {
+  link: string;
+  clickableLink: string;
+  bracketedLink: string;
+  osc8OpenLink: string | null;
+} {
   const icon = opts.icon ?? DEFAULT_ZELCORE_ICON;
   const callback = opts.callback ? `&callback=${encodeURIComponent(opts.callback)}` : '';
-  return `zel:?action=sign&message=${encodeURIComponent(opts.message)}&icon=${encodeURIComponent(icon)}${callback}`;
+  const query = `?action=sign&message=${encodeURIComponent(opts.message)}&icon=${encodeURIComponent(icon)}${callback}`;
+
+  // Some terminals only auto-linkify scheme:// URLs. We emit both variants.
+  const link = `zel:${query}`;
+  return {
+    link,
+    clickableLink: `zel://${query}`,
+    bracketedLink: `<${link}>`,
+    osc8OpenLink: isOsc8Enabled() ? buildOsc8Link(link, 'Open in Zelcore') : null,
+  };
 }
 
 function buildZelcoreDeeplinkPreview(opts: {
   message: string;
   icon?: string;
   callback?: string;
-}): { link: string; warning: string | null; messageLength: number } {
+}): {
+  link: string;
+  clickableLink: string;
+  bracketedLink: string;
+  osc8OpenLink: string | null;
+  warning: string | null;
+  messageLength: number;
+} {
   const messageLength = opts.message.length;
   const warning =
     messageLength > 1800
       ? 'Message length > 1800 chars. Zelcore may reject it. Use flux_build_zelcore_sign_link with useFluxStorage=true (confirm required) to upload and sign a FLUX_URL.'
       : null;
+  const links = buildZelcoreDeeplinks({ message: opts.message, icon: opts.icon, callback: opts.callback });
   return {
-    link: buildZelcoreDeeplink({ message: opts.message, icon: opts.icon, callback: opts.callback }),
+    link: links.link,
+    clickableLink: links.clickableLink,
+    bracketedLink: links.bracketedLink,
+    osc8OpenLink: links.osc8OpenLink,
     warning,
     messageLength,
   };
+}
+
+function formatZelcoreLinkForText(preview: {
+  link: string;
+  clickableLink: string;
+  bracketedLink: string;
+  osc8OpenLink: string | null;
+}): string {
+  // Prefer OSC8 (explicit hyperlink) because many terminals don't auto-linkify custom schemes.
+  // Always include the raw canonical link as a fallback for copy/paste.
+  const open = preview.osc8OpenLink ?? preview.bracketedLink;
+  return `Zelcore (Ctrl+Click): ${open}\nRaw link:\n${preview.link}`;
 }
 
 function isSensitiveEnvKey(key: string): boolean {
@@ -3553,6 +3605,7 @@ export async function callTool(name: string, rawArgs: unknown) {
               loginPhrase: phraseText,
               loginPhraseResourceUri: phraseLink.uri,
               zelcoreSignLink: preview.link,
+              zelcoreClickableLink: preview.clickableLink,
               zelcoreWarning: preview.warning,
               nextActions: [
                 {
@@ -3564,7 +3617,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
             return {
               content: [
-                { type: 'text', text: `Zelcore sign link:\n${preview.link}` },
+                { type: 'text', text: formatZelcoreLinkForText(preview) },
                 ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
                 { type: 'text', text: JSON.stringify(out, null, 2) },
                 { type: 'resource_link', ...phraseLink },
@@ -4366,9 +4419,10 @@ export async function callTool(name: string, rawArgs: unknown) {
             messageToSignSha256,
             messageToSignBytes,
             messageToSignResourceUri: link.uri,
-            zelcoreSignLink: preview.link,
-            zelcoreWarning: preview.warning,
-          };
+          zelcoreSignLink: preview.link,
+          zelcoreClickableLink: preview.clickableLink,
+          zelcoreWarning: preview.warning,
+        };
 
         if (includeMessageToSign) {
           const details = buildMessageToSignDetails(messageToSign);
@@ -4377,7 +4431,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
           return {
             content: [
-              { type: 'text', text: `Zelcore sign link:\n${preview.link}` },
+              { type: 'text', text: formatZelcoreLinkForText(preview) },
               ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
               { type: 'text', text: JSON.stringify(out, null, 2) },
               { type: 'resource_link', ...link },
@@ -4403,10 +4457,10 @@ export async function callTool(name: string, rawArgs: unknown) {
           message = mustBeString(args['message'], 'message');
         }
 
-          const iconRaw = asOptionalString(args['icon']);
-          const callbackRaw = asOptionalString(args['callback']);
-          const useFluxStorage = (asOptionalBoolean(args['useFluxStorage']) ?? false) === true;
-          const icon = iconRaw ?? DEFAULT_ZELCORE_ICON;
+        const iconRaw = asOptionalString(args['icon']);
+        const callbackRaw = asOptionalString(args['callback']);
+        const useFluxStorage = (asOptionalBoolean(args['useFluxStorage']) ?? false) === true;
+        const icon = iconRaw ?? DEFAULT_ZELCORE_ICON;
 
         let messageToSign = message;
         let storageUrl: string | null = null;
@@ -4422,11 +4476,14 @@ export async function callTool(name: string, rawArgs: unknown) {
           }
         }
 
-          const link = buildZelcoreDeeplink({ message: messageToSign, icon, callback: callbackRaw ?? undefined });
+        const links = buildZelcoreDeeplinks({ message: messageToSign, icon, callback: callbackRaw ?? undefined });
 
         const out = {
           ok: true,
-          link,
+          link: links.link,
+          clickableLink: links.clickableLink,
+          bracketedLink: links.bracketedLink,
+          osc8OpenLink: links.osc8OpenLink,
           messageLength: message.length,
           usedFluxStorage: Boolean(storageUrl),
           storageUrl,
@@ -4518,6 +4575,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             messageToSignBytes,
             messageToSignResourceUri: link.uri,
             zelcoreSignLink: preview.link,
+            zelcoreClickableLink: preview.clickableLink,
+            zelcoreBracketedLink: preview.bracketedLink,
             zelcoreWarning: preview.warning,
             signatureNotes: {
               loginSignature: 'Sign loginPhrase for zelidauth (auth).',
@@ -4533,7 +4592,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
           return {
             content: [
-              { type: 'text', text: `Zelcore sign link:\n${preview.link}` },
+              { type: 'text', text: formatZelcoreLinkForText(preview) },
               ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
               { type: 'text', text: JSON.stringify(out, null, 2) },
               { type: 'resource_link', ...link },
@@ -7153,25 +7212,27 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: full,
         });
 
-          const summary = {
-            ok: true,
-            requiresAuth,
-            authNote,
-            ...built.meta,
-            timestamp,
-            type,
-            typeVersion,
-            payment,
-            messageToSignSha256,
-            messageToSignBytes,
-            messageToSignResourceUri: messageLink.uri,
-            zelcoreSignLink: messagePreview.link,
-            zelcoreWarning: messagePreview.warning,
-            resourceUri: fullLink.uri,
-            nextActions: [
-              { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
-              { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
-              {
+	          const summary = {
+	            ok: true,
+	            requiresAuth,
+	            authNote,
+	            ...built.meta,
+	            timestamp,
+	            type,
+	            typeVersion,
+	            payment,
+	            messageToSignSha256,
+	            messageToSignBytes,
+	            messageToSignResourceUri: messageLink.uri,
+	            zelcoreSignLink: messagePreview.link,
+	            zelcoreClickableLink: messagePreview.clickableLink,
+	            zelcoreBracketedLink: messagePreview.bracketedLink,
+	            zelcoreWarning: messagePreview.warning,
+	            resourceUri: fullLink.uri,
+	            nextActions: [
+	              { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+	              { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+	              {
                 tool: 'flux_git_deploy_register_and_verify',
                 arguments: { planResourceUri: fullLink.uri, signature: '<SIGNATURE>', confirm: true },
               },
@@ -7180,7 +7241,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
           return {
             content: [
-              { type: 'text', text: `Zelcore sign link:\n${messagePreview.link}` },
+              { type: 'text', text: formatZelcoreLinkForText(messagePreview) },
               ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
               { type: 'text', text: JSON.stringify(summary, null, 2) },
               { type: 'resource_link', ...fullLink },
@@ -7547,33 +7608,35 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: full,
         });
 
-          const summary = {
-            ok: true,
-            requiresAuth,
-            authNote,
-            appname: identity.appname ?? null,
-            owner: identity.owner ?? null,
-            timestamp,
-            type,
-            typeVersion,
-            payment,
-            messageToSignSha256,
-            messageToSignBytes,
-            messageToSignResourceUri: messageLink.uri,
-            zelcoreSignLink: messagePreview.link,
-            zelcoreWarning: messagePreview.warning,
-            resourceUri: fullLink.uri,
-            signatureNotes: full.signatureNotes,
-            nextActions: [
-              { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
-              { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+	          const summary = {
+	            ok: true,
+	            requiresAuth,
+	            authNote,
+	            appname: identity.appname ?? null,
+	            owner: identity.owner ?? null,
+	            timestamp,
+	            type,
+	            typeVersion,
+	            payment,
+	            messageToSignSha256,
+	            messageToSignBytes,
+	            messageToSignResourceUri: messageLink.uri,
+	            zelcoreSignLink: messagePreview.link,
+	            zelcoreClickableLink: messagePreview.clickableLink,
+	            zelcoreBracketedLink: messagePreview.bracketedLink,
+	            zelcoreWarning: messagePreview.warning,
+	            resourceUri: fullLink.uri,
+	            signatureNotes: full.signatureNotes,
+	            nextActions: [
+	              { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+	              { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
               { tool: 'flux_apps_register', note: 'Submit registration after signing (requires zelidauth).' },
             ],
           };
 
           return {
             content: [
-              { type: 'text', text: `Zelcore sign link:\n${messagePreview.link}` },
+              { type: 'text', text: formatZelcoreLinkForText(messagePreview) },
               ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
               { type: 'text', text: JSON.stringify(summary, null, 2) },
               { type: 'resource_link', ...fullLink },
@@ -7966,33 +8029,35 @@ export async function callTool(name: string, rawArgs: unknown) {
            value: full,
          });
 
-           const summary = {
-             ok: true,
-             requiresAuth,
-             authNote,
-             appname: identity.appname ?? null,
-             owner: identity.owner ?? null,
-             timestamp,
-             type,
-             typeVersion,
-             payment: paymentInfo.payment,
-             messageToSignSha256,
-             messageToSignBytes,
-             messageToSignResourceUri: messageLink.uri,
-             zelcoreSignLink: messagePreview.link,
-             zelcoreWarning: messagePreview.warning,
-             resourceUri: fullLink.uri,
-             signatureNotes: full.signatureNotes,
-             nextActions: [
-               { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
-               { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+	           const summary = {
+	             ok: true,
+	             requiresAuth,
+	             authNote,
+	             appname: identity.appname ?? null,
+	             owner: identity.owner ?? null,
+	             timestamp,
+	             type,
+	             typeVersion,
+	             payment: paymentInfo.payment,
+	             messageToSignSha256,
+	             messageToSignBytes,
+	             messageToSignResourceUri: messageLink.uri,
+	             zelcoreSignLink: messagePreview.link,
+	             zelcoreClickableLink: messagePreview.clickableLink,
+	             zelcoreBracketedLink: messagePreview.bracketedLink,
+	             zelcoreWarning: messagePreview.warning,
+	             resourceUri: fullLink.uri,
+	             signatureNotes: full.signatureNotes,
+	             nextActions: [
+	               { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+	               { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
                { tool: 'flux_apps_update', note: 'Submit update after signing (requires zelidauth).' },
              ],
            };
 
            return {
              content: [
-               { type: 'text', text: `Zelcore sign link:\n${messagePreview.link}` },
+               { type: 'text', text: formatZelcoreLinkForText(messagePreview) },
                ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
                { type: 'text', text: JSON.stringify(summary, null, 2) },
                { type: 'resource_link', ...fullLink },
