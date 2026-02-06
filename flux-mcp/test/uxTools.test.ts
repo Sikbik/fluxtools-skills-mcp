@@ -288,7 +288,7 @@ describe.sequential('UX tools', () => {
     expect(Array.isArray(payload.checklist)).toBe(true);
   });
 
-  it('flux_build_message_to_sign returns messageToSign', async () => {
+  it('flux_build_message_to_sign returns messageToSignResourceUri by default', async () => {
     const r = await callTool('flux_build_message_to_sign', {
       type: 'fluxappupdate',
       version: 1,
@@ -298,10 +298,13 @@ describe.sequential('UX tools', () => {
     expect(r.isError).not.toBe(true);
 
     const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
-    expect(typeof payload.messageToSign).toBe('string');
+    expect(payload.messageToSign).toBeUndefined();
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.messageToSignSha256).toBe('string');
+    expect(typeof payload.messageToSignBytes).toBe('number');
   });
 
-  it('flux_apps_signing_playbook returns messageToSign + nextActions', async () => {
+  it('flux_apps_signing_playbook returns messageToSignResourceUri + nextActions by default', async () => {
     const r = await callTool('flux_apps_signing_playbook', {
       type: 'fluxappregister',
       version: 1,
@@ -311,7 +314,10 @@ describe.sequential('UX tools', () => {
     expect(r.isError).not.toBe(true);
 
     const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
-    expect(typeof payload.messageToSign).toBe('string');
+    expect(payload.messageToSign).toBeUndefined();
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.messageToSignSha256).toBe('string');
+    expect(typeof payload.messageToSignBytes).toBe('number');
     expect(Array.isArray(payload.nextActions)).toBe(true);
   });
 

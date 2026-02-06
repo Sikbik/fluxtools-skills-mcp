@@ -1486,6 +1486,12 @@ export const tools: Tool[] = [
         version: { type: 'number' },
         spec: { type: 'object', additionalProperties: true },
         timestamp: { type: 'number' },
+        includeMessageToSign: {
+          type: 'boolean',
+          description:
+            'If true, include the full messageToSign inline (can be very large). Default false; prefer messageToSignResourceUri.',
+          default: false,
+        },
       },
       required: ['type', 'version', 'spec', 'timestamp'],
     },
@@ -1539,6 +1545,18 @@ export const tools: Tool[] = [
         version: { type: 'number' },
         spec: { type: 'object', additionalProperties: true },
         timestamp: { type: 'number', description: 'Unix ms epoch (optional; defaults to now)' },
+        includeMessageToSign: {
+          type: 'boolean',
+          description:
+            'If true, include the full messageToSign inline (can be very large). Default false; prefer messageToSignResourceUri.',
+          default: false,
+        },
+        includeNextActionArgs: {
+          type: 'boolean',
+          description:
+            'If true, nextActions will include full argument scaffolds (includes spec, can be very large). Default false.',
+          default: false,
+        },
       },
       required: ['type', 'version', 'spec'],
     },
@@ -3547,8 +3565,11 @@ export async function callTool(name: string, rawArgs: unknown) {
         const spec = mustBeObject(args['spec'], 'spec');
         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
 
+        const includeMessageToSign = (asOptionalBoolean(args['includeMessageToSign']) ?? false) === true;
+
         const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
-        const details = buildMessageToSignDetails(messageToSign);
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
         const link = resourceStore.putText({
           kind: 'message_to_sign',
           name: `messageToSign ${type}`,
@@ -3557,15 +3578,20 @@ export async function callTool(name: string, rawArgs: unknown) {
           text: messageToSign,
         });
 
-        const out = {
+        const out: Record<string, unknown> = {
           ok: true,
           type,
           version,
           timestamp,
-          messageToSign,
-          ...details,
+          messageToSignSha256,
+          messageToSignBytes,
           messageToSignResourceUri: link.uri,
         };
+
+        if (includeMessageToSign) {
+          const details = buildMessageToSignDetails(messageToSign);
+          Object.assign(out, { messageToSign, ...details });
+        }
 
         return {
           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
@@ -3615,14 +3641,15 @@ export async function callTool(name: string, rawArgs: unknown) {
         const path = mustBeString(args['path'], 'path');
         const messageToSign = mustBeString(args['messageToSign'], 'messageToSign');
         const overwrite = (asOptionalBoolean(args['overwrite']) ?? false) === true;
-        const details = buildMessageToSignDetails(messageToSign);
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
 
         await fs.writeFile(path, messageToSign, {
           encoding: 'utf8',
           flag: overwrite ? 'w' : 'wx',
         });
 
-        return jsonResult({ ok: true, path, ...details });
+        return jsonResult({ ok: true, path, messageToSignSha256, messageToSignBytes });
       }
 
       case 'flux_apps_signing_playbook': {
@@ -3636,8 +3663,12 @@ export async function callTool(name: string, rawArgs: unknown) {
         const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
         if (!Number.isFinite(timestamp)) throw new Error('timestamp must be a finite number');
 
+        const includeMessageToSign = (asOptionalBoolean(args['includeMessageToSign']) ?? false) === true;
+        const includeNextActionArgs = (asOptionalBoolean(args['includeNextActionArgs']) ?? false) === true;
+
         const messageToSign = buildMessageToSign({ type, version, spec, timestamp });
-        const details = buildMessageToSignDetails(messageToSign);
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
         const link = resourceStore.putText({
           kind: 'message_to_sign',
           name: `messageToSign ${type}`,
@@ -3646,19 +3677,41 @@ export async function callTool(name: string, rawArgs: unknown) {
           text: messageToSign,
         });
 
-        const nextActions = [
-          { tool: 'flux_build_message_to_sign', arguments: { type, version, spec, timestamp } },
-          { tool: 'flux_apps_plan_registration', arguments: { spec, timestamp, typeVersion: version } },
-          { tool: 'flux_apps_plan_update', arguments: { spec, timestamp, typeVersion: version } },
-        ];
+        const nextActions = includeNextActionArgs
+          ? [
+              {
+                tool: 'flux_build_message_to_sign',
+                arguments: { type, version, spec, timestamp, includeMessageToSign: true },
+              },
+              { tool: 'flux_apps_plan_registration', arguments: { spec, timestamp, typeVersion: version } },
+              { tool: 'flux_apps_plan_update', arguments: { spec, timestamp, typeVersion: version } },
+            ]
+          : [
+              {
+                tool: 'flux_build_zelcore_sign_link',
+                note: 'Build a wallet deeplink. Pass the raw message from messageToSignResourceUri.',
+              },
+              {
+                tool: 'flux_write_message_to_sign',
+                note: 'Write messageToSign to disk for manual signing (confirm required).',
+              },
+              {
+                tool: 'flux_apps_plan_registration',
+                note: 'If registering: call with the same spec + timestamp + typeVersion.',
+              },
+              {
+                tool: 'flux_apps_plan_update',
+                note: 'If updating: call with the same spec + timestamp + typeVersion.',
+              },
+            ];
 
-        const out = {
+        const out: Record<string, unknown> = {
           ok: true,
           type,
           version,
           timestamp,
-          messageToSign,
-          ...details,
+          messageToSignSha256,
+          messageToSignBytes,
           messageToSignResourceUri: link.uri,
           signatureNotes: {
             loginSignature: 'Sign loginPhrase for zelidauth (auth).',
@@ -3666,6 +3719,11 @@ export async function callTool(name: string, rawArgs: unknown) {
           },
           nextActions,
         };
+
+        if (includeMessageToSign) {
+          const details = buildMessageToSignDetails(messageToSign);
+          Object.assign(out, { messageToSign, ...details });
+        }
 
         return {
           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
