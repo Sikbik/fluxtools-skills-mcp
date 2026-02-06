@@ -94,6 +94,17 @@ Use:
 - `references/signing.md`
 - `scripts/build-app-message.js`
 
+### 4b) Git deployments (Orbit)
+
+Flux Git deployments (formerly Orbit) register a normal v8 app spec that uses `runonflux/orbit:latest`.
+
+- Prefer the one-shot planner:
+  - `flux_git_deploy_plan_registration`
+- For private repos:
+  - pass `repoToken` + `enterprise: true` + `confirm: true` (credentials are encrypted into `spec.enterprise`)
+
+Use: `references/git-deployments.md`.
+
 ### 5) Operate an app (lifecycle + observability)
 
 Use: `references/lifecycle-observability.md`.
@@ -136,4 +147,5 @@ Use:
 - `references/lifecycle-observability.md` — lifecycle, logs, inspect, exec
 - `references/storage-mounts.md` — containerData, mounts, volume browser
 - `references/arcane-enterprise.md` — Arcane detection + enterprise constraints
+- `references/git-deployments.md` — Git deployments (Orbit) spec + workflow
 - `references/troubleshooting.md` — common failure modes + checklists

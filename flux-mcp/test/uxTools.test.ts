@@ -1,10 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { generateKeyPairSync } from 'node:crypto';
 
 import { callTool } from '../src/index.js';
 
 type Seen = { method: string; url: string };
+
+const rsaPublicKeyBase64 = (() => {
+  const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const der = publicKey.export({ type: 'spki', format: 'der' });
+  return Buffer.from(der).toString('base64');
+})();
 
 function readBody(req: IncomingMessage) {
   return new Promise<string>((resolve) => {
@@ -113,6 +120,11 @@ describe.sequential('UX tools', () => {
     if (url === '/apps/calculateprice') {
       await readBody(req);
       return json(res, 200, { status: 'success', data: { flux: 1.23 } });
+    }
+
+    if (url === '/apps/getpublickey') {
+      await readBody(req);
+      return json(res, 200, { status: 'success', data: rsaPublicKeyBase64 });
     }
 
     if (url === '/apps/appregister') {
@@ -693,6 +705,83 @@ describe.sequential('UX tools', () => {
     // Restore baseUrl for subsequent tests.
     const restore = await callTool('flux_set_base_url', { baseUrl: baseUrl1 });
     expect(restore.isError).not.toBe(true);
+  });
+
+  it('flux_git_deploy_generate_spec_v8 returns summary + resource_link', async () => {
+    const r = await callTool('flux_git_deploy_generate_spec_v8', {
+      name: 'mygitapp',
+      owner: 't1owner',
+      repoUrl: 'https://github.com/test/repo',
+      exposedPort: 20001,
+      managementPort: 20002,
+      appPort: 3000,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.enterprise).toBe(false);
+    expect(payload.hasRepoToken).toBe(false);
+    expect(payload.repotag).toBe('runonflux/orbit:latest');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+  });
+
+  it('flux_git_deploy_plan_registration returns messageToSignResourceUri + resource links', async () => {
+    const r = await callTool('flux_git_deploy_plan_registration', {
+      name: 'mygitapp',
+      owner: 't1owner',
+      repoUrl: 'https://github.com/test/repo',
+      exposedPort: 20001,
+      managementPort: 20002,
+      appPort: 3000,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_git_deploy_plan_registration enterprise encrypts compose/contacts when repoToken is provided', async () => {
+    const r = await callTool('flux_git_deploy_plan_registration', {
+      name: 'mygitapp',
+      owner: 't1owner',
+      repoUrl: 'https://github.com/test/repo',
+      repoUsername: 'git',
+      repoToken: 'token123',
+      enterprise: true,
+      confirm: true,
+      exposedPort: 20001,
+      managementPort: 20002,
+      appPort: 3000,
+      contacts: ['test@example.com'],
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.enterprise).toBe(true);
+    expect(payload.hasRepoToken).toBe(true);
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const uri = payload.resourceUri as string;
+    const full = await callTool('flux_resource_read', { uri });
+    expect(full.isError).not.toBe(true);
+
+    const fullObj = JSON.parse(full.content[0]?.text ?? '{}') as Record<string, unknown>;
+    const spec = fullObj.spec as Record<string, unknown> | undefined;
+    expect(spec).toBeTruthy();
+    expect(Array.isArray(spec?.compose)).toBe(true);
+    expect((spec?.compose as unknown[]).length).toBe(0);
+    expect(Array.isArray(spec?.contacts)).toBe(true);
+    expect((spec?.contacts as unknown[]).length).toBe(0);
+    expect(typeof spec?.enterprise).toBe('string');
+    expect((spec?.enterprise as string).length).toBeGreaterThan(0);
   });
 
   it('flux_apps_update_and_verify returns summary + resource links', async () => {

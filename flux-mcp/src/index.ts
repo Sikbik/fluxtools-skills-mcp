@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
-import { createPublicKey, publicEncrypt, randomBytes, constants, createHash, createDecipheriv } from 'node:crypto';
+import { createPublicKey, publicEncrypt, randomBytes, constants, createHash, createDecipheriv, createCipheriv } from 'node:crypto';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -187,6 +187,47 @@ function generateEnterpriseKey(publicKeyBase64: string): { enterpriseKey: string
   return { enterpriseKey: encrypted.toString('base64'), aesKeyBase64 };
 }
 
+function buildGitRepoUrl(opts: { repoUrl: string; username?: string; token?: string }): string {
+  const raw = opts.repoUrl.trim();
+  if (!raw) throw new Error('repoUrl must be a non-empty string');
+
+  if (!opts.token) return raw;
+
+  try {
+    const u = new URL(raw);
+    const username = typeof opts.username === 'string' && opts.username.trim() ? opts.username.trim() : 'git';
+    u.username = username;
+    u.password = opts.token;
+    return u.toString();
+  } catch {
+    throw new Error('repoUrl must be a valid URL (e.g. https://github.com/owner/repo)');
+  }
+}
+
+function encryptEnterpriseV8(opts: { publicKeyBase64: string; enterprise: unknown }): string {
+  const plainText = JSON.stringify(opts.enterprise);
+  const publicKey = opts.publicKeyBase64.trim().replace(/\s+/g, '');
+
+  const { enterpriseKey, aesKeyBase64 } = generateEnterpriseKey(publicKey);
+  const encryptedAesKey = Buffer.from(enterpriseKey, 'base64');
+
+  const key = Buffer.from(aesKeyBase64, 'base64');
+  if (key.length !== 32) {
+    throw new Error('Generated AES key did not decode to 32 bytes (AES-256-GCM).');
+  }
+
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+
+  const encryptedStart = cipher.update(plainText, 'utf8');
+  const encryptedEnd = cipher.final();
+  const tag = cipher.getAuthTag();
+
+  // Flux enterprise encoding: rsaEncryptedAesKey || nonce || ciphertext || tag
+  const payload = Buffer.concat([encryptedAesKey, nonce, encryptedStart, encryptedEnd, tag]);
+  return payload.toString('base64');
+}
+
 function asOptionalString(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'string') return undefined;
@@ -228,6 +269,78 @@ function isSensitivePath(p: string): boolean {
 function isVolumeNotFoundError(message: string | null): boolean {
   if (!message) return false;
   return message.toLowerCase().includes('application volume not found');
+}
+
+const GIT_DEPLOY_REPOTAG = 'runonflux/orbit:latest';
+
+const GIT_DEPLOY_BANNED_PORTS: Array<number | { min: number; max: number }> = [
+  // Port ranges
+  { min: 16100, max: 16299 },
+  { min: 26100, max: 26299 },
+  { min: 30000, max: 30099 },
+
+  // Privileged ports (0-1023)
+  { min: 0, max: 1023 },
+
+  // Individual banned ports
+  8384, // Syncthing
+  27017, // MongoDB
+  22, // SSH
+  23, // Telnet
+  25, // SMTP
+  3389, // RDP
+  5900, // VNC
+  5800, // VNC HTTP
+  5901, // VNC
+  161, // SNMP
+  512, // rexec
+  513, // rlogin
+  3388, // RDP variant
+  4444, // Common backdoor port
+  123, // NTP
+  53, // DNS
+  8080, // HTTP alternate
+  8081, // HTTP alternate
+  8443, // HTTPS alternate
+  6667, // IRC
+];
+
+function isGitDeployPortBanned(port: number): boolean {
+  if (!Number.isFinite(port)) return true;
+  const p = Math.trunc(port);
+
+  for (const banned of GIT_DEPLOY_BANNED_PORTS) {
+    if (typeof banned === 'number') {
+      if (p === banned) return true;
+      continue;
+    }
+    if (p >= banned.min && p <= banned.max) return true;
+  }
+  return false;
+}
+
+function generateGitDeployPort(min = 20000, max = 65535): number {
+  const minV = Math.max(1, Math.trunc(min));
+  const maxV = Math.max(minV, Math.trunc(max));
+
+  let port = minV;
+  let attempts = 0;
+  while (attempts < 100) {
+    port = Math.floor(Math.random() * (maxV - minV + 1)) + minV;
+    if (!isGitDeployPortBanned(port)) return port;
+    attempts += 1;
+  }
+  return port;
+}
+
+function generateGitDeployManagementPort(exposedPort: number): number {
+  let port = generateGitDeployPort(10000, 65535);
+  let attempts = 0;
+  while (attempts < 100 && (port === exposedPort || isGitDeployPortBanned(port))) {
+    port = generateGitDeployPort(10000, 65535);
+    attempts += 1;
+  }
+  return port;
 }
 
 type ParsedProgressOutput = {
@@ -679,6 +792,219 @@ function normalizeCommands(cmd: unknown): string[] {
     .filter((x) => typeof x === 'string')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+async function buildGitDeploySpecV8(opts: {
+  client: FluxClient;
+  args: Record<string, unknown>;
+}): Promise<{
+  spec: Record<string, unknown>;
+  meta: {
+    appname: string;
+    owner: string;
+    repoUrl: string;
+    branch: string;
+    projectPath: string;
+    hasRepoToken: boolean;
+    enterprise: boolean;
+    repotag: string;
+    appPort: number;
+    exposedPort: number;
+    managementPort: number;
+    domain: string;
+    instances: number;
+    cpu: number;
+    ramMb: number;
+    hddGb: number;
+    expireBlocks: number;
+    envCount: number;
+    geolocationCount: number;
+    staticip: boolean;
+    publicKeySource: 'provided' | 'apps/getpublickey' | null;
+  };
+}> {
+  const appname = mustBeString(opts.args['name'], 'name');
+  const owner = mustBeString(opts.args['owner'], 'owner');
+  const repoUrl = mustBeString(opts.args['repoUrl'], 'repoUrl');
+
+  const description = asOptionalString(opts.args['description']) ?? `Git deployment (${GIT_DEPLOY_REPOTAG})`;
+  if (!description.trim()) throw new Error('description must be a non-empty string');
+
+  const branch = asOptionalString(opts.args['branch']) ?? 'main';
+  const projectPath = asOptionalString(opts.args['projectPath']) ?? '/';
+
+  const repoUsername = asOptionalString(opts.args['repoUsername']);
+  const repoToken = asOptionalString(opts.args['repoToken']);
+
+  const contactsRaw = opts.args['contacts'];
+  const contacts = Array.isArray(contactsRaw)
+    ? contactsRaw
+        .filter((x): x is string => typeof x === 'string')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const appPort = asOptionalNumber(opts.args['appPort']) ?? 3000;
+  const exposedPort = asOptionalNumber(opts.args['exposedPort']) ?? generateGitDeployPort();
+  const managementPort = asOptionalNumber(opts.args['managementPort']) ?? generateGitDeployManagementPort(exposedPort);
+
+  if (!Number.isFinite(appPort) || appPort < 1 || appPort > 65535) {
+    throw new Error('appPort must be between 1 and 65535');
+  }
+  if (!Number.isFinite(exposedPort) || exposedPort < 1 || exposedPort > 65535) {
+    throw new Error('exposedPort must be between 1 and 65535');
+  }
+  if (!Number.isFinite(managementPort) || managementPort < 1 || managementPort > 65535) {
+    throw new Error('managementPort must be between 1 and 65535');
+  }
+  if (isGitDeployPortBanned(exposedPort)) {
+    throw new Error(`exposedPort ${Math.trunc(exposedPort)} is not allowed (banned/reserved)`);
+  }
+  if (isGitDeployPortBanned(managementPort)) {
+    throw new Error(`managementPort ${Math.trunc(managementPort)} is not allowed (banned/reserved)`);
+  }
+  if (Math.trunc(exposedPort) === Math.trunc(managementPort)) {
+    throw new Error('exposedPort and managementPort must be different');
+  }
+
+  const domain = asOptionalString(opts.args['domain']) ?? '';
+
+  const instances = Math.max(1, Math.trunc(asOptionalNumber(opts.args['instances']) ?? 3));
+  const cpu = Math.max(0.1, asOptionalNumber(opts.args['cpu']) ?? 1);
+  const ramMb = Math.max(128, Math.trunc(asOptionalNumber(opts.args['ramMb']) ?? 2000));
+  const hddGb = Math.max(1, Math.trunc(asOptionalNumber(opts.args['hddGb']) ?? 10));
+  const expireBlocks = Math.max(1, Math.trunc(asOptionalNumber(opts.args['expireBlocks']) ?? 88000));
+
+  const geolocationRaw = opts.args['geolocation'];
+  const geolocation = Array.isArray(geolocationRaw)
+    ? geolocationRaw
+        .filter((x): x is string => typeof x === 'string')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const staticip = asOptionalBoolean(opts.args['staticip']) ?? false;
+  const repotag = asOptionalString(opts.args['repotag']) ?? GIT_DEPLOY_REPOTAG;
+
+  const enterpriseExplicit = (asOptionalBoolean(opts.args['enterprise']) ?? false) === true;
+  const enterprise = enterpriseExplicit || !!repoToken;
+
+  if (repoToken && !enterprise) {
+    throw new Error('repoToken was provided but enterprise=false. For safety, private repo tokens must be enterprise-encrypted.');
+  }
+
+  const gitUrl = buildGitRepoUrl({ repoUrl, username: repoUsername, token: repoToken });
+
+  const envParams: string[] = [`GIT_REPO_URL=${gitUrl}`, `APP_PORT=${String(appPort)}`];
+  if (branch && branch !== 'main') envParams.push(`GIT_BRANCH=${branch}`);
+  if (projectPath && projectPath !== '/') envParams.push(`PROJECT_PATH=${projectPath}`);
+
+  const extraEnv = normalizeEnvParams(opts.args['environment']);
+  for (const e of extraEnv) {
+    if (!e || typeof e !== 'string') continue;
+    const trimmed = e.trim();
+    if (!trimmed) continue;
+    envParams.push(trimmed);
+  }
+
+  const compose = [
+    {
+      name: 'cloudgit',
+      description: 'cloudgit',
+      repotag,
+      ports: [Math.trunc(exposedPort), Math.trunc(managementPort)],
+      containerPorts: [Math.trunc(appPort), 9001],
+      domains: [domain, ''],
+      environmentParameters: envParams,
+      commands: [],
+      containerData: '/app',
+      cpu,
+      ram: ramMb,
+      hdd: hddGb,
+      tiered: false,
+      repoauth: '',
+    },
+  ];
+
+  let spec: Record<string, unknown> = {
+    version: 8,
+    name: appname,
+    description,
+    owner,
+    contacts,
+    instances,
+    staticip,
+    enterprise: '',
+    nodes: [],
+    geolocation,
+    expire: expireBlocks,
+    compose,
+  };
+
+  let publicKeySource: 'provided' | 'apps/getpublickey' | null = null;
+
+  if (enterprise) {
+    let publicKey = asOptionalString(opts.args['publicKeyBase64']);
+    if (publicKey) {
+      publicKeySource = 'provided';
+    } else {
+      const res = await opts.client.request('/apps/getpublickey', {
+        method: 'POST',
+        body: { owner, name: appname },
+        timeoutMs: 60 * 1000,
+      });
+      if (!res.ok || !isFluxSuccess(res.data)) {
+        throw new Error(extractFluxErrorMessage(res.data) ?? 'Failed to fetch public key for enterprise encryption.');
+      }
+      const key = unwrapFluxEnvelope<unknown>(res.data);
+      if (typeof key !== 'string' || !key.trim()) {
+        throw new Error('Failed to fetch public key for enterprise encryption (empty response).');
+      }
+      publicKey = key;
+      publicKeySource = 'apps/getpublickey';
+    }
+
+    const enterpriseSpecs = {
+      contacts: spec.contacts,
+      compose: spec.compose,
+    };
+
+    const encryptedEnterprise = encryptEnterpriseV8({ publicKeyBase64: publicKey, enterprise: enterpriseSpecs });
+
+    spec = {
+      ...spec,
+      enterprise: encryptedEnterprise,
+      contacts: [],
+      compose: [],
+    };
+  }
+
+  return {
+    spec,
+    meta: {
+      appname,
+      owner,
+      repoUrl,
+      branch,
+      projectPath,
+      hasRepoToken: !!repoToken,
+      enterprise,
+      repotag,
+      appPort: Math.trunc(appPort),
+      exposedPort: Math.trunc(exposedPort),
+      managementPort: Math.trunc(managementPort),
+      domain,
+      instances,
+      cpu,
+      ramMb,
+      hddGb,
+      expireBlocks,
+      envCount: envParams.length,
+      geolocationCount: geolocation.length,
+      staticip,
+      publicKeySource,
+    },
+  };
 }
 
 function buildMessageToSign(opts: {
@@ -2162,6 +2488,80 @@ export const tools: Tool[] = [
         enterprise: { type: 'string', description: 'Enterprise contract (default empty)' },
       },
       required: ['name', 'owner', 'repotag'],
+    },
+  },
+  {
+    name: 'flux_git_deploy_generate_spec_v8',
+    description:
+      'Generate a v8 app spec for Flux Git deployments (Orbit). Uses runonflux/orbit:latest and Orbit env vars (GIT_REPO_URL, APP_PORT, etc). Optionally enterprise-encrypts contacts+compose (recommended for private repos).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'App name (lowercase letters/digits/hyphen)' },
+        owner: { type: 'string', description: 'Owner ZelID / Flux address' },
+        description: { type: 'string', description: 'Top-level description (optional)' },
+        repoUrl: { type: 'string', description: 'Repository URL (https://github.com/... or gitlab/bitbucket)' },
+        branch: { type: 'string', description: 'Git branch (default main)' },
+        projectPath: { type: 'string', description: 'Monorepo project path (default /)' },
+        repoUsername: { type: 'string', description: 'Username for private repos (optional)' },
+        repoToken: { type: 'string', description: 'Token/password for private repos (optional; will be embedded into GIT_REPO_URL and must be enterprise-encrypted)' },
+        contacts: { type: 'array', items: { type: 'string' }, description: 'Contact emails or F_S_CONTACTS=... references (optional)' },
+        appPort: { type: 'number', description: 'Internal app port (default 3000)' },
+        exposedPort: { type: 'number', description: 'External app port (optional; random safe port if omitted)' },
+        managementPort: { type: 'number', description: 'External Orbit management port (optional; random safe port if omitted)' },
+        domain: { type: 'string', description: 'Optional custom domain for the app port' },
+        instances: { type: 'number', description: 'Instances (default 3)' },
+        cpu: { type: 'number', description: 'CPU cores (default 1)' },
+        ramMb: { type: 'number', description: 'RAM in MB (default 2000)' },
+        hddGb: { type: 'number', description: 'Disk in GB (default 10)' },
+        expireBlocks: { type: 'number', description: 'Expire in blocks (default 88000 ~= 1 month post-fork)' },
+        geolocation: { type: 'array', items: { type: 'string' }, description: 'Geolocation codes (optional)' },
+        environment: { description: 'Extra environment variables (object {KEY:VALUE} or ["KEY=VALUE"]) (optional).' },
+        enterprise: { type: 'boolean', description: 'If true, encrypt contacts+compose into spec.enterprise and clear contacts/compose (recommended for private repos).', default: false },
+        publicKeyBase64: { type: 'string', description: 'Optional RSA public key (base64 SPKI DER). If omitted, calls /apps/getpublickey (requires zelidauth + Arcane node).' },
+        repotag: { type: 'string', description: `Optional Orbit image override (default ${GIT_DEPLOY_REPOTAG}).` },
+        staticip: { type: 'boolean', description: 'Static IP request (default false)' },
+        confirm: { type: 'boolean', description: 'Required when supplying repoToken (sensitive).' },
+      },
+      required: ['name', 'owner', 'repoUrl'],
+    },
+  },
+  {
+    name: 'flux_git_deploy_plan_registration',
+    description:
+      'One-shot: generate a Flux Git deployments (Orbit) v8 spec, verify + price it, and build message-to-sign + payload scaffold for registration. Designed to keep outputs token-efficient.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'App name (lowercase letters/digits/hyphen)' },
+        owner: { type: 'string', description: 'Owner ZelID / Flux address' },
+        description: { type: 'string', description: 'Top-level description (optional)' },
+        repoUrl: { type: 'string', description: 'Repository URL (https://github.com/... or gitlab/bitbucket)' },
+        branch: { type: 'string', description: 'Git branch (default main)' },
+        projectPath: { type: 'string', description: 'Monorepo project path (default /)' },
+        repoUsername: { type: 'string', description: 'Username for private repos (optional)' },
+        repoToken: { type: 'string', description: 'Token/password for private repos (optional; will be embedded into GIT_REPO_URL and must be enterprise-encrypted)' },
+        contacts: { type: 'array', items: { type: 'string' }, description: 'Contact emails or F_S_CONTACTS=... references (optional)' },
+        appPort: { type: 'number', description: 'Internal app port (default 3000)' },
+        exposedPort: { type: 'number', description: 'External app port (optional; random safe port if omitted)' },
+        managementPort: { type: 'number', description: 'External Orbit management port (optional; random safe port if omitted)' },
+        domain: { type: 'string', description: 'Optional custom domain for the app port' },
+        instances: { type: 'number', description: 'Instances (default 3)' },
+        cpu: { type: 'number', description: 'CPU cores (default 1)' },
+        ramMb: { type: 'number', description: 'RAM in MB (default 2000)' },
+        hddGb: { type: 'number', description: 'Disk in GB (default 10)' },
+        expireBlocks: { type: 'number', description: 'Expire in blocks (default 88000 ~= 1 month post-fork)' },
+        geolocation: { type: 'array', items: { type: 'string' }, description: 'Geolocation codes (optional)' },
+        environment: { description: 'Extra environment variables (object {KEY:VALUE} or ["KEY=VALUE"]) (optional).' },
+        enterprise: { type: 'boolean', description: 'If true, encrypt contacts+compose into spec.enterprise and clear contacts/compose (recommended for private repos).', default: false },
+        publicKeyBase64: { type: 'string', description: 'Optional RSA public key (base64 SPKI DER). If omitted, calls /apps/getpublickey (requires zelidauth + Arcane node).' },
+        repotag: { type: 'string', description: `Optional Orbit image override (default ${GIT_DEPLOY_REPOTAG}).` },
+        staticip: { type: 'boolean', description: 'Static IP request (default false)' },
+        timestamp: { type: 'number', description: 'Optional ms epoch timestamp (default now)' },
+        typeVersion: { type: 'number', description: 'Message type version (default 1)' },
+        confirm: { type: 'boolean', description: 'Required when supplying repoToken (sensitive).' },
+      },
+      required: ['name', 'owner', 'repoUrl'],
     },
   },
 
@@ -5912,6 +6312,168 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
 
         return jsonResult({ spec });
+      }
+
+      case 'flux_git_deploy_generate_spec_v8': {
+        const repoToken = asOptionalString(args['repoToken']);
+        if (repoToken) requireConfirm(args, 'git deploy: repoToken provided (sensitive)');
+
+        const built = await buildGitDeploySpecV8({ client, args });
+
+        const link = resourceStore.putJson({
+          kind: 'git_deploy/spec_v8',
+          name: `Git deploy spec ${built.meta.appname}`,
+          description: 'Generated v8 app spec for Flux Git Deployments (Orbit)',
+          value: built.spec,
+        });
+
+        const summary = {
+          ok: true,
+          ...built.meta,
+          resourceUri: link.uri,
+          nextActions: [
+            { tool: 'flux_resource_read', arguments: { uri: link.uri } },
+            { tool: 'flux_git_deploy_plan_registration', note: 'Plan registration without pasting the full spec into chat.' },
+          ],
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: false,
+        };
+      }
+
+      case 'flux_git_deploy_plan_registration': {
+        const repoToken = asOptionalString(args['repoToken']);
+        if (repoToken) requireConfirm(args, 'git deploy: repoToken provided (sensitive)');
+
+        const requiresAuth = !client.getZelidauthSummary().present;
+        const timestamp = asOptionalNumber(args['timestamp']) ?? Date.now();
+        const typeVersion = asOptionalNumber(args['typeVersion']) ?? 1;
+
+        const built = await buildGitDeploySpecV8({ client, args });
+
+        const verified = await client.request('/apps/verifyappregistrationspecifications', {
+          method: 'POST',
+          body: built.spec,
+          allowMutation: true,
+          timeoutMs: 5 * 60 * 1000,
+        });
+        if (!verified.ok || !isFluxSuccess(verified.data)) {
+          throw new Error(extractFluxErrorMessage(verified.data) ?? 'Spec verification failed');
+        }
+        const verifiedSpec = unwrapFluxEnvelope<Record<string, unknown>>(verified.data);
+
+        const price = await client.request('/apps/calculateprice', {
+          method: 'POST',
+          body: verifiedSpec,
+          allowMutation: true,
+          timeoutMs: 5 * 60 * 1000,
+        });
+        if (!price.ok || !isFluxSuccess(price.data)) {
+          throw new Error(extractFluxErrorMessage(price.data) ?? 'Price calculation failed');
+        }
+
+        const [registrationInformation, deploymentInformation] = await Promise.all([
+          client.request('/apps/registrationinformation'),
+          client.request('/apps/deploymentinformation'),
+        ]);
+        if (!registrationInformation.ok || !isFluxSuccess(registrationInformation.data)) {
+          throw new Error(extractFluxErrorMessage(registrationInformation.data) ?? 'Failed to fetch registration information');
+        }
+        if (!deploymentInformation.ok || !isFluxSuccess(deploymentInformation.data)) {
+          throw new Error(extractFluxErrorMessage(deploymentInformation.data) ?? 'Failed to fetch deployment information');
+        }
+
+        const type = 'fluxappregister' as const;
+        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
+
+        const messageLink = resourceStore.putText({
+          kind: 'message_to_sign',
+          name: `messageToSign ${type} (git deploy)`,
+          description: 'Raw messageToSign bytes (exact data to sign)',
+          mimeType: 'text/plain',
+          text: messageToSign,
+        });
+
+        const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+        const fluxPrice = extractFluxAmountFromPrice(price);
+
+        const deploymentInfo = unwrapFluxEnvelope<unknown>(deploymentInformation.data);
+        const paymentAddress =
+          deploymentInfo && typeof deploymentInfo === 'object' && !Array.isArray(deploymentInfo)
+            ? (deploymentInfo as Record<string, unknown>)['address']
+            : undefined;
+
+        const payment = {
+          address: typeof paymentAddress === 'string' && paymentAddress.trim() ? paymentAddress : null,
+          amountFlux: fluxPrice,
+          memo: '<REGISTRATION_HASH>',
+          note: 'After flux_apps_register returns a hash, pay the amount to address with memo=hash.',
+        };
+
+        const authNote = requiresAuth
+          ? 'Before submitting registration, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app registration signature).'
+          : null;
+
+        const full = {
+          requiresAuth,
+          authNote,
+          git: built.meta,
+          spec: verifiedSpec,
+          verified,
+          price,
+          registrationInformation,
+          deploymentInformation,
+          payment,
+          timestamp,
+          type,
+          typeVersion,
+          messageToSignSha256,
+          messageToSignBytes,
+          messageToSignResourceUri: messageLink.uri,
+          payload,
+        };
+
+        const fullLink = resourceStore.putJson({
+          kind: 'git_deploy/plan_registration',
+          name: `Git deploy plan registration ${built.meta.appname}`,
+          description: 'Full output from flux_git_deploy_plan_registration',
+          value: full,
+        });
+
+        const summary = {
+          ok: true,
+          requiresAuth,
+          authNote,
+          ...built.meta,
+          timestamp,
+          type,
+          typeVersion,
+          payment,
+          messageToSignSha256,
+          messageToSignBytes,
+          messageToSignResourceUri: messageLink.uri,
+          resourceUri: fullLink.uri,
+          nextActions: [
+            { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+            { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+            { tool: 'flux_apps_register', note: 'Submit registration after signing (requires zelidauth).' },
+          ],
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...fullLink },
+            { type: 'resource_link', ...messageLink },
+          ],
+          structuredContent: summary,
+          isError: false,
+        };
       }
 
       case 'flux_apps_verify_registration_spec': {

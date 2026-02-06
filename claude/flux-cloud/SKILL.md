@@ -76,6 +76,17 @@ Reference: `references/app-spec-v8.md`.
 
 Reference: `references/register-update.md`.
 
+### 4b) Git deployments (Orbit)
+
+Flux Git deployments (formerly Orbit) register a normal v8 app spec that uses `runonflux/orbit:latest`.
+
+- Prefer:
+  - `flux_git_deploy_plan_registration`
+- For private repos:
+  - pass `repoToken` + `enterprise: true` + `confirm: true` (credentials are encrypted into `spec.enterprise`)
+
+Reference: `../../codex/flux-cloud/references/git-deployments.md`.
+
 ### 5) Update an existing app (network-level)
 
 1) Fetch current spec (MCP: `flux_apps_get_spec`).
@@ -114,6 +125,7 @@ If MCP is not available, use curl against `http://<node-ip>:16127`.
 - `../../codex/flux-cloud/references/api-endpoints.md` — base URLs, envelopes, auth/privilege, gateway tradeoffs, mutation semantics
 - `references/app-spec-v8.md` — v8 spec template + rules
 - `references/register-update.md` — signing + register/update flow
+- `../../codex/flux-cloud/references/git-deployments.md` — Git deployments (Orbit) spec + workflow
 
 - `references/prompts.md` — example prompts
 - `references/tooling-map.md` — which MCP tools to use
