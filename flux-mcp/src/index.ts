@@ -4472,12 +4472,86 @@ export async function callTool(name: string, rawArgs: unknown) {
       }
 
       case 'flux_node_health': {
-        const [version, info, isarcaneos] = await Promise.all([
+        const [versionRes, infoRes, isArcaneRes] = await Promise.all([
           client.request('/flux/version'),
           client.request('/flux/info'),
           client.request('/flux/isarcaneos'),
         ]);
-        return jsonResult({ version, info, isarcaneos });
+
+        const link = resourceStore.putJson({
+          kind: 'flux/node_health',
+          name: 'Node health',
+          description: 'Raw /flux/version + /flux/info + /flux/isarcaneos responses',
+          value: { version: versionRes, info: infoRes, isarcaneos: isArcaneRes },
+        });
+
+        const versionPayload = unwrapFluxEnvelope<unknown>(versionRes.data);
+        const versionObj = versionPayload && typeof versionPayload === 'object' && !Array.isArray(versionPayload) ? (versionPayload as Record<string, unknown>) : null;
+        const fluxVersion =
+          typeof versionObj?.version === 'string'
+            ? versionObj.version
+            : typeof versionPayload === 'string'
+              ? versionPayload
+              : null;
+
+        const infoPayload = unwrapFluxEnvelope<unknown>(infoRes.data);
+        const infoObj = infoPayload && typeof infoPayload === 'object' && !Array.isArray(infoPayload) ? (infoPayload as Record<string, unknown>) : null;
+        const fluxObj = infoObj && infoObj.flux && typeof infoObj.flux === 'object' && !Array.isArray(infoObj.flux) ? (infoObj.flux as Record<string, unknown>) : null;
+
+        const ip = typeof fluxObj?.ip === 'string' ? fluxObj.ip : null;
+        const zelid = typeof fluxObj?.zelid === 'string' ? fluxObj.zelid : null;
+        const nodeJsVersion = typeof fluxObj?.nodeJsVersion === 'string' ? fluxObj.nodeJsVersion : null;
+        const dockerVersion = typeof fluxObj?.dockerVersion === 'string' ? fluxObj.dockerVersion : null;
+        const syncthingVersion = typeof fluxObj?.syncthingVersion === 'string' ? fluxObj.syncthingVersion : null;
+        const osPrettyName = typeof fluxObj?.osPrettyName === 'string' ? fluxObj.osPrettyName : null;
+        const arcaneVersion = typeof fluxObj?.arcaneVersion === 'string' ? fluxObj.arcaneVersion : null;
+        const arcaneHumanVersion = typeof fluxObj?.arcaneHumanVersion === 'string' ? fluxObj.arcaneHumanVersion : null;
+
+        const isArcanePayload = unwrapFluxEnvelope<unknown>(isArcaneRes.data);
+        const isArcane = typeof isArcanePayload === 'boolean'
+          ? isArcanePayload
+          : typeof isArcanePayload === 'string'
+            ? isArcanePayload.trim().toLowerCase() === 'true'
+            : null;
+
+        const ok = versionRes.ok && infoRes.ok && isArcaneRes.ok;
+        const summary = {
+          ok,
+          baseUrl: client.getBaseUrl(),
+          fluxVersion,
+          ip,
+          zelid,
+          isArcane,
+          nodeJsVersion,
+          syncthingVersion,
+          dockerVersion,
+          osPrettyName,
+          arcaneVersion,
+          arcaneHumanVersion,
+          resourceUri: link.uri,
+        };
+
+        const rows: string[][] = [
+          ['baseUrl', summary.baseUrl ?? '-'],
+          ['ip', ip ?? '-'],
+          ['zelid', zelid ?? '-'],
+          ['fluxVersion', fluxVersion ?? (typeof fluxObj?.version === 'string' ? fluxObj.version : '-')],
+          ['isArcane', isArcane === null ? '-' : String(isArcane)],
+          ['arcaneHumanVersion', arcaneHumanVersion ?? '-'],
+          ['arcaneVersion', arcaneVersion ?? '-'],
+          ['nodeJsVersion', nodeJsVersion ?? '-'],
+          ['syncthingVersion', syncthingVersion ?? '-'],
+          ['dockerVersion', dockerVersion ?? '-'],
+          ['os', osPrettyName ?? '-'],
+        ];
+
+        return buildTableResult({
+          headers: ['Metric', 'Value'],
+          rows,
+          maxRows: 50,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_apps_list_running': {
