@@ -637,7 +637,11 @@ async function resolveRuntimeTarget(opts: {
   const checks: RuntimeTargetCheck[] = [];
 
   for (const c of ordered) {
-    const tmp = new FluxClient({ baseUrl: c.baseUrl, zelidauth: opts.client.getZelidauthValue() ?? undefined });
+    const tmp = new FluxClient({
+      baseUrl: c.baseUrl,
+      zelidauth: opts.client.getZelidauthValueForBaseUrl(c.baseUrl) ?? undefined,
+      enterpriseKey: opts.client.getEnterpriseKeyValueForBaseUrl(c.baseUrl) ?? undefined,
+    });
     tmp.setHttpDefaults({ ...opts.client.getHttpDefaults(), timeoutMs: Math.max(opts.client.getHttpDefaults().timeoutMs, 15000) });
 
     const runningRes = await tmp.request('/apps/listrunningapps');
@@ -3093,7 +3097,9 @@ export async function callTool(name: string, rawArgs: unknown) {
         const out = {
           baseUrl: client.getBaseUrl(),
           zelidauth: client.getZelidauthSummary(),
+          zelidauthCache: client.getZelidauthCacheSummary({ limit: 10 }),
           enterpriseKey: client.getEnterpriseKeySummary(),
+          enterpriseKeyCache: client.getEnterpriseKeyCacheSummary({ limit: 10 }),
           httpDefaults: client.getHttpDefaults(),
           fluxDriveMwsBaseUrl: fluxDriveClient.baseUrl,
           endpointsInventory: inventory
@@ -3685,7 +3691,13 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_set_base_url': {
         const baseUrl = mustBeString(args['baseUrl'], 'baseUrl');
         client.setBaseUrl(baseUrl);
-        return jsonResult({ ok: true, baseUrl: client.getBaseUrl() });
+        const out = {
+          ok: true,
+          baseUrl: client.getBaseUrl(),
+          zelidauth: client.getZelidauthSummary(),
+          enterpriseKey: client.getEnterpriseKeySummary(),
+        };
+        return jsonResult(out, { structuredContent: out });
       }
 
       case 'flux_resolve_gateway_node': {
@@ -3787,7 +3799,12 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_set_zelidauth': {
         const value = args['zelidauth'];
         client.setZelidauth(value);
-        return jsonResult({ ok: true, zelidauth: client.getZelidauthSummary() });
+        const out = {
+          ok: true,
+          baseUrl: client.getBaseUrl(),
+          zelidauth: client.getZelidauthSummary(),
+        };
+        return jsonResult(out, { structuredContent: out });
       }
 
       case 'flux_clear_zelidauth':
@@ -8378,8 +8395,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
               const tmp = new FluxClient({
                 baseUrl,
-                zelidauth: client.getZelidauthValue() ?? undefined,
-                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+                zelidauth: client.getZelidauthValueForBaseUrl(baseUrl) ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(baseUrl) ?? undefined,
               });
               tmp.setHttpDefaults(client.getHttpDefaults());
 
@@ -8396,6 +8413,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               res = attempt.value;
               fluxOk = true;
               knownError = null;
+              client.cacheZelidauthForBaseUrl(attempt.used.baseUrl, client.getZelidauthValueForBaseUrl(attempt.used.baseUrl));
+              client.cacheEnterpriseKeyForBaseUrl(attempt.used.baseUrl, client.getEnterpriseKeyValueForBaseUrl(attempt.used.baseUrl));
               client.setBaseUrl(attempt.used.baseUrl);
               resolvedInfo = {
                 baseUrl: attempt.used.baseUrl,
@@ -8509,8 +8528,8 @@ export async function callTool(name: string, rawArgs: unknown) {
           if (baseUrl) {
             const tmp = new FluxClient({
               baseUrl,
-              zelidauth: client.getZelidauthValue() ?? undefined,
-              enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+              zelidauth: client.getZelidauthValueForBaseUrl(baseUrl) ?? undefined,
+              enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(baseUrl) ?? undefined,
             });
             tmp.setHttpDefaults(client.getHttpDefaults());
             return tmp.request('/apps/downloadfile', { query: { appname, component, file }, responseType: 'base64', maxBytes });
@@ -8550,6 +8569,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
               parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
               knownError = parsedError?.error ?? null;
+              client.cacheZelidauthForBaseUrl(attempt.used.baseUrl, client.getZelidauthValueForBaseUrl(attempt.used.baseUrl));
+              client.cacheEnterpriseKeyForBaseUrl(attempt.used.baseUrl, client.getEnterpriseKeyValueForBaseUrl(attempt.used.baseUrl));
               client.setBaseUrl(attempt.used.baseUrl);
               resolvedInfo = {
                 baseUrl: attempt.used.baseUrl,
@@ -8639,8 +8660,8 @@ export async function callTool(name: string, rawArgs: unknown) {
           if (baseUrl) {
             const tmp = new FluxClient({
               baseUrl,
-              zelidauth: client.getZelidauthValue() ?? undefined,
-              enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+              zelidauth: client.getZelidauthValueForBaseUrl(baseUrl) ?? undefined,
+              enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(baseUrl) ?? undefined,
             });
             tmp.setHttpDefaults(client.getHttpDefaults());
             return tmp.request('/apps/downloadfolder', { query: { appname, component, folder }, responseType: 'base64', maxBytes });
@@ -8680,6 +8701,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
               parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
               knownError = parsedError?.error ?? null;
+              client.cacheZelidauthForBaseUrl(attempt.used.baseUrl, client.getZelidauthValueForBaseUrl(attempt.used.baseUrl));
+              client.cacheEnterpriseKeyForBaseUrl(attempt.used.baseUrl, client.getEnterpriseKeyValueForBaseUrl(attempt.used.baseUrl));
               client.setBaseUrl(attempt.used.baseUrl);
               resolvedInfo = {
                 baseUrl: attempt.used.baseUrl,
@@ -8787,8 +8810,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
               const tmp = new FluxClient({
                 baseUrl,
-                zelidauth: client.getZelidauthValue() ?? undefined,
-                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+                zelidauth: client.getZelidauthValueForBaseUrl(baseUrl) ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(baseUrl) ?? undefined,
               });
               tmp.setHttpDefaults(client.getHttpDefaults());
 
@@ -8805,6 +8828,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               res = attempt.value;
               fluxOk = true;
               knownError = null;
+              client.cacheZelidauthForBaseUrl(attempt.used.baseUrl, client.getZelidauthValueForBaseUrl(attempt.used.baseUrl));
+              client.cacheEnterpriseKeyForBaseUrl(attempt.used.baseUrl, client.getEnterpriseKeyValueForBaseUrl(attempt.used.baseUrl));
               client.setBaseUrl(attempt.used.baseUrl);
               resolvedInfo = {
                 baseUrl: attempt.used.baseUrl,
@@ -8882,8 +8907,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
               const tmp = new FluxClient({
                 baseUrl,
-                zelidauth: client.getZelidauthValue() ?? undefined,
-                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+                zelidauth: client.getZelidauthValueForBaseUrl(baseUrl) ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(baseUrl) ?? undefined,
               });
               tmp.setHttpDefaults(client.getHttpDefaults());
 
@@ -8900,6 +8925,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               res = attempt.value;
               fluxOk = true;
               knownError = null;
+              client.cacheZelidauthForBaseUrl(attempt.used.baseUrl, client.getZelidauthValueForBaseUrl(attempt.used.baseUrl));
+              client.cacheEnterpriseKeyForBaseUrl(attempt.used.baseUrl, client.getEnterpriseKeyValueForBaseUrl(attempt.used.baseUrl));
               client.setBaseUrl(attempt.used.baseUrl);
               resolvedInfo = {
                 baseUrl: attempt.used.baseUrl,
@@ -8977,8 +9004,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             const attempt = await attemptOnCandidates(located.candidates, async (baseUrl) => {
               const tmp = new FluxClient({
                 baseUrl,
-                zelidauth: client.getZelidauthValue() ?? undefined,
-                enterpriseKey: client.getEnterpriseKeyValue() ?? undefined,
+                zelidauth: client.getZelidauthValueForBaseUrl(baseUrl) ?? undefined,
+                enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(baseUrl) ?? undefined,
               });
               tmp.setHttpDefaults(client.getHttpDefaults());
 
@@ -8995,6 +9022,8 @@ export async function callTool(name: string, rawArgs: unknown) {
               res = attempt.value;
               fluxOk = true;
               knownError = null;
+              client.cacheZelidauthForBaseUrl(attempt.used.baseUrl, client.getZelidauthValueForBaseUrl(attempt.used.baseUrl));
+              client.cacheEnterpriseKeyForBaseUrl(attempt.used.baseUrl, client.getEnterpriseKeyValueForBaseUrl(attempt.used.baseUrl));
               client.setBaseUrl(attempt.used.baseUrl);
               resolvedInfo = {
                 baseUrl: attempt.used.baseUrl,

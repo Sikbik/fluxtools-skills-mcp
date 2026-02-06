@@ -153,13 +153,17 @@ export type FluxHttpDefaults = {
 export class FluxClient {
   private baseUrl: string | null;
   private zelidauth: ZelidauthValue | null;
+  private zelidauthByBaseUrl: Map<string, ZelidauthValue>;
   private enterpriseKey: string | null;
+  private enterpriseKeyByBaseUrl: Map<string, string>;
   private httpDefaults: FluxHttpDefaults;
 
   constructor(opts?: { baseUrl?: string; zelidauth?: unknown; enterpriseKey?: unknown }) {
     this.baseUrl = opts?.baseUrl ? normalizeBaseUrl(opts.baseUrl) : null;
     this.zelidauth = null;
+    this.zelidauthByBaseUrl = new Map();
     this.enterpriseKey = null;
+    this.enterpriseKeyByBaseUrl = new Map();
 
     const timeoutMs = Number(process.env.FLUX_HTTP_TIMEOUT_MS ?? '30000');
     this.httpDefaults = {
@@ -173,7 +177,15 @@ export class FluxClient {
   }
 
   setBaseUrl(url: string) {
-    this.baseUrl = normalizeBaseUrl(url);
+    const normalized = normalizeBaseUrl(url);
+    this.baseUrl = normalized;
+
+    // Adopt cached credentials for this baseUrl if available.
+    const cachedZelidauth = this.zelidauthByBaseUrl.get(normalized);
+    if (cachedZelidauth) this.zelidauth = cachedZelidauth;
+
+    const cachedEnterpriseKey = this.enterpriseKeyByBaseUrl.get(normalized);
+    if (cachedEnterpriseKey) this.enterpriseKey = cachedEnterpriseKey;
   }
 
   getBaseUrl(): string | null {
@@ -212,19 +224,34 @@ export class FluxClient {
 
   clearZelidauth() {
     this.zelidauth = null;
+    if (this.baseUrl) this.zelidauthByBaseUrl.delete(this.baseUrl);
   }
 
   getZelidauthValue(): string | null {
     return this.zelidauth;
   }
 
+  getZelidauthValueForBaseUrl(baseUrl: string): string | null {
+    const normalized = normalizeBaseUrl(baseUrl);
+    return this.zelidauthByBaseUrl.get(normalized) ?? this.zelidauth;
+  }
+
+  cacheZelidauthForBaseUrl(baseUrl: string, zelidauth: ZelidauthValue | null) {
+    if (!zelidauth) return;
+    const normalized = normalizeBaseUrl(baseUrl);
+    this.zelidauthByBaseUrl.set(normalized, zelidauth);
+  }
+
   setZelidauth(value: unknown) {
     if (typeof value === 'string' && value.trim()) {
       this.zelidauth = value;
+      if (this.baseUrl) this.zelidauthByBaseUrl.set(this.baseUrl, value);
       return;
     }
     if (value && typeof value === 'object') {
-      this.zelidauth = JSON.stringify(value);
+      const serialized = JSON.stringify(value);
+      this.zelidauth = serialized;
+      if (this.baseUrl) this.zelidauthByBaseUrl.set(this.baseUrl, serialized);
       return;
     }
     throw new Error('zelidauth must be a non-empty string or an object');
@@ -245,17 +272,62 @@ export class FluxClient {
     return { present: true };
   }
 
+  getZelidauthCacheSummary(opts?: { limit?: number }): {
+    count: number;
+    entries: Array<{ baseUrl: string; zelid?: string }>;
+  } {
+    const limitRaw = opts?.limit ?? 10;
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
+
+    const entries: Array<{ baseUrl: string; zelid?: string }> = [];
+
+    const keys = Array.from(this.zelidauthByBaseUrl.keys()).sort((a, b) => a.localeCompare(b));
+    for (const baseUrl of keys.slice(0, limit)) {
+      const raw = this.zelidauthByBaseUrl.get(baseUrl);
+      if (!raw) continue;
+
+      let zelid: string | undefined;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const obj = parsed as Record<string, unknown>;
+          if (typeof obj.zelid === 'string' && obj.zelid.trim()) zelid = obj.zelid.trim();
+        }
+      } catch {
+        // ignore
+      }
+
+      entries.push({ baseUrl, zelid });
+    }
+
+    return { count: this.zelidauthByBaseUrl.size, entries };
+  }
+
   clearEnterpriseKey() {
     this.enterpriseKey = null;
+    if (this.baseUrl) this.enterpriseKeyByBaseUrl.delete(this.baseUrl);
   }
 
   getEnterpriseKeyValue(): string | null {
     return this.enterpriseKey;
   }
 
+  getEnterpriseKeyValueForBaseUrl(baseUrl: string): string | null {
+    const normalized = normalizeBaseUrl(baseUrl);
+    return this.enterpriseKeyByBaseUrl.get(normalized) ?? this.enterpriseKey;
+  }
+
+  cacheEnterpriseKeyForBaseUrl(baseUrl: string, enterpriseKey: string | null) {
+    if (!enterpriseKey) return;
+    const normalized = normalizeBaseUrl(baseUrl);
+    this.enterpriseKeyByBaseUrl.set(normalized, enterpriseKey);
+  }
+
   setEnterpriseKey(value: unknown) {
     if (typeof value === 'string' && value.trim()) {
-      this.enterpriseKey = value.trim();
+      const trimmed = value.trim();
+      this.enterpriseKey = trimmed;
+      if (this.baseUrl) this.enterpriseKeyByBaseUrl.set(this.baseUrl, trimmed);
       return;
     }
     throw new Error('enterpriseKey must be a non-empty string');
@@ -263,6 +335,20 @@ export class FluxClient {
 
   getEnterpriseKeySummary(): { present: boolean } {
     return this.enterpriseKey ? { present: true } : { present: false };
+  }
+
+  getEnterpriseKeyCacheSummary(opts?: { limit?: number }): {
+    count: number;
+    entries: Array<{ baseUrl: string }>;
+  } {
+    const limitRaw = opts?.limit ?? 10;
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
+
+    const keys = Array.from(this.enterpriseKeyByBaseUrl.keys()).sort((a, b) => a.localeCompare(b));
+    return {
+      count: this.enterpriseKeyByBaseUrl.size,
+      entries: keys.slice(0, limit).map((baseUrl) => ({ baseUrl })),
+    };
   }
 
   async request(
