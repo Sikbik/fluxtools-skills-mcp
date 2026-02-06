@@ -45,6 +45,9 @@ curl -sS "$API/flux/isarcaneos"
 - App registration/update also requires a separate signature over an exact message string.
 - These are two different signatures; authenticate before signing the app message.
 
+Preferred login helper (minimal steps):
+- `flux_auth_login { zelid }` → user signs the returned phrase → `flux_auth_login { zelid, loginPhrase, signature }`
+
 Use:
 - `references/auth-zelidauth.md`
 - `references/signing.md`

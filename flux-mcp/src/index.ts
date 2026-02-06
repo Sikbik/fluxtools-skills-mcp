@@ -1757,6 +1757,24 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'flux_auth_login',
+    description:
+      'One-shot login helper: if signature/loginPhrase are missing, fetches a phrase to sign; otherwise verifies login, sets zelidauth (default), and optionally checks privilege.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        zelid: { type: 'string', description: 'ZelID (Bitcoin-format address like 1..., 3..., bc1...).' },
+        signature: { type: 'string', description: 'Base64 signature of loginPhrase (optional; required to complete login).' },
+        loginPhrase: { type: 'string', description: 'Login phrase to sign (optional; required to complete login).' },
+        useEmergencyPhrase: { type: 'boolean', description: 'If true, use /id/emergencyphrase instead of /id/loginphrase.', default: false },
+        verify: { type: 'boolean', description: 'If true (default), call /id/verifylogin.', default: true },
+        setZelidauth: { type: 'boolean', description: 'If true (default), store zelidauth in this MCP session.', default: true },
+        checkPrivilege: { type: 'boolean', description: 'If true (default), call /id/checkprivilege.', default: true },
+      },
+      required: ['zelid'],
+    },
+  },
+  {
     name: 'flux_auth_diagnose',
     description: 'Run auth + connectivity preflight checks and return actionable next steps (no mutations).',
     inputSchema: { type: 'object', properties: {} },
@@ -3471,6 +3489,85 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
 
         const out = { ok: true, steps };
+
+        return jsonResult(out, { structuredContent: out });
+      }
+
+      case 'flux_auth_login': {
+        const zelid = mustBeString(args['zelid'], 'zelid');
+        const signature = asOptionalString(args['signature']);
+        const loginPhraseArg = asOptionalString(args['loginPhrase']);
+        const useEmergencyPhrase = (asOptionalBoolean(args['useEmergencyPhrase']) ?? false) === true;
+        const verify = (asOptionalBoolean(args['verify']) ?? true) === true;
+        const setZelidauth = (asOptionalBoolean(args['setZelidauth']) ?? true) === true;
+        const checkPrivilege = (asOptionalBoolean(args['checkPrivilege']) ?? true) === true;
+
+        if (!signature || !loginPhraseArg) {
+          const phrasePath = useEmergencyPhrase ? '/id/emergencyphrase' : '/id/loginphrase';
+          const phraseRes = await client.request(phrasePath);
+          if (!phraseRes.ok || !isFluxSuccess(phraseRes.data)) {
+            throw new Error(extractFluxErrorMessage(phraseRes.data) ?? `Failed to fetch login phrase via ${phrasePath}`);
+          }
+          const phrase = unwrapFluxEnvelope<unknown>(phraseRes.data);
+          if (typeof phrase !== 'string' || !phrase.trim()) throw new Error('Invalid login phrase response');
+
+          const phraseText = phrase.trim();
+          const phraseLink = resourceStore.putText({
+            kind: 'auth/login_phrase',
+            name: 'Login phrase to sign',
+            description: 'Exact login phrase bytes to sign for zelidauth',
+            mimeType: 'text/plain',
+            text: phraseText,
+          });
+
+          const out = {
+            ok: true,
+            zelid,
+            needSignature: true,
+            loginPhrase: phraseText,
+            loginPhraseResourceUri: phraseLink.uri,
+            nextActions: [
+              {
+                tool: 'flux_auth_login',
+                arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
+              },
+            ],
+          };
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...phraseLink }],
+            structuredContent: out,
+            isError: false,
+          };
+        }
+
+        const loginPhrase = loginPhraseArg.trim();
+        const verifyRes = verify
+          ? await client.request('/id/verifylogin', { method: 'POST', bodyType: 'form', body: { zelid, signature, loginPhrase } })
+          : null;
+
+        if (verifyRes && (!verifyRes.ok || !isFluxSuccess(verifyRes.data))) {
+          throw new Error(extractFluxErrorMessage(verifyRes.data) ?? 'verifylogin failed');
+        }
+
+        if (setZelidauth) client.setZelidauth({ zelid, signature, loginPhrase });
+
+        const privilegeRes = checkPrivilege
+          ? await client.request('/id/checkprivilege', { method: 'POST', bodyType: 'form', body: { zelid, signature, loginPhrase } })
+          : null;
+
+        const privilegeOk = privilegeRes ? privilegeRes.ok && isFluxSuccess(privilegeRes.data) : null;
+        const privilege = privilegeOk ? unwrapFluxEnvelope<unknown>(privilegeRes!.data) : null;
+
+        const out = {
+          ok: true,
+          baseUrl: client.getBaseUrl(),
+          zelid,
+          zelidauthSet: setZelidauth,
+          verifyCalled: verify,
+          privilegeCalled: checkPrivilege,
+          privilege: typeof privilege === 'string' ? privilege : null,
+        };
 
         return jsonResult(out, { structuredContent: out });
       }
@@ -6418,21 +6515,22 @@ export async function callTool(name: string, rawArgs: unknown) {
           };
         }
 
-        // 2) Enterprise apps require an authenticated Arcane node for the decrypt flow.
-        if (!client.getZelidauthSummary().present) {
-          const summary = {
-            ok: false,
-            appname,
-            enterprise: true,
-            error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
-            baseUrlUsed,
-            resourceUri: baseLink.uri,
-            nextActions: [
-              { tool: 'flux_auth_flow', arguments: {} },
-              { tool: 'flux_node_health', arguments: {} },
-              { tool: 'flux_get_state', arguments: {} },
-            ],
-          };
+	        // 2) Enterprise apps require an authenticated Arcane node for the decrypt flow.
+	        if (!client.getZelidauthSummary().present) {
+	          const summary = {
+	            ok: false,
+	            appname,
+	            enterprise: true,
+	            error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
+	            baseUrlUsed,
+	            resourceUri: baseLink.uri,
+	            nextActions: [
+	              { tool: 'flux_auth_login', arguments: { zelid: '<ZELID>' } },
+	              { tool: 'flux_auth_flow', arguments: {} },
+	              { tool: 'flux_node_health', arguments: {} },
+	              { tool: 'flux_get_state', arguments: {} },
+	            ],
+	          };
 
           return {
             content: [
