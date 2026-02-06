@@ -3103,6 +3103,56 @@ export const tools: Tool[] = [
   },
 ];
 
+function isConfirmRequiredInSchema(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false;
+  const required = (schema as Record<string, unknown>)['required'];
+  return Array.isArray(required) && required.some((x) => x === 'confirm');
+}
+
+function compactToolDescription(description: string | undefined, confirmRequired: boolean): string {
+  let d = (description ?? '').trim();
+
+  // If confirm is required by schema, repeating it in the description is pure token bloat.
+  if (confirmRequired) {
+    d = d.replace(/\s*Requires confirm=true\.\s*/gi, ' ');
+    d = d.replace(/\s*Requires confirm=true\s*/gi, ' ');
+  }
+
+  d = d.replace(/\s+/g, ' ').trim();
+
+  // If it's still very long, keep only the first sentence.
+  if (d.length > 180) {
+    const idx = d.indexOf('. ');
+    if (idx !== -1) d = d.slice(0, idx + 1).trim();
+  }
+
+  return d;
+}
+
+function stripJsonSchemaDescriptions<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => stripJsonSchemaDescriptions(v)) as unknown as T;
+  }
+  if (!value || typeof value !== 'object') return value;
+
+  const obj = value as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'description') continue;
+    out[k] = stripJsonSchemaDescriptions(v);
+  }
+  return out as unknown as T;
+}
+
+function compactToolSchema(t: Tool): Tool {
+  const confirmRequired = isConfirmRequiredInSchema(t.inputSchema);
+  return {
+    ...t,
+    description: compactToolDescription(t.description, confirmRequired),
+    inputSchema: stripJsonSchemaDescriptions(t.inputSchema),
+  };
+}
+
 export async function callTool(name: string, rawArgs: unknown) {
   const args = asRecord(rawArgs);
 
@@ -9863,7 +9913,10 @@ const server = new Server(
   { capabilities: { tools: {}, resources: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+const verboseToolSchemas = process.env.FLUX_MCP_VERBOSE_TOOL_SCHEMA === '1';
+const compactTools = tools.map(compactToolSchema);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: verboseToolSchemas ? tools : compactTools }));
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   const staticResources = [
