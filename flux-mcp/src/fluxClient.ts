@@ -166,10 +166,12 @@ export class FluxClient {
     this.enterpriseKeyByBaseUrl = new Map();
 
     const timeoutMs = Number(process.env.FLUX_HTTP_TIMEOUT_MS ?? '30000');
+    const retryCount = Number(process.env.FLUX_HTTP_RETRY_COUNT ?? '2');
+    const retryBackoffMs = Number(process.env.FLUX_HTTP_RETRY_BACKOFF_MS ?? '500');
     this.httpDefaults = {
       timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000,
-      retryCount: 0,
-      retryBackoffMs: 250,
+      retryCount: Number.isFinite(retryCount) && retryCount >= 0 && Number.isInteger(retryCount) ? retryCount : 2,
+      retryBackoffMs: Number.isFinite(retryBackoffMs) && retryBackoffMs >= 0 ? retryBackoffMs : 500,
     };
 
     if (opts?.zelidauth !== undefined) this.setZelidauth(opts.zelidauth);

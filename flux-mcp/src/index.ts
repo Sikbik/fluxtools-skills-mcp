@@ -1858,18 +1858,18 @@ export const tools: Tool[] = [
       required: ['gatewayBaseUrl'],
     },
   },
-  {
-    name: 'flux_set_http_defaults',
-    description: 'Set session-level HTTP defaults (timeoutMs, retryCount, retryBackoffMs). Applies to all subsequent calls.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        timeoutMs: { type: 'number', description: 'Default request timeout in ms (default 30000).', minimum: 1, default: 30000 },
-        retryCount: { type: 'number', description: 'Default retry count for safe requests (default 0).', minimum: 0, default: 0 },
-        retryBackoffMs: { type: 'number', description: 'Base backoff in ms between retries (default 250).', minimum: 0, default: 250 },
-      },
-    },
-  },
+	  {
+	    name: 'flux_set_http_defaults',
+	    description: 'Set session-level HTTP defaults (timeoutMs, retryCount, retryBackoffMs). Applies to all subsequent calls.',
+	    inputSchema: {
+	      type: 'object',
+	      properties: {
+	        timeoutMs: { type: 'number', description: 'Default request timeout in ms (default 30000).', minimum: 1, default: 30000 },
+	        retryCount: { type: 'number', description: 'Default retry count for safe requests (default 2).', minimum: 0, default: 2 },
+	        retryBackoffMs: { type: 'number', description: 'Base backoff in ms between retries (default 500).', minimum: 0, default: 500 },
+	      },
+	    },
+	  },
   {
     name: 'flux_auth_flow',
     description:
@@ -3838,46 +3838,63 @@ export async function callTool(name: string, rawArgs: unknown) {
           ? `/apps/applogpolling/${encodeURIComponent(appname)}/${lines}/${encodeURIComponent(since)}`
           : `/apps/applogpolling/${encodeURIComponent(appname)}/${lines}`;
 
-        let res = await client.request(path);
+	        let res = await client.request(path);
+	        let resolvedTarget: string | null = null;
 
-        const knownError = extractFluxErrorMessage(res.data);
-        const looksLikeWrongNode =
-          knownError === 'Cannot read properties of undefined (reading \'Id\')' ||
-          (typeof knownError === 'string' && knownError.includes("reading 'Id'"));
+	        const fluxOk = res.ok ? isFluxSuccess(res.data) : false;
+	        const knownError = extractFluxErrorMessage(res.data);
+	        const looksLikeWrongNode =
+	          knownError === 'Cannot read properties of undefined (reading \'Id\')' ||
+	          (typeof knownError === 'string' && knownError.includes("reading 'Id'"));
+	        const looksLikeWrongContainer = typeof knownError === 'string' && knownError.startsWith('Container not found on this node.');
 
-         if ((!res.ok && looksLikeWrongNode) || (!res.ok && res.status === 503)) {
-          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
-          if (resolved) {
-            const attempt = await attemptOnCandidates(
-              resolved.candidates.map((c) => ({ baseUrl: c.baseUrl, host: c.host, apiPort: c.apiPort })),
-              async (baseUrl) => {
-                client.setBaseUrl(baseUrl);
+	         if (
+	          (!res.ok && (looksLikeWrongNode || looksLikeWrongContainer)) ||
+	          (!res.ok && res.status === 503) ||
+	          (res.ok && !fluxOk && looksLikeWrongContainer)
+	        ) {
+	          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+	          if (resolved) {
+	            const attempt = await attemptOnCandidates(
+	              resolved.candidates.map((c) => ({ baseUrl: c.baseUrl, host: c.host, apiPort: c.apiPort })),
+	              async (baseUrl) => {
+	                client.setBaseUrl(baseUrl);
 
-                const targets = [resolved.containerName, ...resolved.containerNames.filter((n) => n !== resolved.containerName)];
+	                const targets = [resolved.containerName, ...resolved.containerNames.filter((n) => n !== resolved.containerName)];
 
-                for (const t of targets) {
-                  const fallbackPath = since
-                    ? `/apps/applogpolling/${encodeURIComponent(t)}/${lines}/${encodeURIComponent(since)}`
-                    : `/apps/applogpolling/${encodeURIComponent(t)}/${lines}`;
+	                for (const t of targets) {
+	                  const fallbackPath = since
+	                    ? `/apps/applogpolling/${encodeURIComponent(t)}/${lines}/${encodeURIComponent(since)}`
+	                    : `/apps/applogpolling/${encodeURIComponent(t)}/${lines}`;
 
-                  const r = await client.request(fallbackPath);
-                  if (r.ok && isFluxSuccess(r.data)) return r;
-                }
+	                  const r = await client.request(fallbackPath);
+	                  if (r.ok && isFluxSuccess(r.data)) return r;
+	                }
 
-                return client.request(`/apps/applogpolling/${encodeURIComponent(resolved.containerName)}/${lines}`);
-              }
-            );
+	                return client.request(`/apps/applogpolling/${encodeURIComponent(resolved.containerName)}/${lines}`);
+	              }
+	            );
 
-            if (attempt.ok) {
-              res = attempt.value;
-            }
-          }
-        }
+	            if (attempt.ok) {
+	              res = attempt.value;
+	              resolvedTarget = resolved.containerName;
+	            }
+	          }
+	        }
 
-        if (!res.ok) {
-          const out = { ok: false, appname, status: res.status, error: extractFluxErrorMessage(res.data) ?? res.data };
-          return jsonResult(out, { isError: true, structuredContent: out });
-        }
+	        if (!res.ok) {
+	          const out = {
+	            ok: false,
+	            appname,
+	            status: res.status,
+	            error: extractFluxErrorMessage(res.data) ?? res.data,
+	            nextActions: [
+	              { tool: 'flux_apps_resolve_runtime_target', arguments: { appname } },
+	              { tool: 'flux_apps_logs', arguments: { appname } },
+	            ],
+	          };
+	          return jsonResult(out, { isError: true, structuredContent: out });
+	        }
 
         const payload = unwrapFluxEnvelope<unknown>(res.data);
         const obj = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined;
@@ -3946,14 +3963,15 @@ export async function callTool(name: string, rawArgs: unknown) {
                 ? obj.since
                 : undefined;
 
-        const full = {
-          ok: true,
-          appname,
-          truncated,
-          lineCount: linesOut.length,
-          logs: linesOut,
-          next: nextSince ? { since: nextSince } : undefined,
-        };
+	        const full = {
+	          ok: true,
+	          appname,
+	          target: resolvedTarget,
+	          truncated,
+	          lineCount: linesOut.length,
+	          logs: linesOut,
+	          next: nextSince ? { since: nextSince } : undefined,
+	        };
 
          const logsText = fullLines.join('\n');
          const link = resourceStore.putText({
@@ -3966,19 +3984,21 @@ export async function callTool(name: string, rawArgs: unknown) {
 
          const preview = linesOut.slice(-Math.min(linesOut.length, 50));
 
-         return {
-           content: [
-             {
-               type: 'text',
-               text: JSON.stringify({
-                 ok: true,
-                 appname,
-                 truncated,
-                 lineCount: linesOut.length,
-                 preview,
-                 next: full.next,
-                 resourceUri: link.uri,
-               }, null, 2),
+	         return {
+	           content: [
+	             {
+	               type: 'text',
+	               text: JSON.stringify({
+	                 ok: true,
+	                 appname,
+	                 target: resolvedTarget,
+	                 targetHint: 'If you passed a global app name, use flux_apps_logs for automatic container resolution.',
+	                 truncated,
+	                 lineCount: linesOut.length,
+	                 preview,
+	                 next: full.next,
+	                 resourceUri: link.uri,
+	               }, null, 2),
              },
              {
                type: 'resource_link',
@@ -9532,7 +9552,21 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const attemptedBaseUrl = client.getBaseUrl() ?? null;
 
-        let res = await client.request('/apps/getfolderinfo', { query: { appname, component, folder } });
+        const normalizeContainer = (value: string) => value.replace(/^\//, '');
+        const tryDeriveComponentFromContainerName = (containerName: string): string | null => {
+          const n = normalizeContainer(containerName);
+          const m = /^flux([^_]+)_(.+)$/.exec(n);
+          if (!m) return null;
+          const derived = m[1];
+          const suffixApp = m[2];
+          if (suffixApp !== appname) return null;
+          return derived || null;
+        };
+
+        let componentUsed = component;
+        let componentDerivedFromContainer: string | null = null;
+
+        let res = await client.request('/apps/getfolderinfo', { query: { appname, component: componentUsed, folder } });
         let fluxOk = res.ok ? isFluxSuccess(res.data) : false;
         let knownError = extractFluxErrorMessage(res.data);
 
@@ -9540,6 +9574,17 @@ export async function callTool(name: string, rawArgs: unknown) {
         let failures: Array<{ baseUrl: string; error: string; hint?: FluxRequestErrorHint }> = [];
         let locationCandidates: Array<{ host: string; apiPort: number; baseUrl: string }> = [];
         let locationRaw: unknown = null;
+
+        if (res.ok && !fluxOk && isVolumeNotFoundError(knownError)) {
+          const derived = tryDeriveComponentFromContainerName(componentUsed);
+          if (derived && derived !== componentUsed) {
+            componentDerivedFromContainer = derived;
+            componentUsed = derived;
+            res = await client.request('/apps/getfolderinfo', { query: { appname, component: componentUsed, folder } });
+            fluxOk = res.ok ? isFluxSuccess(res.data) : false;
+            knownError = extractFluxErrorMessage(res.data);
+          }
+        }
 
         if (res.ok && !fluxOk && isVolumeNotFoundError(knownError)) {
           const located = await getLocationCandidates({ client, appname });
@@ -9555,7 +9600,7 @@ export async function callTool(name: string, rawArgs: unknown) {
               });
               tmp.setHttpDefaults(client.getHttpDefaults());
 
-              const r = await tmp.request('/apps/getfolderinfo', { query: { appname, component, folder } });
+              const r = await tmp.request('/apps/getfolderinfo', { query: { appname, component: componentUsed, folder } });
               if (!r.ok || !isFluxSuccess(r.data)) {
                 throw new Error(extractFluxErrorMessage(r.data) ?? 'getfolderinfo failed');
               }
@@ -9615,40 +9660,43 @@ export async function callTool(name: string, rawArgs: unknown) {
           ];
         });
 
-        const link = resourceStore.putJson({
-          kind: 'apps/getfolderinfo',
-          name: `${appname} folder listing`,
-          description: 'Raw /apps/getfolderinfo response',
-          value: {
-            request: { appname, component, folder },
-            response: res,
-            resolved: resolvedInfo,
-            locationCandidates,
-            locationRaw,
-            failures,
-          },
-        });
+	        const link = resourceStore.putJson({
+	          kind: 'apps/getfolderinfo',
+	          name: `${appname} folder listing`,
+	          description: 'Raw /apps/getfolderinfo response',
+	          value: {
+	            request: { appname, component: componentUsed, componentInput: component, componentDerivedFromContainer, folder },
+	            response: res,
+	            resolved: resolvedInfo,
+	            locationCandidates,
+	            locationRaw,
+	            failures,
+	          },
+	        });
 
-        const summary = {
-          ok,
-          status: res.status,
-          appname,
-          component,
-          folder,
-          count: items.length,
-          resolved: resolvedInfo,
-          error: ok ? null : knownError,
-          resourceUri: link.uri,
-          nextActions: ok
-            ? []
-            : [
-                ...(locationCandidates.length > 0
-                  ? [{ tool: 'flux_set_base_url', arguments: { baseUrl: locationCandidates[0].baseUrl } }]
-                  : []),
-                { tool: 'flux_auth_flow', arguments: {} },
-                { tool: 'flux_apps_resolve_runtime_target', arguments: { appname, requireRunning: false } },
-              ],
-        };
+	        const summary = {
+	          ok,
+	          status: res.status,
+	          appname,
+	          component: componentUsed,
+	          componentInput: component,
+	          componentDerivedFromContainer,
+	          folder,
+	          count: items.length,
+	          resolved: resolvedInfo,
+	          error: ok ? null : knownError,
+	          resourceUri: link.uri,
+	          nextActions: ok
+	            ? []
+	            : [
+	                ...(locationCandidates.length > 0
+	                  ? [{ tool: 'flux_set_base_url', arguments: { baseUrl: locationCandidates[0].baseUrl } }]
+	                  : []),
+	                { tool: 'flux_auth_flow', arguments: {} },
+	                { tool: 'flux_apps_resolve_runtime_target', arguments: { appname, requireRunning: false } },
+	                { tool: 'flux_apps_get_spec_full', arguments: { appname } },
+	              ],
+	        };
 
         if (!ok) {
           return {
