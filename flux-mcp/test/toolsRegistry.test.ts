@@ -11,6 +11,18 @@ function getRequired(schema: unknown): string[] | undefined {
 }
 
 describe('MCP tool registry', () => {
+  it('has unique tool names', () => {
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+
+    for (const t of tools) {
+      if (seen.has(t.name)) duplicates.push(t.name);
+      seen.add(t.name);
+    }
+
+    expect(duplicates).toEqual([]);
+  });
+
   it('includes auth and UX tools', () => {
     const names = new Set(tools.map((t) => t.name));
 

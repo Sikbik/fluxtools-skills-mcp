@@ -1729,18 +1729,6 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'flux_resolve_gateway_node',
-    description:
-      'Resolve the current Flux node IP behind a gateway base URL (e.g. https://api.runonflux.io). Uses /flux/info and the response header `fluxnode` when available.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        gatewayBaseUrl: { type: 'string' },
-      },
-      required: ['gatewayBaseUrl'],
-    },
-  },
-  {
     name: 'flux_set_zelidauth',
     description: 'Set the zelidauth header value (string or object) for this MCP session.',
     inputSchema: {
