@@ -6012,10 +6012,12 @@ export async function callTool(name: string, rawArgs: unknown) {
 
  
         const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+        const { appname, owner } = extractAppIdentity(spec);
  
         const type = 'fluxappregister' as const;
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-        const messageDetails = buildMessageToSignDetails(messageToSign);
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
         const messageLink = resourceStore.putText({
           kind: 'message_to_sign',
           name: `messageToSign ${type}`,
@@ -6031,33 +6033,70 @@ export async function callTool(name: string, rawArgs: unknown) {
           allowMutation: true,
         });
  
+        const submittedOk = submit.ok && isFluxSuccess(submit.data);
+        const submitError = submittedOk ? null : (extractFluxErrorMessage(submit.data) ?? null);
+
         const hash = extractHashFromAppMessageResponse(submit.data);
 
-         const paymentInfo = await buildPaymentInfo(spec, hash ?? null);
+        const paymentInfo = submittedOk ? await buildPaymentInfo(spec, hash ?? null) : null;
 
-         const out = {
+         const full = {
            verified,
            submit,
-           hash,
-           messageToSign,
-           ...messageDetails,
+           appname: appname ?? null,
+           owner: owner ?? null,
+           hash: hash ?? null,
+           messageToSignSha256,
+           messageToSignBytes,
            messageToSignResourceUri: messageLink.uri,
            payload,
-           payment: paymentInfo.payment,
-           paymentSources: {
-             deploymentInformation: paymentInfo.deploymentInformation,
-             price: paymentInfo.price,
-           },
+           payment: paymentInfo?.payment ?? null,
+           paymentSources: paymentInfo
+             ? { deploymentInformation: paymentInfo.deploymentInformation, price: paymentInfo.price }
+             : null,
+           error: submitError,
            signatureNotes: {
              loginSignature: 'Sign loginPhrase for zelidauth (auth).',
              appSignature: 'Sign messageToSign for registration.',
            },
          };
 
+         const fullLink = resourceStore.putJson({
+           kind: 'apps/register',
+           name: `Register ${appname ?? hash ?? 'app'}`,
+           description: 'Full output from flux_apps_register',
+           value: full,
+         });
+
+         const summary = {
+           ok: submittedOk,
+           status: submittedOk ? 'submitted' : 'error',
+           appname: appname ?? null,
+           owner: owner ?? null,
+           hash: hash ?? null,
+           error: submitError,
+           payment: paymentInfo?.payment ?? null,
+           messageToSignSha256,
+           messageToSignBytes,
+           messageToSignResourceUri: messageLink.uri,
+           resourceUri: fullLink.uri,
+           signatureNotes: full.signatureNotes,
+           nextActions: hash
+             ? [
+                 { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+                 { tool: 'flux_apps_test_install', arguments: { hash, confirm: true } },
+               ]
+             : [],
+         };
+
          return {
-           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
-           structuredContent: out,
-           isError: false,
+           content: [
+             { type: 'text', text: JSON.stringify(summary, null, 2) },
+             { type: 'resource_link', ...fullLink },
+             { type: 'resource_link', ...messageLink },
+           ],
+           structuredContent: summary,
+           isError: !submittedOk,
          };
        }
 
@@ -6091,7 +6130,8 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const type = 'fluxappregister' as const;
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-         const messageDetails = buildMessageToSignDetails(messageToSign);
+         const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+         const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
          const messageLink = resourceStore.putText({
            kind: 'message_to_sign',
            name: `messageToSign ${type}`,
@@ -6231,8 +6271,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             temporaryPresent: propagation?.temporaryPresent ?? null,
             permanentPresent: propagation?.permanentPresent ?? null,
             globalPresent,
-            messageToSign,
-            ...messageDetails,
+            messageToSignSha256,
+            messageToSignBytes,
             messageToSignResourceUri: messageLink.uri,
             message,
             payment,
@@ -6641,10 +6681,12 @@ export async function callTool(name: string, rawArgs: unknown) {
            : null;
  
          const spec = verified ? unwrapFluxEnvelope<Record<string, unknown>>(verified.data) : specInput;
+         const { appname, owner } = extractAppIdentity(spec);
  
          const type = 'fluxappupdate' as const;
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-         const messageDetails = buildMessageToSignDetails(messageToSign);
+         const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+         const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
          const messageLink = resourceStore.putText({
            kind: 'message_to_sign',
            name: `messageToSign ${type}`,
@@ -6662,30 +6704,64 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const hash = extractHashFromAppMessageResponse(submit.data);
 
-         const paymentInfo = includePayment ? await buildPaymentInfo(spec, hash ?? null) : null;
+         const updatedOk = submit.ok && isFluxSuccess(submit.data);
+         const submitError = updatedOk ? null : (extractFluxErrorMessage(submit.data) ?? null);
 
-         const out = {
+         const paymentInfo =
+           includePayment && updatedOk ? await buildPaymentInfo(spec, hash ?? null) : null;
+
+         const full = {
            verified,
            submit,
-           hash,
-           messageToSign,
-           ...messageDetails,
+           appname: appname ?? null,
+           owner: owner ?? null,
+           hash: hash ?? null,
+           messageToSignSha256,
+           messageToSignBytes,
            messageToSignResourceUri: messageLink.uri,
            payload,
            payment: paymentInfo?.payment ?? null,
            paymentSources: paymentInfo
              ? { deploymentInformation: paymentInfo.deploymentInformation, price: paymentInfo.price }
              : null,
+           error: submitError,
            signatureNotes: {
              loginSignature: 'Sign loginPhrase for zelidauth (auth).',
              appSignature: 'Sign messageToSign for update.',
            },
          };
 
+         const fullLink = resourceStore.putJson({
+           kind: 'apps/update',
+           name: `Update ${appname ?? hash ?? 'app'}`,
+           description: 'Full output from flux_apps_update',
+           value: full,
+         });
+
+         const summary = {
+           ok: updatedOk,
+           status: updatedOk ? 'submitted' : 'error',
+           appname: appname ?? null,
+           owner: owner ?? null,
+           hash: hash ?? null,
+           error: submitError,
+           payment: paymentInfo?.payment ?? null,
+           messageToSignSha256,
+           messageToSignBytes,
+           messageToSignResourceUri: messageLink.uri,
+           resourceUri: fullLink.uri,
+           signatureNotes: full.signatureNotes,
+           nextActions: hash ? [{ tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } }] : [],
+         };
+
          return {
-           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
-           structuredContent: out,
-           isError: false,
+           content: [
+             { type: 'text', text: JSON.stringify(summary, null, 2) },
+             { type: 'resource_link', ...fullLink },
+             { type: 'resource_link', ...messageLink },
+           ],
+           structuredContent: summary,
+           isError: !updatedOk,
          };
        }
 
@@ -6720,7 +6796,8 @@ export async function callTool(name: string, rawArgs: unknown) {
  
          const type = 'fluxappupdate' as const;
          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
-         const messageDetails = buildMessageToSignDetails(messageToSign);
+         const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+         const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
          const messageLink = resourceStore.putText({
            kind: 'message_to_sign',
            name: `messageToSign ${type}`,
@@ -6835,8 +6912,8 @@ export async function callTool(name: string, rawArgs: unknown) {
             temporaryPresent: propagation?.temporaryPresent ?? null,
             permanentPresent: propagation?.permanentPresent ?? null,
             globalPresent,
-            messageToSign,
-            ...messageDetails,
+            messageToSignSha256,
+            messageToSignBytes,
             messageToSignResourceUri: messageLink.uri,
             message,
             payment: paymentInfo?.payment ?? null,

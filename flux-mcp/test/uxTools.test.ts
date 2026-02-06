@@ -113,6 +113,16 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: { flux: 1.23 } });
     }
 
+    if (url === '/apps/appregister') {
+      await readBody(req);
+      return json(res, 200, { status: 'success', data: { hash: 'hreg' } });
+    }
+
+    if (url === '/apps/appupdate') {
+      await readBody(req);
+      return json(res, 200, { status: 'success', data: { hash: 'hupd' } });
+    }
+
     if (url.startsWith('/apps/location/myapp')) {
       const host = serverPort ? `127.0.0.1:${serverPort}` : '127.0.0.1';
       return json(res, 200, { status: 'success', data: [{ ip: host }] });
@@ -394,6 +404,92 @@ describe.sequential('UX tools', () => {
 
     const links = r.content.filter((c) => c.type === 'resource_link');
     expect(links.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('flux_apps_register returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_register', {
+      spec: { name: 'myapp', owner: 'zelid', description: 'desc' },
+      signature: 'sig',
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.hash).toBe('string');
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_update returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_update', {
+      spec: { name: 'myapp', owner: 'zelid', description: 'desc' },
+      signature: 'sig',
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.hash).toBe('string');
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_register_and_verify returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_register_and_verify', {
+      confirm: true,
+      poll: false,
+      verifyGlobal: false,
+      spec: { name: 'myapp', owner: 'zelid', description: 'desc' },
+      signature: 'sig',
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.hash).toBe('string');
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_update_and_verify returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_update_and_verify', {
+      confirm: true,
+      poll: false,
+      verifyGlobal: false,
+      spec: { name: 'myapp', owner: 'zelid', description: 'desc' },
+      signature: 'sig',
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.hash).toBe('string');
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
   });
 
   it('flux_daemon_call denies non-allowlisted methods', async () => {
