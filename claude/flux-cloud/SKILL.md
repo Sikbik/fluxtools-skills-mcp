@@ -55,6 +55,8 @@ Setup instructions: `references/mcp-setup.md`.
 - This signature is separate from the app registration/update signature; authenticate before asking the user to sign the app message.
 - Prefer `flux_auth_login` (minimal steps): `flux_auth_login { zelid }` → user signs phrase → `flux_auth_login { zelid, loginPhrase, signature }`.
 - Or use `flux_auth_flow` for a step-by-step plan (optionally pass `gatewayBaseUrl` to start from `https://api.runonflux.io` and resolve the current node).
+- If the user’s terminal won’t open `zel:` links, use:
+  - `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` (returns a clickable `http://127.0.0.1:...` launcher URL).
 
 ### 3) Create a v8 app spec
 
@@ -105,12 +107,14 @@ Reference: `../../codex/flux-cloud/references/git-deployments.md`.
 
 - Lifecycle (requires confirmation): `flux_apps_start`, `flux_apps_stop`, `flux_apps_restart`, `flux_apps_redeploy`, `flux_apps_redeploy_component`.
 - Observability: `flux_logs_tail`, `flux_app_health_report`, `flux_apps_logs`, `flux_apps_inspect`, `flux_apps_stats`, `flux_apps_top`, `flux_apps_monitor`.
+  - Prefer `flux_apps_logs { appname: "<global app name>" }` to auto-resolve the correct container on the correct node.
 
 ### 7) Files (volume browser)
 
 - List: `flux_apps_list_folder`
 - Download (base64): `flux_apps_download_file`, `flux_apps_download_folder`
 - Mutations (require confirmation): `flux_apps_create_folder`, `flux_apps_rename_object`, `flux_apps_remove_object`
+  - `component` is the *compose component name* (e.g. `server`), not the Docker container name. If the user pastes a container name like `fluxserver_<appname>`, the MCP will try to derive the component automatically.
 
 ### 8) Syncthing
 

@@ -48,6 +48,9 @@ curl -sS "$API/flux/isarcaneos"
 Preferred login helper (minimal steps):
 - `flux_auth_login { zelid }` → user signs the returned phrase → `flux_auth_login { zelid, loginPhrase, signature }`
 
+If your terminal/IDE won’t open `zel:` links:
+- Use `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` to get a clickable `http://127.0.0.1:...` launcher URL.
+
 Use:
 - `references/auth-zelidauth.md`
 - `references/signing.md`
