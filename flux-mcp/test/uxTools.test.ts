@@ -74,8 +74,60 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: true });
     }
 
+    if (url === '/explorer/restart') {
+      return json(res, 200, { status: 'success', data: 'Explorer restarted' });
+    }
+
+    if (url === '/explorer/stop') {
+      return json(res, 200, { status: 'success', data: 'Explorer stopped' });
+    }
+
+    if (url === '/explorer/reindex') {
+      return json(res, 200, { status: 'success', data: 'Explorer reindexed' });
+    }
+
+    if (url === '/explorer/reindex/true') {
+      return json(res, 200, { status: 'success', data: 'Explorer reindexed (apps)' });
+    }
+
+    if (url.startsWith('/explorer/rescan')) {
+      return json(res, 200, { status: 'success', data: 'Explorer rescan started' });
+    }
+
     if (url === '/explorer/balance/t1test') {
       return json(res, 200, { status: 'success', data: { confirmed: 10, unconfirmed: 2, balance: 12 } });
+    }
+
+    if (url.startsWith('/backup/getvolumedataofcomponent/')) {
+      return json(res, 200, { status: 'success', data: { mount: '/data', used: 1, available: 2, size: 3 } });
+    }
+
+    if (url.startsWith('/backup/getremotefilesize/')) {
+      return json(res, 200, { status: 'success', data: '10.00 MB' });
+    }
+
+    if (url.startsWith('/backup/getlocalbackuplist/')) {
+      return json(res, 200, {
+        status: 'success',
+        data: [
+          { name: 'a.tar.gz', size: '10.00 MB', create: 1700000000000 },
+          { name: 'b.tar.gz', size: '20.00 MB', create: 1700000001000 },
+        ],
+      });
+    }
+
+    if (url.startsWith('/backup/removebackupfile/')) {
+      return json(res, 200, { status: 'success', data: 'removed' });
+    }
+
+    if (url.startsWith('/backup/downloadlocalfile/')) {
+      const body = Buffer.from('backup', 'utf-8');
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/gzip');
+      res.setHeader('content-disposition', 'attachment; filename=backup.tar.gz');
+      res.setHeader('content-length', String(body.length));
+      res.end(body);
+      return;
     }
 
     if (url === '/daemon/getinfo') {
@@ -1029,13 +1081,96 @@ describe.sequential('UX tools', () => {
     expect(r.isError).toBe(true);
   });
 
+  it('flux_explorer_restart returns resource_link summary when confirmed', async () => {
+    const r = await callTool('flux_explorer_restart', { confirm: true });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+
+    expect(seen.some((x) => x.url === '/explorer/restart')).toBe(true);
+  });
+
+  it('flux_explorer_reindex uses reindexapps path when confirmed', async () => {
+    const r = await callTool('flux_explorer_reindex', { reindexapps: true, confirm: true });
+    expect(r.isError).not.toBe(true);
+
+    expect(seen.some((x) => x.url === '/explorer/reindex/true')).toBe(true);
+  });
+
+  it('flux_explorer_rescan supports blockheight + rescanapps when confirmed', async () => {
+    const r = await callTool('flux_explorer_rescan', { blockheight: 0, rescanapps: true, confirm: true });
+    expect(r.isError).not.toBe(true);
+
+    expect(seen.some((x) => x.url === '/explorer/rescan/0/true')).toBe(true);
+  });
+
+  it('flux_backup_get_volume_data calls frontend-shaped path and returns mount', async () => {
+    const r = await callTool('flux_backup_get_volume_data', { appname: 'myapp', component: 'web' });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.mount).toBe('/data');
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    expect(seen.some((x) => x.url === '/backup/getvolumedataofcomponent/myapp/web/MB/0')).toBe(true);
+  });
+
+  it('flux_backup_get_remote_file_size uses stable positional params', async () => {
+    const fileurl = 'https://example.com/file.tar.gz';
+    const r = await callTool('flux_backup_get_remote_file_size', { fileurl, appname: 'myapp' });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.size).toBe('10.00 MB');
+
+    const expected = `/backup/getremotefilesize/${encodeURIComponent(fileurl)}/B/0/false/myapp`;
+    expect(seen.some((x) => x.url === expected)).toBe(true);
+  });
+
+  it('flux_backup_list_local returns table + resource_link', async () => {
+    const r = await callTool('flux_backup_list_local', { path: 'somepath', appname: 'myapp' });
+    expect(r.isError).not.toBe(true);
+
+    const text = r.content[0]?.type === 'text' ? (r.content[0].text ?? '') : '';
+    expect(text.includes('a.tar.gz')).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.resourceUri).toBeTypeOf('string');
+    expect(structured?.count).toBe(2);
+  });
+
   it('flux_backup_remove_file requires confirm', async () => {
-    const r = await callTool('flux_backup_remove_file', { filepath: 'x' });
+    const r = await callTool('flux_backup_remove_file', { filepath: 'x', appname: 'myapp' });
     expect(r.isError).toBe(true);
   });
 
+  it('flux_backup_download_local_file returns resource_link summary when confirmed', async () => {
+    const r = await callTool('flux_backup_download_local_file', { filepath: 'x', appname: 'myapp', confirm: true });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+
+    const resourceLink = r.content.find((c) => c.type === 'resource_link');
+    expect(resourceLink).toBeTruthy();
+  });
+
   it('flux_backup_download_local_file requires confirm', async () => {
-    const r = await callTool('flux_backup_download_local_file', { filepath: 'x' });
+    const r = await callTool('flux_backup_download_local_file', { filepath: 'x', appname: 'myapp' });
     expect(r.isError).toBe(true);
   });
 

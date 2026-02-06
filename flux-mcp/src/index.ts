@@ -2123,9 +2123,10 @@ export const tools: Tool[] = [
         appname: { type: 'string' },
         component: { type: 'string' },
         fields: { type: 'string', description: 'Optional fields selector (comma-separated)' },
-        multiplier: { type: 'number', description: 'Optional size multiplier' },
+        multiplier: { type: 'string', description: 'Optional size multiplier (B/KB/MB/GB)' },
         decimal: { type: 'number', description: 'Optional decimal precision' },
       },
+      required: ['appname', 'component'],
     },
   },
   {
@@ -2136,11 +2137,11 @@ export const tools: Tool[] = [
       properties: {
         fileurl: { type: 'string' },
         appname: { type: 'string' },
-        multiplier: { type: 'number' },
+        multiplier: { type: 'string', description: 'Optional size multiplier (B/KB/MB/GB)' },
         decimal: { type: 'number' },
-        number: { type: 'number' },
+        number: { type: 'boolean', description: 'If true, return a number instead of a formatted string.' },
       },
-      required: ['fileurl'],
+      required: ['fileurl', 'appname'],
     },
   },
   {
@@ -2151,10 +2152,11 @@ export const tools: Tool[] = [
       properties: {
         path: { type: 'string' },
         appname: { type: 'string' },
-        multiplier: { type: 'number' },
+        multiplier: { type: 'string', description: 'Optional size multiplier (B/KB/MB/GB)' },
         decimal: { type: 'number' },
-        number: { type: 'number' },
+        number: { type: 'boolean', description: 'If true, return sizes as numbers.' },
       },
+      required: ['path', 'appname'],
     },
   },
   {
@@ -2167,7 +2169,7 @@ export const tools: Tool[] = [
         appname: { type: 'string' },
         confirm: { type: 'boolean' },
       },
-      required: ['filepath', 'confirm'],
+      required: ['filepath', 'appname', 'confirm'],
     },
   },
   {
@@ -2181,7 +2183,7 @@ export const tools: Tool[] = [
         maxBytes: { type: 'number', description: 'Max bytes to download (default 1048576)' },
         confirm: { type: 'boolean' },
       },
-      required: ['filepath', 'confirm'],
+      required: ['filepath', 'appname', 'confirm'],
     },
   },
   {
@@ -4572,19 +4574,64 @@ export async function callTool(name: string, rawArgs: unknown) {
 
       case 'flux_explorer_restart': {
         requireConfirm(args, 'explorer/restart');
-        return jsonResult(await client.request('/explorer/restart', { allowMutation: true }));
+        const res = await client.request('/explorer/restart', { allowMutation: true });
+        const link = resourceStore.putJson({
+          kind: 'explorer/restart',
+          name: 'Explorer restart',
+          description: 'Raw /explorer/restart response',
+          value: res,
+        });
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, error: ok ? null : extractFluxErrorMessage(res.data), resourceUri: link.uri };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_explorer_stop': {
         requireConfirm(args, 'explorer/stop');
-        return jsonResult(await client.request('/explorer/stop', { allowMutation: true }));
+        const res = await client.request('/explorer/stop', { allowMutation: true });
+        const link = resourceStore.putJson({
+          kind: 'explorer/stop',
+          name: 'Explorer stop',
+          description: 'Raw /explorer/stop response',
+          value: res,
+        });
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, error: ok ? null : extractFluxErrorMessage(res.data), resourceUri: link.uri };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_explorer_reindex': {
         requireConfirm(args, 'explorer/reindex');
         const reindexapps = (asOptionalBoolean(args['reindexapps']) ?? false) === true;
         const path = reindexapps ? '/explorer/reindex/true' : '/explorer/reindex';
-        return jsonResult(await client.request(path, { allowMutation: true }));
+        const res = await client.request(path, { allowMutation: true });
+        const link = resourceStore.putJson({
+          kind: 'explorer/reindex',
+          name: 'Explorer reindex',
+          description: 'Raw /explorer/reindex response',
+          value: res,
+        });
+        const ok = isFluxEnvelopeOk(res);
+        const summary = {
+          ok,
+          status: res.status,
+          reindexapps,
+          error: ok ? null : extractFluxErrorMessage(res.data),
+          resourceUri: link.uri,
+        };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_explorer_rescan': {
@@ -4600,113 +4647,290 @@ export async function callTool(name: string, rawArgs: unknown) {
         }
         const path = parts.join('/');
 
-        return jsonResult(await client.request(path, { allowMutation: true }));
+        const res = await client.request(path, { allowMutation: true });
+        const link = resourceStore.putJson({
+          kind: 'explorer/rescan',
+          name: 'Explorer rescan',
+          description: 'Raw /explorer/rescan response',
+          value: res,
+        });
+        const ok = isFluxEnvelopeOk(res);
+        const summary = {
+          ok,
+          status: res.status,
+          blockheight: blockheight ?? null,
+          rescanapps,
+          error: ok ? null : extractFluxErrorMessage(res.data),
+          resourceUri: link.uri,
+        };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_backup_get_volume_data': {
-        const appname = asOptionalString(args['appname']);
-        const component = asOptionalString(args['component']);
-        const multiplier = asOptionalNumber(args['multiplier']);
-        const decimal = asOptionalNumber(args['decimal']);
-        const fields = asOptionalString(args['fields']);
+        const appname = mustBeString(args['appname'], 'appname');
+        const component = mustBeString(args['component'], 'component');
+        const multiplierRaw = asOptionalString(args['multiplier']);
+        const multiplier = (multiplierRaw && multiplierRaw.trim() ? multiplierRaw.trim() : 'MB').toUpperCase();
+        const decimalRaw = asOptionalNumber(args['decimal']);
+        const decimal = decimalRaw === undefined ? 0 : Math.max(0, Math.floor(decimalRaw));
+        const fields = asOptionalString(args['fields']) ?? '';
 
-        const parts: string[] = ['/backup/getvolumedataofcomponent'];
-        if (appname !== undefined) parts.push(encodeURIComponent(appname));
-        if (component !== undefined) {
-          if (appname === undefined) parts.push('');
-          parts.push(encodeURIComponent(component));
-        }
-        if (multiplier !== undefined) {
-          while (parts.length < 4) parts.push('');
-          parts.push(String(multiplier));
-        }
-        if (decimal !== undefined) {
-          while (parts.length < 5) parts.push('');
-          parts.push(String(decimal));
-        }
-        if (fields !== undefined) {
-          while (parts.length < 6) parts.push('');
-          parts.push(encodeURIComponent(fields));
-        }
+        // Match FluxOS frontend path shape to avoid optional-param shifting.
+        // /backup/getvolumedataofcomponent/:appname/:component/:multiplier/:decimal/:fields?
+        const basePath = `/backup/getvolumedataofcomponent/${encodeURIComponent(appname)}/${encodeURIComponent(component)}/${encodeURIComponent(
+          multiplier
+        )}/${encodeURIComponent(String(decimal))}`;
+        const path = fields.trim() ? `${basePath}/${encodeURIComponent(fields)}` : basePath;
 
-        return jsonResult(await client.request(parts.join('/')));
+        const res = await client.request(path);
+        const ok = isFluxEnvelopeOk(res);
+        const payload = ok ? unwrapFluxEnvelope<unknown>(res.data) : null;
+        const mount =
+          payload && typeof payload === 'object' && !Array.isArray(payload) && typeof (payload as Record<string, unknown>)['mount'] === 'string'
+            ? String((payload as Record<string, unknown>)['mount'])
+            : null;
+
+        const link = resourceStore.putJson({
+          kind: 'backup/volume_data',
+          name: `${appname}/${component} volume data`,
+          description: 'Raw /backup/getvolumedataofcomponent response',
+          value: { request: { path, appname, component, multiplier, decimal, fields: fields.trim() ? fields : null }, response: res },
+        });
+
+        const summary = {
+          ok,
+          status: res.status,
+          appname,
+          component,
+          fields: fields.trim() ? fields : null,
+          multiplier,
+          decimal,
+          mount,
+          error: ok ? null : extractFluxErrorMessage(res.data),
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_backup_get_remote_file_size': {
         const fileurl = mustBeString(args['fileurl'], 'fileurl');
-        const appname = asOptionalString(args['appname']);
-        const multiplier = asOptionalNumber(args['multiplier']);
-        const decimal = asOptionalNumber(args['decimal']);
-        const number = asOptionalNumber(args['number']);
+        const appname = mustBeString(args['appname'], 'appname');
+        const multiplierRaw = asOptionalString(args['multiplier']);
+        const multiplier = (multiplierRaw && multiplierRaw.trim() ? multiplierRaw.trim() : 'B').toUpperCase();
+        const decimalRaw = asOptionalNumber(args['decimal']);
+        const decimal = decimalRaw === undefined ? 0 : Math.max(0, Math.floor(decimalRaw));
+        const number = (asOptionalBoolean(args['number']) ?? false) === true;
 
-        const parts: string[] = ['/backup/getremotefilesize', encodeURIComponent(fileurl)];
-        if (multiplier !== undefined) parts.push(String(multiplier));
-        if (decimal !== undefined) {
-          while (parts.length < 4) parts.push('');
-          parts.push(String(decimal));
-        }
-        if (number !== undefined) {
-          while (parts.length < 5) parts.push('');
-          parts.push(String(number));
-        }
-        if (appname !== undefined) {
-          while (parts.length < 6) parts.push('');
-          parts.push(encodeURIComponent(appname));
-        }
+        // Match FluxOS frontend path shape to avoid optional-param shifting:
+        // /backup/getremotefilesize/:fileurl/:multiplier/:decimal/:number/:appname
+        const path = `/backup/getremotefilesize/${encodeURIComponent(fileurl)}/${encodeURIComponent(multiplier)}/${encodeURIComponent(
+          String(decimal)
+        )}/${number ? 'true' : 'false'}/${encodeURIComponent(appname)}`;
 
-        return jsonResult(await client.request(parts.join('/')));
+        const res = await client.request(path);
+        const ok = isFluxEnvelopeOk(res);
+        const size = ok ? unwrapFluxEnvelope<unknown>(res.data) : null;
+
+        const link = resourceStore.putJson({
+          kind: 'backup/remote_file_size',
+          name: 'Remote file size',
+          description: 'Raw /backup/getremotefilesize response',
+          value: { request: { path, fileurl, appname, multiplier, decimal, number }, response: res },
+        });
+
+        const summary = {
+          ok,
+          status: res.status,
+          fileurl,
+          appname,
+          multiplier,
+          decimal,
+          number,
+          size,
+          error: ok ? null : extractFluxErrorMessage(res.data),
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_backup_list_local': {
-        const backupPath = asOptionalString(args['path']);
-        const appname = asOptionalString(args['appname']);
-        const multiplier = asOptionalNumber(args['multiplier']);
-        const decimal = asOptionalNumber(args['decimal']);
-        const number = asOptionalNumber(args['number']);
+        const backupPath = mustBeString(args['path'], 'path');
+        const appname = mustBeString(args['appname'], 'appname');
+        const multiplierRaw = asOptionalString(args['multiplier']);
+        const multiplier = (multiplierRaw && multiplierRaw.trim() ? multiplierRaw.trim() : 'B').toUpperCase();
+        const decimalRaw = asOptionalNumber(args['decimal']);
+        const decimal = decimalRaw === undefined ? 0 : Math.max(0, Math.floor(decimalRaw));
+        const number = (asOptionalBoolean(args['number']) ?? false) === true;
 
-        const parts: string[] = ['/backup/getlocalbackuplist'];
-        if (backupPath !== undefined) parts.push(encodeURIComponent(backupPath));
-        if (multiplier !== undefined) {
-          if (backupPath === undefined) parts.push('');
-          parts.push(String(multiplier));
-        }
-        if (decimal !== undefined) {
-          while (parts.length < 3) parts.push('');
-          parts.push(String(decimal));
-        }
-        if (number !== undefined) {
-          while (parts.length < 4) parts.push('');
-          parts.push(String(number));
-        }
-        if (appname !== undefined) {
-          while (parts.length < 5) parts.push('');
-          parts.push(encodeURIComponent(appname));
+        // Match FluxOS frontend path shape to avoid optional-param shifting:
+        // /backup/getlocalbackuplist/:path/:multiplier/:decimal/:number/:appname
+        const path = `/backup/getlocalbackuplist/${encodeURIComponent(backupPath)}/${encodeURIComponent(multiplier)}/${encodeURIComponent(
+          String(decimal)
+        )}/${number ? 'true' : 'false'}/${encodeURIComponent(appname)}`;
+
+        const res = await client.request(path);
+        const ok = isFluxEnvelopeOk(res);
+
+        const payload = ok ? unwrapFluxEnvelope<unknown>(res.data) : null;
+        const items = Array.isArray(payload)
+          ? payload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+
+        const link = resourceStore.putJson({
+          kind: 'backup/local_list',
+          name: `Local backups ${appname}`,
+          description: 'Raw /backup/getlocalbackuplist response',
+          value: { request: { path, inputPath: backupPath, appname, multiplier, decimal, number }, response: res },
+        });
+
+        const headers = ['Name', 'Size', 'Created'];
+        const formatEpoch = (value: unknown): string => {
+          const n = typeof value === 'number' ? value : Number(value);
+          if (!Number.isFinite(n)) return typeof value === 'string' ? value : '-';
+          const d = new Date(n);
+          if (!Number.isFinite(d.getTime())) return String(value);
+          return d.toISOString().slice(0, 19).replace('T', ' ');
+        };
+
+        const rows = items.map((x) => {
+          const name = typeof x['name'] === 'string' ? x['name'] : '-';
+          const size = x['size'];
+          const sizeOut = typeof size === 'number' ? String(size) : typeof size === 'string' ? size : '-';
+          const created = formatEpoch(x['create']);
+          return [String(name), sizeOut, created];
+        });
+
+        const summary = {
+          ok,
+          status: res.status,
+          path: backupPath,
+          appname,
+          multiplier,
+          decimal,
+          number,
+          count: items.length,
+          error: ok ? null : extractFluxErrorMessage(res.data),
+          resourceUri: link.uri,
+        };
+
+        if (!ok) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: summary,
+            isError: true,
+          };
         }
 
-        return jsonResult(await client.request(parts.join('/')));
+        return buildTableResult({
+          headers,
+          rows,
+          maxRows: 25,
+          summary,
+          resource: link,
+        });
       }
 
       case 'flux_backup_remove_file': {
         requireConfirm(args, 'backup/removebackupfile');
         const filepath = mustBeString(args['filepath'], 'filepath');
-        const appname = asOptionalString(args['appname']);
-        const path = appname
-          ? `/backup/removebackupfile/${encodeURIComponent(filepath)}/${encodeURIComponent(appname)}`
-          : `/backup/removebackupfile/${encodeURIComponent(filepath)}`;
-        return jsonResult(await client.request(path, { allowMutation: true }));
+        const appname = mustBeString(args['appname'], 'appname');
+        const path = `/backup/removebackupfile/${encodeURIComponent(filepath)}/${encodeURIComponent(appname)}`;
+        const res = await client.request(path, { allowMutation: true });
+
+        const link = resourceStore.putJson({
+          kind: 'backup/remove_file',
+          name: `Remove backup file ${appname}`,
+          description: 'Raw /backup/removebackupfile response',
+          value: { request: { filepath, appname }, response: res },
+        });
+
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, filepath, appname, error: ok ? null : extractFluxErrorMessage(res.data), resourceUri: link.uri };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_backup_download_local_file': {
         requireConfirm(args, 'backup/downloadlocalfile');
         const filepath = mustBeString(args['filepath'], 'filepath');
-        const appname = asOptionalString(args['appname']);
         const maxBytes = asOptionalNumber(args['maxBytes']);
+        const appname = mustBeString(args['appname'], 'appname');
 
-        const path = appname
-          ? `/backup/downloadlocalfile/${encodeURIComponent(filepath)}/${encodeURIComponent(appname)}`
-          : `/backup/downloadlocalfile/${encodeURIComponent(filepath)}`;
+        const path = `/backup/downloadlocalfile/${encodeURIComponent(filepath)}/${encodeURIComponent(appname)}`;
 
-        return jsonResult(await client.request(path, { responseType: 'base64', maxBytes, allowMutation: true }));
+        const res = await client.request(path, { responseType: 'base64', maxBytes, allowMutation: true });
+        const blob = res.data && typeof res.data === 'object' && !Array.isArray(res.data) ? (res.data as Record<string, unknown>) : null;
+        const parsedError = blob ? parseFluxErrorFromBase64Download(blob) : null;
+
+        if (!res.ok || parsedError) {
+          const link = resourceStore.putJson({
+            kind: 'backup/download_local_file_error',
+            name: `Backup download error ${appname}`,
+            description: 'Error response from /backup/downloadlocalfile',
+            value: { request: { filepath, appname, maxBytes: maxBytes ?? null }, response: res, parsedError: parsedError?.parsed ?? null },
+          });
+
+          const out = {
+            ok: false,
+            status: res.status,
+            filepath,
+            appname,
+            error: parsedError?.error ?? extractFluxErrorMessage(res.data) ?? 'Download failed',
+            resourceUri: link.uri,
+          };
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+            structuredContent: out,
+            isError: true,
+          };
+        }
+
+        const base64 = blob && typeof blob.base64 === 'string' ? blob.base64 : null;
+        const bytes = blob && typeof blob.bytes === 'number' ? blob.bytes : null;
+        const contentType = blob && typeof blob.contentType === 'string' ? blob.contentType : 'application/octet-stream';
+
+        const link = resourceStore.putText({
+          kind: 'backup/download_local_file',
+          name: `${appname}:${filepath}`,
+          description: 'Downloaded local backup file (base64)',
+          mimeType: contentType,
+          text: base64 ?? '',
+        });
+
+        const out = {
+          ok: true,
+          status: res.status,
+          filepath,
+          appname,
+          bytes,
+          mimeType: contentType,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
+          structuredContent: out,
+          isError: false,
+        };
       }
 
       case 'flux_ioutils_file_upload_from_url': {
