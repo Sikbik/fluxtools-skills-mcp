@@ -38,10 +38,14 @@ dist/*.skill
 /tmp/
 issues.md
 issue3.md
+roadmap.md
+session-report.md
 
 # Local (project-scoped) agent config / skill installs
 .codex/
 .claude/
+.gemini/
 
 # Reference clones (not part of this repo)
 /fluxos-frontend/
+/flux/
