@@ -1947,22 +1947,28 @@ export const tools: Tool[] = [
       },
     },
   },
-  {
-    name: 'flux_auth_login',
-    description:
-      'One-shot login helper: if signature/loginPhrase are missing, fetches a phrase to sign; otherwise verifies login, sets zelidauth (default), and optionally checks privilege.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        zelid: { type: 'string', description: 'ZelID (Bitcoin-format address like 1..., 3..., bc1...).' },
-        signature: { type: 'string', description: 'Base64 signature of loginPhrase (optional; required to complete login).' },
-        loginPhrase: { type: 'string', description: 'Login phrase to sign (optional; required to complete login).' },
-        gatewayBaseUrl: {
-          type: 'string',
-          description:
-            'Optional gateway base URL (e.g. https://api.runonflux.io). If provided (or if current baseUrl is a gateway), the tool will pin to a direct node for authentication.',
-        },
-        autoPinGateway: {
+	  {
+	    name: 'flux_auth_login',
+	    description:
+	      'One-shot login helper: if signature/loginPhrase are missing, fetches a phrase to sign; otherwise verifies login, sets zelidauth (default), and optionally checks privilege.',
+	    inputSchema: {
+	      type: 'object',
+	      properties: {
+	        zelid: { type: 'string', description: 'ZelID (Bitcoin-format address like 1..., 3..., bc1...).' },
+	        signature: { type: 'string', description: 'Base64 signature of loginPhrase (optional; required to complete login).' },
+	        loginPhrase: { type: 'string', description: 'Login phrase to sign (optional; required to complete login).' },
+	        force: {
+	          type: 'boolean',
+	          description:
+	            'If true, ignore any stored zelidauth and always fetch a fresh login phrase to sign.',
+	          default: false,
+	        },
+	        gatewayBaseUrl: {
+	          type: 'string',
+	          description:
+	            'Optional gateway base URL (e.g. https://api.runonflux.io). If provided (or if current baseUrl is a gateway), the tool will pin to a direct node for authentication.',
+	        },
+	        autoPinGateway: {
           type: 'boolean',
           description: 'If true (default), pin gateway baseUrls (api.runonflux.io / *.node.api.runonflux.io) to a direct node before auth.',
           default: true,
@@ -2718,13 +2724,13 @@ export const tools: Tool[] = [
       required: ['appname'],
     },
   },
-  {
-    name: 'flux_apps_get_spec_full',
-    description:
-      'Fetch an app spec; for v8+ enterprise apps, performs the Arcane enterprise decrypt flow and returns decrypted compose/contacts (requires zelidauth + Arcane node).',
-      inputSchema: {
-        type: 'object',
-        properties: {
+	  {
+	    name: 'flux_apps_get_spec_full',
+	    description:
+	      'Fetch an app spec; for v8+ enterprise apps, performs the Arcane enterprise decrypt flow and returns decrypted compose/contacts (requires zelidauth + Arcane node).',
+	      inputSchema: {
+	        type: 'object',
+	        properties: {
           appname: { type: 'string', description: 'Flux app name' },
           owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
           baseUrls: {
@@ -2735,19 +2741,33 @@ export const tools: Tool[] = [
           },
           timeoutMs: { type: 'number', description: 'Optional request timeout override.' },
           setBaseUrlOnSuccess: { type: 'boolean', description: 'If true (default), set MCP baseUrl to the successful Arcane node URL.' },
-          includeSecrets: {
-            type: 'boolean',
-            description:
-              'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires confirm=true. Can be globally disabled by setting FLUX_MCP_ALLOW_SECRETS=0.',
-            default: false,
-          },
-          confirm: {
-            type: 'boolean',
-            description: 'Required when includeSecrets=true (acknowledges that secrets may be returned).',
-            default: false,
-          },
-        },
-        required: ['appname'],
+	          includeSecrets: {
+	            type: 'boolean',
+	            description:
+	              'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires confirm=true. Can be globally disabled by setting FLUX_MCP_ALLOW_SECRETS=0.',
+	            default: false,
+	          },
+	          secretChecks: {
+	            type: 'array',
+	            description:
+	              'Optional: compare secret env values without returning them. Each entry is { key, equals, component? }. Requires confirm=true.',
+	            items: {
+	              type: 'object',
+	              properties: {
+	                key: { type: 'string', description: 'Env key to look up (e.g. ENS_PASSWORD).' },
+	                equals: { type: 'string', description: 'Candidate value to compare against (never returned).' },
+	                component: { type: 'string', description: 'Optional compose component name to scope the lookup.' },
+	              },
+	              required: ['key', 'equals'],
+	            },
+	          },
+	          confirm: {
+	            type: 'boolean',
+	            description: 'Required when includeSecrets=true (acknowledges that secrets may be returned).',
+	            default: false,
+	          },
+	        },
+	        required: ['appname'],
       },
     },
   {
@@ -3719,16 +3739,17 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(out, { structuredContent: out });
       }
 
-	      case 'flux_auth_login': {
-	        const zelid = mustBeString(args['zelid'], 'zelid');
-	        const signature = asOptionalString(args['signature']);
-	        const loginPhraseArg = asOptionalString(args['loginPhrase']);
-	        const gatewayBaseUrlArg = asOptionalString(args['gatewayBaseUrl']);
-	        const autoPinGateway = (asOptionalBoolean(args['autoPinGateway']) ?? true) === true;
-	        const useEmergencyPhrase = (asOptionalBoolean(args['useEmergencyPhrase']) ?? false) === true;
-	        const verify = (asOptionalBoolean(args['verify']) ?? true) === true;
-	        const setZelidauth = (asOptionalBoolean(args['setZelidauth']) ?? true) === true;
-	        const checkPrivilege = (asOptionalBoolean(args['checkPrivilege']) ?? true) === true;
+		      case 'flux_auth_login': {
+		        const zelid = mustBeString(args['zelid'], 'zelid');
+		        const signature = asOptionalString(args['signature']);
+		        const loginPhraseArg = asOptionalString(args['loginPhrase']);
+		        const force = (asOptionalBoolean(args['force']) ?? false) === true;
+		        const gatewayBaseUrlArg = asOptionalString(args['gatewayBaseUrl']);
+		        const autoPinGateway = (asOptionalBoolean(args['autoPinGateway']) ?? true) === true;
+		        const useEmergencyPhrase = (asOptionalBoolean(args['useEmergencyPhrase']) ?? false) === true;
+		        const verify = (asOptionalBoolean(args['verify']) ?? true) === true;
+		        const setZelidauth = (asOptionalBoolean(args['setZelidauth']) ?? true) === true;
+		        const checkPrivilege = (asOptionalBoolean(args['checkPrivilege']) ?? true) === true;
 
 	        const pinGatewayIfNeeded = async (): Promise<{
 	          pinned: boolean;
@@ -3799,13 +3820,38 @@ export async function callTool(name: string, rawArgs: unknown) {
 	          }
 	        };
 
-	        const pinInfo = await pinGatewayIfNeeded();
+		        const pinInfo = await pinGatewayIfNeeded();
 
-	        if (!signature || !loginPhraseArg) {
-	          const phrasePath = useEmergencyPhrase ? '/id/emergencyphrase' : '/id/loginphrase';
-	          const phraseRes = await client.request(phrasePath);
-	          if (!phraseRes.ok || !isFluxSuccess(phraseRes.data)) {
-	            throw new Error(extractFluxErrorMessage(phraseRes.data) ?? `Failed to fetch login phrase via ${phrasePath}`);
+		        // If we already have zelidauth set for this zelid, don't force the user through re-auth.
+		        // This was a major UX pain point: users would ask to "login" and get a new phrase even
+		        // though their current session credentials were still valid.
+		        if (!force && !signature && !loginPhraseArg) {
+		          const existing = client.getZelidauthSummary();
+		          if (existing.present && (!existing.zelid || existing.zelid === zelid)) {
+		            const out = {
+		              ok: true,
+		              zelid,
+		              baseUrl: client.getBaseUrl(),
+		              alreadyAuthenticated: true,
+		              zelidauthSet: true,
+		              gatewayPinned: pinInfo.pinned,
+		              gatewayBaseUrl: pinInfo.gatewayBaseUrl,
+		              pinnedBaseUrl: pinInfo.pinned ? pinInfo.recommendedBaseUrl : null,
+		              note:
+		                'zelidauth is already set for this MCP session. Pass force=true to fetch a fresh login phrase.',
+		            };
+		            return jsonResult(out, {
+		              structuredContent: out,
+		              contentText: `Already authenticated as ${zelid} on ${client.getBaseUrl() ?? '<unknown baseUrl>'}.`,
+		            });
+		          }
+		        }
+
+		        if (!signature || !loginPhraseArg) {
+		          const phrasePath = useEmergencyPhrase ? '/id/emergencyphrase' : '/id/loginphrase';
+		          const phraseRes = await client.request(phrasePath);
+		          if (!phraseRes.ok || !isFluxSuccess(phraseRes.data)) {
+		            throw new Error(extractFluxErrorMessage(phraseRes.data) ?? `Failed to fetch login phrase via ${phrasePath}`);
 	          }
           const phrase = unwrapFluxEnvelope<unknown>(phraseRes.data);
           if (typeof phrase !== 'string' || !phrase.trim()) throw new Error('Invalid login phrase response');
@@ -4715,21 +4761,21 @@ export async function callTool(name: string, rawArgs: unknown) {
           Object.assign(out, { messageToSign, ...details });
         }
 
-	          return {
-	            content: [
-	              {
-	                type: 'text',
-	                text:
-	                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
-	                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}`,
-	              },
-	              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
-	              { type: 'text', text: JSON.stringify(out, null, 2) },
-	              { type: 'resource_link', ...link },
-	            ],
-	            structuredContent: out,
-	            isError: false,
-	          };
+		          return {
+		            content: [
+		              { type: 'text', text: JSON.stringify(out, null, 2) },
+		              {
+		                type: 'text',
+		                text:
+		                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}`,
+		              },
+		              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
+		              { type: 'resource_link', ...link },
+		            ],
+		            structuredContent: out,
+		            isError: false,
+		          };
 	        }
 
       case 'flux_build_zelcore_sign_link': {
@@ -4983,22 +5029,22 @@ export async function callTool(name: string, rawArgs: unknown) {
           Object.assign(out, { messageToSign, ...details });
         }
 
-          return {
-            content: [
-              {
-                type: 'text',
-                text:
-                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
-                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}`,
-              },
-              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
-              { type: 'text', text: JSON.stringify(out, null, 2) },
-              { type: 'resource_link', ...link },
-            ],
-            structuredContent: out,
-            isError: false,
-          };
-        }
+	          return {
+	            content: [
+	              { type: 'text', text: JSON.stringify(out, null, 2) },
+	              {
+	                type: 'text',
+	                text:
+	                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+	                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}`,
+	              },
+	              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
+	              { type: 'resource_link', ...link },
+	            ],
+	            structuredContent: out,
+	            isError: false,
+	          };
+	        }
 
       case 'flux_list_endpoint_categories': {
         if (!inventory) {
@@ -6904,18 +6950,37 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
       }
 
-        case 'flux_apps_get_spec_full': {
-          const appname = mustBeString(args['appname'], 'appname');
-          const ownerArg = asOptionalString(args['owner']);
-          const baseUrlsRaw = args['baseUrls'];
-          const timeoutMs = asOptionalNumber(args['timeoutMs']);
-          const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
-          const includeSecrets = (asOptionalBoolean(args['includeSecrets']) ?? false) === true;
-          const confirm = (asOptionalBoolean(args['confirm']) ?? false) === true;
+	        case 'flux_apps_get_spec_full': {
+	          const appname = mustBeString(args['appname'], 'appname');
+	          const ownerArg = asOptionalString(args['owner']);
+	          const baseUrlsRaw = args['baseUrls'];
+	          const timeoutMs = asOptionalNumber(args['timeoutMs']);
+	          const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
+	          const includeSecrets = (asOptionalBoolean(args['includeSecrets']) ?? false) === true;
+	          const confirm = (asOptionalBoolean(args['confirm']) ?? false) === true;
+	          const secretChecksRaw = args['secretChecks'];
+	          const secretChecks =
+	            Array.isArray(secretChecksRaw)
+	              ? secretChecksRaw
+	                  .filter((x) => !!x && typeof x === 'object' && !Array.isArray(x))
+	                  .slice(0, 20)
+	                  .map((x) => {
+	                    const obj = x as Record<string, unknown>;
+	                    const key = asOptionalString(obj['key']) ?? null;
+	                    const equals = asOptionalString(obj['equals']) ?? null;
+	                    const component = asOptionalString(obj['component']) ?? null;
+	                    return key && equals ? { key, equals, component } : null;
+	                  })
+	                  .filter((x): x is { key: string; equals: string; component: string | null } => x !== null)
+	              : [];
 
-          if (includeSecrets) {
-            // Secrets are always opt-in per call via includeSecrets + confirm.
-            // Operators can still disable secrets entirely via FLUX_MCP_ALLOW_SECRETS=0.
+	          if (secretChecks.length > 0 && !confirm) {
+	            throw new Error('secretChecks requires confirm=true.');
+	          }
+
+	          if (includeSecrets) {
+	            // Secrets are always opt-in per call via includeSecrets + confirm.
+	            // Operators can still disable secrets entirely via FLUX_MCP_ALLOW_SECRETS=0.
             const allowEnv = String(process.env.FLUX_MCP_ALLOW_SECRETS ?? '1').trim().toLowerCase();
             const allowed = !(allowEnv === '0' || allowEnv === 'false' || allowEnv === 'no');
             if (!allowed) {
@@ -6923,10 +6988,10 @@ export async function callTool(name: string, rawArgs: unknown) {
                 'Secrets are disabled for this MCP server (set FLUX_MCP_ALLOW_SECRETS=1 to allow).'
               );
             }
-            if (!confirm) {
-              throw new Error('includeSecrets=true requires confirm=true.');
-            }
-          }
+	            if (!confirm) {
+	              throw new Error('includeSecrets=true requires confirm=true.');
+	            }
+	          }
 
           const baseUrlsExplicit =
             Array.isArray(baseUrlsRaw) &&
@@ -7288,8 +7353,54 @@ export async function callTool(name: string, rawArgs: unknown) {
             throw new Error('Enterprise payload JSON must be an object');
           }
 
-          const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
-          const sanitized = sanitizeEnterpriseObject(enterpriseObj, { includeSecrets });
+	          const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
+
+	          const lookupEnvValue = (wantedKey: string, componentName: string | null): string | null => {
+	            const key = wantedKey.trim();
+	            if (!key) return null;
+
+	            const compose = enterpriseObj['compose'];
+	            if (!Array.isArray(compose)) return null;
+
+	            for (const comp of compose) {
+	              if (!comp || typeof comp !== 'object' || Array.isArray(comp)) continue;
+	              const c = comp as Record<string, unknown>;
+	              if (componentName) {
+	                const name = typeof c['name'] === 'string' ? c['name'] : null;
+	                if (name !== componentName) continue;
+	              }
+
+	              const envParams = c['environmentParameters'];
+	              if (!Array.isArray(envParams)) continue;
+
+	              for (const raw of envParams) {
+	                if (typeof raw !== 'string') continue;
+	                const idx = raw.indexOf('=');
+	                if (idx <= 0) continue;
+	                const k = raw.slice(0, idx).trim();
+	                if (k !== key) continue;
+	                return raw.slice(idx + 1);
+	              }
+	            }
+
+	            return null;
+	          };
+
+	          const secretCheckResults =
+	            secretChecks.length > 0
+	              ? secretChecks.map((c) => {
+	                  const actual = lookupEnvValue(c.key, c.component);
+	                  return {
+	                    key: c.key,
+	                    component: c.component,
+	                    present: actual !== null,
+	                    match: actual !== null && actual === c.equals,
+	                    actualLength: actual !== null ? actual.length : null,
+	                  };
+	                })
+	              : [];
+
+	          const sanitized = sanitizeEnterpriseObject(enterpriseObj, { includeSecrets });
 
           const mergedSpec: Record<string, unknown> = { ...encryptedSpec };
           if ('compose' in sanitized.enterprise) mergedSpec.compose = (sanitized.enterprise as any)['compose'];
@@ -7315,17 +7426,20 @@ export async function callTool(name: string, rawArgs: unknown) {
               !includeSecrets &&
               (sanitized.redactions.envCount > 0 || sanitized.redactions.repoauthCount > 0);
 
-            const summary = {
-              ok: true,
-              appname,
-              enterprise: true,
-              owner,
-              baseUrlUsed: arcaneBaseUrlUsed,
-              baseUrlSet: setBaseUrlOnSuccess,
-              includeSecrets,
-              redactions: includeSecrets ? null : sanitized.redactions,
-              warning:
-                'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
+	            const summary = {
+	              ok: true,
+	              appname,
+	              enterprise: true,
+	              owner,
+	              baseUrlUsed: arcaneBaseUrlUsed,
+	              baseUrlSet: setBaseUrlOnSuccess,
+	              includeSecrets,
+	              secretChecks: secretCheckResults.length
+	                ? { requested: secretChecks.length, results: secretCheckResults }
+	                : null,
+	              redactions: includeSecrets ? null : sanitized.redactions,
+	              warning:
+	                'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
               nextActions: hasRedactions
                 ? [
                     {
@@ -7644,22 +7758,22 @@ export async function callTool(name: string, rawArgs: unknown) {
             ],
           };
 
-	          return {
-	            content: [
-	              {
-	                type: 'text',
-	                text:
-	                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
-	                  `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
-	              },
-	              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
-	              { type: 'text', text: JSON.stringify(summary, null, 2) },
-	              { type: 'resource_link', ...fullLink },
-	              { type: 'resource_link', ...messageLink },
-	            ],
-            structuredContent: summary,
-            isError: false,
-          };
+		          return {
+		            content: [
+		              { type: 'text', text: JSON.stringify(summary, null, 2) },
+		              {
+		                type: 'text',
+		                text:
+		                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                  `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
+		              },
+		              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
+		              { type: 'resource_link', ...fullLink },
+		              { type: 'resource_link', ...messageLink },
+		            ],
+		            structuredContent: summary,
+		            isError: false,
+		          };
         }
 
       case 'flux_git_deploy_register_and_verify': {
@@ -8051,22 +8165,22 @@ export async function callTool(name: string, rawArgs: unknown) {
             ],
           };
 
-	          return {
-	            content: [
-	              {
-	                type: 'text',
-	                text:
-	                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
-	                  `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
-	              },
-	              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
-	              { type: 'text', text: JSON.stringify(summary, null, 2) },
-	              { type: 'resource_link', ...fullLink },
-	              { type: 'resource_link', ...messageLink },
-	            ],
-            structuredContent: summary,
-            isError: false,
-          };
+		          return {
+		            content: [
+		              { type: 'text', text: JSON.stringify(summary, null, 2) },
+		              {
+		                type: 'text',
+		                text:
+		                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                  `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
+		              },
+		              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
+		              { type: 'resource_link', ...fullLink },
+		              { type: 'resource_link', ...messageLink },
+		            ],
+		            structuredContent: summary,
+		            isError: false,
+		          };
         }
 
         case 'flux_apps_register': {
@@ -8484,22 +8598,22 @@ export async function callTool(name: string, rawArgs: unknown) {
              ],
            };
 
-	           return {
-	             content: [
-	               {
-	                 type: 'text',
-	                 text:
-	                   (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
-	                   `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
-	               },
-	               ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
-	               { type: 'text', text: JSON.stringify(summary, null, 2) },
-	               { type: 'resource_link', ...fullLink },
-	               { type: 'resource_link', ...messageLink },
-	             ],
-             structuredContent: summary,
-             isError: false,
-           };
+		           return {
+		             content: [
+		               { type: 'text', text: JSON.stringify(summary, null, 2) },
+		               {
+		                 type: 'text',
+		                 text:
+		                   (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                   `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
+		               },
+		               ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
+		               { type: 'resource_link', ...fullLink },
+		               { type: 'resource_link', ...messageLink },
+		             ],
+		             structuredContent: summary,
+		             isError: false,
+		           };
         }
 
        case 'flux_apps_plan_renew': {
@@ -9781,12 +9895,14 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
       }
 
-      case 'flux_apps_list_folder': {
-        const appname = mustBeString(args['appname'], 'appname');
-        const component = mustBeString(args['component'], 'component');
-        const folder = asOptionalString(args['folder']) ?? '';
+	      case 'flux_apps_list_folder': {
+	        const appname = mustBeString(args['appname'], 'appname');
+	        const component = mustBeString(args['component'], 'component');
+	        // Flux rejects absolute paths; normalize "/foo" -> "foo" and "/" -> "".
+	        let folder = asOptionalString(args['folder']) ?? '';
+	        folder = folder.replace(/^\/+/, '');
 
-        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+	        const attemptedBaseUrl = client.getBaseUrl() ?? null;
 
         const normalizeContainer = (value: string) => value.replace(/^\//, '');
         const tryDeriveComponentFromContainerName = (containerName: string): string | null => {
@@ -9862,20 +9978,20 @@ export async function callTool(name: string, rawArgs: unknown) {
           }
         }
 
-        const ok = res.ok && fluxOk;
+	        const ok = res.ok && fluxOk;
 
-        const payload = unwrapFluxEnvelope<unknown>(res.data);
-        const items = Array.isArray(payload)
-          ? payload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
-          : [];
+	        const payload = unwrapFluxEnvelope<unknown>(res.data);
+	        const items = Array.isArray(payload)
+	          ? payload.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+	          : [];
 
         const formatTime = (value: unknown): string => {
           if (typeof value !== 'string' || !value.trim()) return '-';
           return value.length > 19 ? value.slice(0, 19).replace('T', ' ') : value;
         };
 
-        const headers = ['Name', 'Type', 'Size (bytes)', 'Modified'];
-        const rows = items.map((x) => {
+	        const headers = ['Name', 'Type', 'Size (bytes)', 'Modified'];
+	        const rows = items.map((x) => {
           const name = typeof x['name'] === 'string' ? x['name'] : '-';
           const isDirectory = x['isDirectory'] === true;
           const isFile = x['isFile'] === true;
@@ -9888,18 +10004,35 @@ export async function callTool(name: string, rawArgs: unknown) {
 
           const modifiedAt = formatTime(x['modifiedAt']);
 
-          return [
-            String(name),
-            type,
-            Number.isFinite(size) ? String(Math.trunc(size)) : '-',
-            modifiedAt,
-          ];
-        });
+	          return [
+	            String(name),
+	            type,
+	            Number.isFinite(size) ? String(Math.trunc(size)) : '-',
+	            modifiedAt,
+	          ];
+	        });
 
-	        const link = resourceStore.putJson({
-	          kind: 'apps/getfolderinfo',
-	          name: `${appname} folder listing`,
-	          description: 'Raw /apps/getfolderinfo response',
+	        const itemsPreview = items.slice(0, 50).map((x) => {
+	          const name = typeof x['name'] === 'string' ? x['name'] : '-';
+	          const isDirectory = x['isDirectory'] === true;
+	          const isFile = x['isFile'] === true;
+	          const isSymbolicLink = x['isSymbolicLink'] === true;
+	          const type = isDirectory ? 'dir' : isFile ? 'file' : isSymbolicLink ? 'link' : '-';
+	          const sizeRaw = x['size'];
+	          const size = typeof sizeRaw === 'number' ? sizeRaw : Number(sizeRaw);
+	          const modifiedAt = formatTime(x['modifiedAt']);
+	          return {
+	            name: String(name),
+	            type,
+	            sizeBytes: Number.isFinite(size) ? Math.trunc(size) : null,
+	            modifiedAt,
+	          };
+	        });
+
+		        const link = resourceStore.putJson({
+		          kind: 'apps/getfolderinfo',
+		          name: `${appname} folder listing`,
+		          description: 'Raw /apps/getfolderinfo response',
 	          value: {
 	            request: { appname, component: componentUsed, componentInput: component, componentDerivedFromContainer, folder },
 	            response: res,
@@ -9910,20 +10043,22 @@ export async function callTool(name: string, rawArgs: unknown) {
 	          },
 	        });
 
-	        const summary = {
-	          ok,
-	          status: res.status,
-	          appname,
-	          component: componentUsed,
-	          componentInput: component,
-	          componentDerivedFromContainer,
-	          folder,
-	          count: items.length,
-	          resolved: resolvedInfo,
-	          error: ok ? null : knownError,
-	          resourceUri: link.uri,
-	          nextActions: ok
-	            ? []
+		        const summary = {
+		          ok,
+		          status: res.status,
+		          appname,
+		          component: componentUsed,
+		          componentInput: component,
+		          componentDerivedFromContainer,
+		          folder,
+		          count: items.length,
+		          shown: itemsPreview.length,
+		          itemsPreview,
+		          resolved: resolvedInfo,
+		          error: ok ? null : knownError,
+		          resourceUri: link.uri,
+		          nextActions: ok
+		            ? []
 	            : [
 	                ...(locationCandidates.length > 0
 	                  ? [{ tool: 'flux_set_base_url', arguments: { baseUrl: locationCandidates[0].baseUrl } }]
