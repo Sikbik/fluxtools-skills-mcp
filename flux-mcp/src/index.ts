@@ -1063,6 +1063,31 @@ function decryptEnterprisePayload(enterpriseBase64: string, aesKeyBase64: string
   return decrypted.toString('utf8');
 }
 
+const DEFAULT_ZELCORE_ICON = 'https://raw.githubusercontent.com/runonflux/flux/master/zelID.svg';
+
+function buildZelcoreDeeplink(opts: { message: string; icon?: string; callback?: string }): string {
+  const icon = opts.icon ?? DEFAULT_ZELCORE_ICON;
+  const callback = opts.callback ? `&callback=${encodeURIComponent(opts.callback)}` : '';
+  return `zel:?action=sign&message=${encodeURIComponent(opts.message)}&icon=${encodeURIComponent(icon)}${callback}`;
+}
+
+function buildZelcoreDeeplinkPreview(opts: {
+  message: string;
+  icon?: string;
+  callback?: string;
+}): { link: string; warning: string | null; messageLength: number } {
+  const messageLength = opts.message.length;
+  const warning =
+    messageLength > 1800
+      ? 'Message length > 1800 chars. Zelcore may reject it. Use flux_build_zelcore_sign_link with useFluxStorage=true (confirm required) to upload and sign a FLUX_URL.'
+      : null;
+  return {
+    link: buildZelcoreDeeplink({ message: opts.message, icon: opts.icon, callback: opts.callback }),
+    warning,
+    messageLength,
+  };
+}
+
 function isSensitiveEnvKey(key: string): boolean {
   const k = key.trim();
   if (!k) return false;
@@ -2496,34 +2521,34 @@ export const tools: Tool[] = [
     name: 'flux_apps_get_spec_full',
     description:
       'Fetch an app spec; for v8+ enterprise apps, performs the Arcane enterprise decrypt flow and returns decrypted compose/contacts (requires zelidauth + Arcane node).',
-	    inputSchema: {
-	      type: 'object',
-	      properties: {
-	        appname: { type: 'string', description: 'Flux app name' },
-	        owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
-	        baseUrls: {
-	          type: 'array',
-	          items: { type: 'string' },
-	          description:
-	            'Optional base URLs to try for Arcane/enterprise operations (e.g. ["http://<ip>:16127", "https://<ip-with-dashes>-16127.node.api.runonflux.io"]).',
-	        },
-	        timeoutMs: { type: 'number', description: 'Optional request timeout override.' },
-	        setBaseUrlOnSuccess: { type: 'boolean', description: 'If true (default), set MCP baseUrl to the successful Arcane node URL.' },
-	        includeSecrets: {
-	          type: 'boolean',
-	          description:
-	            'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires confirm=true. Can be globally disabled by setting FLUX_MCP_ALLOW_SECRETS=0.',
-	          default: false,
-	        },
-	        confirm: {
-	          type: 'boolean',
-	          description: 'Required when includeSecrets=true (acknowledges that secrets may be returned).',
-	          default: false,
-	        },
-	      },
-	      required: ['appname'],
-	    },
-	  },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          appname: { type: 'string', description: 'Flux app name' },
+          owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
+          baseUrls: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Optional base URLs to try for Arcane/enterprise operations (e.g. ["http://<ip>:16127", "https://<ip-with-dashes>-16127.node.api.runonflux.io"]).',
+          },
+          timeoutMs: { type: 'number', description: 'Optional request timeout override.' },
+          setBaseUrlOnSuccess: { type: 'boolean', description: 'If true (default), set MCP baseUrl to the successful Arcane node URL.' },
+          includeSecrets: {
+            type: 'boolean',
+            description:
+              'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires confirm=true. Can be globally disabled by setting FLUX_MCP_ALLOW_SECRETS=0.',
+            default: false,
+          },
+          confirm: {
+            type: 'boolean',
+            description: 'Required when includeSecrets=true (acknowledges that secrets may be returned).',
+            default: false,
+          },
+        },
+        required: ['appname'],
+      },
+    },
   {
     name: 'flux_apps_get_public_key',
     description: 'Fetch RSA public key for enterprise encryption (POST /apps/getpublickey). Requires zelidauth and Arcane node.',
@@ -3493,8 +3518,8 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(out, { structuredContent: out });
       }
 
-      case 'flux_auth_login': {
-        const zelid = mustBeString(args['zelid'], 'zelid');
+        case 'flux_auth_login': {
+          const zelid = mustBeString(args['zelid'], 'zelid');
         const signature = asOptionalString(args['signature']);
         const loginPhraseArg = asOptionalString(args['loginPhrase']);
         const useEmergencyPhrase = (asOptionalBoolean(args['useEmergencyPhrase']) ?? false) === true;
@@ -3502,7 +3527,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const setZelidauth = (asOptionalBoolean(args['setZelidauth']) ?? true) === true;
         const checkPrivilege = (asOptionalBoolean(args['checkPrivilege']) ?? true) === true;
 
-        if (!signature || !loginPhraseArg) {
+          if (!signature || !loginPhraseArg) {
           const phrasePath = useEmergencyPhrase ? '/id/emergencyphrase' : '/id/loginphrase';
           const phraseRes = await client.request(phrasePath);
           if (!phraseRes.ok || !isFluxSuccess(phraseRes.data)) {
@@ -3511,35 +3536,43 @@ export async function callTool(name: string, rawArgs: unknown) {
           const phrase = unwrapFluxEnvelope<unknown>(phraseRes.data);
           if (typeof phrase !== 'string' || !phrase.trim()) throw new Error('Invalid login phrase response');
 
-          const phraseText = phrase.trim();
-          const phraseLink = resourceStore.putText({
-            kind: 'auth/login_phrase',
-            name: 'Login phrase to sign',
-            description: 'Exact login phrase bytes to sign for zelidauth',
-            mimeType: 'text/plain',
-            text: phraseText,
-          });
+            const phraseText = phrase.trim();
+            const preview = buildZelcoreDeeplinkPreview({ message: phraseText });
+            const phraseLink = resourceStore.putText({
+              kind: 'auth/login_phrase',
+              name: 'Login phrase to sign',
+              description: 'Exact login phrase bytes to sign for zelidauth',
+              mimeType: 'text/plain',
+              text: phraseText,
+            });
 
-          const out = {
-            ok: true,
-            zelid,
-            needSignature: true,
-            loginPhrase: phraseText,
-            loginPhraseResourceUri: phraseLink.uri,
-            nextActions: [
-              {
-                tool: 'flux_auth_login',
-                arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
-              },
-            ],
-          };
+            const out = {
+              ok: true,
+              zelid,
+              needSignature: true,
+              loginPhrase: phraseText,
+              loginPhraseResourceUri: phraseLink.uri,
+              zelcoreSignLink: preview.link,
+              zelcoreWarning: preview.warning,
+              nextActions: [
+                {
+                  tool: 'flux_auth_login',
+                  arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
+                },
+              ],
+            };
 
-          return {
-            content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...phraseLink }],
-            structuredContent: out,
-            isError: false,
-          };
-        }
+            return {
+              content: [
+                { type: 'text', text: `Zelcore sign link:\n${preview.link}` },
+                ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
+                { type: 'text', text: JSON.stringify(out, null, 2) },
+                { type: 'resource_link', ...phraseLink },
+              ],
+              structuredContent: out,
+              isError: false,
+            };
+          }
 
         const loginPhrase = loginPhraseArg.trim();
         const verifyRes = verify
@@ -4301,11 +4334,11 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult({ zelidauth: headerValue });
       }
 
-      case 'flux_build_message_to_sign': {
-        const type = mustBeString(args['type'], 'type') as 'fluxappregister' | 'fluxappupdate' | 'zelappregister' | 'zelappupdate';
-        if (type !== 'fluxappregister' && type !== 'fluxappupdate' && type !== 'zelappregister' && type !== 'zelappupdate') {
-          throw new Error('type must be one of: fluxappregister, fluxappupdate, zelappregister, zelappupdate');
-        }
+        case 'flux_build_message_to_sign': {
+          const type = mustBeString(args['type'], 'type') as 'fluxappregister' | 'fluxappupdate' | 'zelappregister' | 'zelappupdate';
+          if (type !== 'fluxappregister' && type !== 'fluxappupdate' && type !== 'zelappregister' && type !== 'zelappupdate') {
+            throw new Error('type must be one of: fluxappregister, fluxappupdate, zelappregister, zelappupdate');
+          }
         const version = mustBeNumber(args['version'], 'version');
         const spec = mustBeObject(args['spec'], 'spec');
         const timestamp = mustBeNumber(args['timestamp'], 'timestamp');
@@ -4323,27 +4356,36 @@ export async function callTool(name: string, rawArgs: unknown) {
           text: messageToSign,
         });
 
-        const out: Record<string, unknown> = {
-          ok: true,
-          type,
-          version,
-          timestamp,
-          messageToSignSha256,
-          messageToSignBytes,
-          messageToSignResourceUri: link.uri,
-        };
+          const preview = buildZelcoreDeeplinkPreview({ message: messageToSign });
+
+          const out: Record<string, unknown> = {
+            ok: true,
+            type,
+            version,
+            timestamp,
+            messageToSignSha256,
+            messageToSignBytes,
+            messageToSignResourceUri: link.uri,
+            zelcoreSignLink: preview.link,
+            zelcoreWarning: preview.warning,
+          };
 
         if (includeMessageToSign) {
           const details = buildMessageToSignDetails(messageToSign);
           Object.assign(out, { messageToSign, ...details });
         }
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
-          structuredContent: out,
-          isError: false,
-        };
-      }
+          return {
+            content: [
+              { type: 'text', text: `Zelcore sign link:\n${preview.link}` },
+              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
+              { type: 'text', text: JSON.stringify(out, null, 2) },
+              { type: 'resource_link', ...link },
+            ],
+            structuredContent: out,
+            isError: false,
+          };
+        }
 
       case 'flux_build_zelcore_sign_link': {
         const messageResourceUriRaw = asOptionalString(args['messageResourceUri']);
@@ -4361,10 +4403,10 @@ export async function callTool(name: string, rawArgs: unknown) {
           message = mustBeString(args['message'], 'message');
         }
 
-        const iconRaw = asOptionalString(args['icon']);
-        const callbackRaw = asOptionalString(args['callback']);
-        const useFluxStorage = (asOptionalBoolean(args['useFluxStorage']) ?? false) === true;
-        const icon = iconRaw ?? 'https://raw.githubusercontent.com/runonflux/flux/master/zelID.svg';
+          const iconRaw = asOptionalString(args['icon']);
+          const callbackRaw = asOptionalString(args['callback']);
+          const useFluxStorage = (asOptionalBoolean(args['useFluxStorage']) ?? false) === true;
+          const icon = iconRaw ?? DEFAULT_ZELCORE_ICON;
 
         let messageToSign = message;
         let storageUrl: string | null = null;
@@ -4380,8 +4422,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           }
         }
 
-        const callback = callbackRaw ? `&callback=${encodeURIComponent(callbackRaw)}` : '';
-        const link = `zel:?action=sign&message=${encodeURIComponent(messageToSign)}&icon=${encodeURIComponent(icon)}${callback}`;
+          const link = buildZelcoreDeeplink({ message: messageToSign, icon, callback: callbackRaw ?? undefined });
 
         const out = {
           ok: true,
@@ -4466,32 +4507,41 @@ export async function callTool(name: string, rawArgs: unknown) {
               },
             ];
 
-        const out: Record<string, unknown> = {
-          ok: true,
-          type,
-          version,
-          timestamp,
-          messageToSignSha256,
-          messageToSignBytes,
-          messageToSignResourceUri: link.uri,
-          signatureNotes: {
-            loginSignature: 'Sign loginPhrase for zelidauth (auth).',
-            appSignature: 'Sign messageToSign for app register/update.',
-          },
-          nextActions,
-        };
+          const preview = buildZelcoreDeeplinkPreview({ message: messageToSign });
+
+          const out: Record<string, unknown> = {
+            ok: true,
+            type,
+            version,
+            timestamp,
+            messageToSignSha256,
+            messageToSignBytes,
+            messageToSignResourceUri: link.uri,
+            zelcoreSignLink: preview.link,
+            zelcoreWarning: preview.warning,
+            signatureNotes: {
+              loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+              appSignature: 'Sign messageToSign for app register/update.',
+            },
+            nextActions,
+          };
 
         if (includeMessageToSign) {
           const details = buildMessageToSignDetails(messageToSign);
           Object.assign(out, { messageToSign, ...details });
         }
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...link }],
-          structuredContent: out,
-          isError: false,
-        };
-      }
+          return {
+            content: [
+              { type: 'text', text: `Zelcore sign link:\n${preview.link}` },
+              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
+              { type: 'text', text: JSON.stringify(out, null, 2) },
+              { type: 'resource_link', ...link },
+            ],
+            structuredContent: out,
+            isError: false,
+          };
+        }
 
       case 'flux_list_endpoint_categories': {
         if (!inventory) {
@@ -6397,33 +6447,33 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
       }
 
-	      case 'flux_apps_get_spec_full': {
-	        const appname = mustBeString(args['appname'], 'appname');
-	        const ownerArg = asOptionalString(args['owner']);
-	        const baseUrlsRaw = args['baseUrls'];
-	        const timeoutMs = asOptionalNumber(args['timeoutMs']);
-	        const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
-	        const includeSecrets = (asOptionalBoolean(args['includeSecrets']) ?? false) === true;
-	        const confirm = (asOptionalBoolean(args['confirm']) ?? false) === true;
+        case 'flux_apps_get_spec_full': {
+          const appname = mustBeString(args['appname'], 'appname');
+          const ownerArg = asOptionalString(args['owner']);
+          const baseUrlsRaw = args['baseUrls'];
+          const timeoutMs = asOptionalNumber(args['timeoutMs']);
+          const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
+          const includeSecrets = (asOptionalBoolean(args['includeSecrets']) ?? false) === true;
+          const confirm = (asOptionalBoolean(args['confirm']) ?? false) === true;
 
-	        if (includeSecrets) {
-	          // Secrets are always opt-in per call via includeSecrets + confirm.
-	          // Operators can still disable secrets entirely via FLUX_MCP_ALLOW_SECRETS=0.
-	          const allowEnv = String(process.env.FLUX_MCP_ALLOW_SECRETS ?? '1').trim().toLowerCase();
-	          const allowed = !(allowEnv === '0' || allowEnv === 'false' || allowEnv === 'no');
-	          if (!allowed) {
-	            throw new Error(
-	              'Secrets are disabled for this MCP server (set FLUX_MCP_ALLOW_SECRETS=1 to allow).'
-	            );
-	          }
-	          if (!confirm) {
-	            throw new Error('includeSecrets=true requires confirm=true.');
-	          }
-	        }
+          if (includeSecrets) {
+            // Secrets are always opt-in per call via includeSecrets + confirm.
+            // Operators can still disable secrets entirely via FLUX_MCP_ALLOW_SECRETS=0.
+            const allowEnv = String(process.env.FLUX_MCP_ALLOW_SECRETS ?? '1').trim().toLowerCase();
+            const allowed = !(allowEnv === '0' || allowEnv === 'false' || allowEnv === 'no');
+            if (!allowed) {
+              throw new Error(
+                'Secrets are disabled for this MCP server (set FLUX_MCP_ALLOW_SECRETS=1 to allow).'
+              );
+            }
+            if (!confirm) {
+              throw new Error('includeSecrets=true requires confirm=true.');
+            }
+          }
 
-	        const baseUrlsExplicit =
-	          Array.isArray(baseUrlsRaw) &&
-	          baseUrlsRaw.some((x) => typeof x === 'string' && x.trim().length > 0);
+          const baseUrlsExplicit =
+            Array.isArray(baseUrlsRaw) &&
+            baseUrlsRaw.some((x) => typeof x === 'string' && x.trim().length > 0);
 
         const baseUrls = Array.isArray(baseUrlsRaw)
           ? baseUrlsRaw.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean)
@@ -6515,22 +6565,22 @@ export async function callTool(name: string, rawArgs: unknown) {
           };
         }
 
-	        // 2) Enterprise apps require an authenticated Arcane node for the decrypt flow.
-	        if (!client.getZelidauthSummary().present) {
-	          const summary = {
-	            ok: false,
-	            appname,
-	            enterprise: true,
-	            error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
-	            baseUrlUsed,
-	            resourceUri: baseLink.uri,
-	            nextActions: [
-	              { tool: 'flux_auth_login', arguments: { zelid: '<ZELID>' } },
-	              { tool: 'flux_auth_flow', arguments: {} },
-	              { tool: 'flux_node_health', arguments: {} },
-	              { tool: 'flux_get_state', arguments: {} },
-	            ],
-	          };
+          // 2) Enterprise apps require an authenticated Arcane node for the decrypt flow.
+          if (!client.getZelidauthSummary().present) {
+            const summary = {
+              ok: false,
+              appname,
+              enterprise: true,
+              error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
+              baseUrlUsed,
+              resourceUri: baseLink.uri,
+              nextActions: [
+                { tool: 'flux_auth_login', arguments: { zelid: '<ZELID>' } },
+                { tool: 'flux_auth_flow', arguments: {} },
+                { tool: 'flux_node_health', arguments: {} },
+                { tool: 'flux_get_state', arguments: {} },
+              ],
+            };
 
           return {
             content: [
@@ -6777,25 +6827,25 @@ export async function callTool(name: string, rawArgs: unknown) {
           throw new Error('Enterprise payload decrypted but was not valid JSON');
         }
 
-	        if (!decryptedEnterprise || typeof decryptedEnterprise !== 'object' || Array.isArray(decryptedEnterprise)) {
-	          throw new Error('Enterprise payload JSON must be an object');
-	        }
+          if (!decryptedEnterprise || typeof decryptedEnterprise !== 'object' || Array.isArray(decryptedEnterprise)) {
+            throw new Error('Enterprise payload JSON must be an object');
+          }
 
-	        const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
-	        const sanitized = sanitizeEnterpriseObject(enterpriseObj, { includeSecrets });
+          const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
+          const sanitized = sanitizeEnterpriseObject(enterpriseObj, { includeSecrets });
 
-	        const mergedSpec: Record<string, unknown> = { ...encryptedSpec };
-	        if ('compose' in sanitized.enterprise) mergedSpec.compose = (sanitized.enterprise as any)['compose'];
-	        if ('contacts' in sanitized.enterprise) mergedSpec.contacts = (sanitized.enterprise as any)['contacts'];
+          const mergedSpec: Record<string, unknown> = { ...encryptedSpec };
+          if ('compose' in sanitized.enterprise) mergedSpec.compose = (sanitized.enterprise as any)['compose'];
+          if ('contacts' in sanitized.enterprise) mergedSpec.contacts = (sanitized.enterprise as any)['contacts'];
 
-	        const enterpriseLink = resourceStore.putJson({
-	          kind: 'enterprise/decrypted/json',
-	          name: `${appname} enterprise decrypted`,
-	          description: includeSecrets
-	            ? 'Decrypted enterprise payload (parsed JSON, includes secrets)'
-	            : 'Decrypted enterprise payload (parsed JSON, secrets redacted)',
-	          value: sanitized.enterprise,
-	        });
+          const enterpriseLink = resourceStore.putJson({
+            kind: 'enterprise/decrypted/json',
+            name: `${appname} enterprise decrypted`,
+            description: includeSecrets
+              ? 'Decrypted enterprise payload (parsed JSON, includes secrets)'
+              : 'Decrypted enterprise payload (parsed JSON, secrets redacted)',
+            value: sanitized.enterprise,
+          });
 
         const mergedLink = resourceStore.putJson({
           kind: 'apps/spec/full',
@@ -6804,36 +6854,36 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: mergedSpec,
         });
 
-		        const hasRedactions =
-		          !includeSecrets &&
-		          (sanitized.redactions.envCount > 0 || sanitized.redactions.repoauthCount > 0);
+            const hasRedactions =
+              !includeSecrets &&
+              (sanitized.redactions.envCount > 0 || sanitized.redactions.repoauthCount > 0);
 
-		        const summary = {
-		          ok: true,
-		          appname,
-		          enterprise: true,
-		          owner,
-		          baseUrlUsed: arcaneBaseUrlUsed,
-		          baseUrlSet: setBaseUrlOnSuccess,
-		          includeSecrets,
-		          redactions: includeSecrets ? null : sanitized.redactions,
-		          warning:
-		            'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
-		          nextActions: hasRedactions
-		            ? [
-		                {
-		                  tool: 'flux_apps_get_spec_full',
-		                  arguments: { appname, includeSecrets: true, confirm: true },
-		                },
-		              ]
-		            : [],
-		          resources: {
-		            baseSpec: baseLink.uri,
-		            encryptedSpec: encryptedLink.uri,
-		            enterpriseDecrypted: enterpriseLink.uri,
-		            mergedSpec: mergedLink.uri,
-		          },
-		        };
+            const summary = {
+              ok: true,
+              appname,
+              enterprise: true,
+              owner,
+              baseUrlUsed: arcaneBaseUrlUsed,
+              baseUrlSet: setBaseUrlOnSuccess,
+              includeSecrets,
+              redactions: includeSecrets ? null : sanitized.redactions,
+              warning:
+                'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
+              nextActions: hasRedactions
+                ? [
+                    {
+                      tool: 'flux_apps_get_spec_full',
+                      arguments: { appname, includeSecrets: true, confirm: true },
+                    },
+                  ]
+                : [],
+              resources: {
+                baseSpec: baseLink.uri,
+                encryptedSpec: encryptedLink.uri,
+                enterpriseDecrypted: enterpriseLink.uri,
+                mergedSpec: mergedLink.uri,
+              },
+            };
 
         return {
           content: [
@@ -7043,10 +7093,11 @@ export async function callTool(name: string, rawArgs: unknown) {
           throw new Error(extractFluxErrorMessage(deploymentInformation.data) ?? 'Failed to fetch deployment information');
         }
 
-        const type = 'fluxappregister' as const;
-        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
-        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
+          const type = 'fluxappregister' as const;
+          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+            const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+            const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
+            const messagePreview = buildZelcoreDeeplinkPreview({ message: messageToSign });
 
         const messageLink = resourceStore.putText({
           kind: 'message_to_sign',
@@ -7102,39 +7153,43 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: full,
         });
 
-        const summary = {
-          ok: true,
-          requiresAuth,
-          authNote,
-          ...built.meta,
-          timestamp,
-          type,
-          typeVersion,
-          payment,
-          messageToSignSha256,
-          messageToSignBytes,
-          messageToSignResourceUri: messageLink.uri,
-          resourceUri: fullLink.uri,
-          nextActions: [
-            { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
-            { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
-            {
-              tool: 'flux_git_deploy_register_and_verify',
-              arguments: { planResourceUri: fullLink.uri, signature: '<SIGNATURE>', confirm: true },
-            },
-          ],
-        };
+          const summary = {
+            ok: true,
+            requiresAuth,
+            authNote,
+            ...built.meta,
+            timestamp,
+            type,
+            typeVersion,
+            payment,
+            messageToSignSha256,
+            messageToSignBytes,
+            messageToSignResourceUri: messageLink.uri,
+            zelcoreSignLink: messagePreview.link,
+            zelcoreWarning: messagePreview.warning,
+            resourceUri: fullLink.uri,
+            nextActions: [
+              { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+              { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+              {
+                tool: 'flux_git_deploy_register_and_verify',
+                arguments: { planResourceUri: fullLink.uri, signature: '<SIGNATURE>', confirm: true },
+              },
+            ],
+          };
 
-        return {
-          content: [
-            { type: 'text', text: JSON.stringify(summary, null, 2) },
-            { type: 'resource_link', ...fullLink },
-            { type: 'resource_link', ...messageLink },
-          ],
-          structuredContent: summary,
-          isError: false,
-        };
-      }
+          return {
+            content: [
+              { type: 'text', text: `Zelcore sign link:\n${messagePreview.link}` },
+              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...fullLink },
+              { type: 'resource_link', ...messageLink },
+            ],
+            structuredContent: summary,
+            isError: false,
+          };
+        }
 
       case 'flux_git_deploy_register_and_verify': {
         requireConfirm(args, 'git deploy: apps/appregister');
@@ -7430,17 +7485,18 @@ export async function callTool(name: string, rawArgs: unknown) {
           client.request('/apps/deploymentinformation'),
         ]);
 
-        const type = 'fluxappregister' as const;
-        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
-        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
-        const messageLink = resourceStore.putText({
-          kind: 'message_to_sign',
-          name: `messageToSign ${type}`,
-          description: 'Raw messageToSign bytes (exact data to sign)',
-          mimeType: 'text/plain',
-          text: messageToSign,
-        });
+          const type = 'fluxappregister' as const;
+          const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+          const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+          const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
+          const messagePreview = buildZelcoreDeeplinkPreview({ message: messageToSign });
+          const messageLink = resourceStore.putText({
+            kind: 'message_to_sign',
+            name: `messageToSign ${type}`,
+            description: 'Raw messageToSign bytes (exact data to sign)',
+            mimeType: 'text/plain',
+            text: messageToSign,
+          });
         const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
 
         const fluxPrice = extractFluxAmountFromPrice(price);
@@ -7491,38 +7547,42 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: full,
         });
 
-        const summary = {
-          ok: true,
-          requiresAuth,
-          authNote,
-          appname: identity.appname ?? null,
-          owner: identity.owner ?? null,
-          timestamp,
-          type,
-          typeVersion,
-          payment,
-          messageToSignSha256,
-          messageToSignBytes,
-          messageToSignResourceUri: messageLink.uri,
-          resourceUri: fullLink.uri,
-          signatureNotes: full.signatureNotes,
-          nextActions: [
-            { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
-            { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
-            { tool: 'flux_apps_register', note: 'Submit registration after signing (requires zelidauth).' },
-          ],
-        };
+          const summary = {
+            ok: true,
+            requiresAuth,
+            authNote,
+            appname: identity.appname ?? null,
+            owner: identity.owner ?? null,
+            timestamp,
+            type,
+            typeVersion,
+            payment,
+            messageToSignSha256,
+            messageToSignBytes,
+            messageToSignResourceUri: messageLink.uri,
+            zelcoreSignLink: messagePreview.link,
+            zelcoreWarning: messagePreview.warning,
+            resourceUri: fullLink.uri,
+            signatureNotes: full.signatureNotes,
+            nextActions: [
+              { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+              { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+              { tool: 'flux_apps_register', note: 'Submit registration after signing (requires zelidauth).' },
+            ],
+          };
 
-        return {
-          content: [
-            { type: 'text', text: JSON.stringify(summary, null, 2) },
-            { type: 'resource_link', ...fullLink },
-            { type: 'resource_link', ...messageLink },
-          ],
-          structuredContent: summary,
-          isError: false,
-        };
-      }
+          return {
+            content: [
+              { type: 'text', text: `Zelcore sign link:\n${messagePreview.link}` },
+              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
+              { type: 'text', text: JSON.stringify(summary, null, 2) },
+              { type: 'resource_link', ...fullLink },
+              { type: 'resource_link', ...messageLink },
+            ],
+            structuredContent: summary,
+            isError: false,
+          };
+        }
 
         case 'flux_apps_register': {
          assertAuthenticatedFor('apps/appregister');
@@ -7852,15 +7912,16 @@ export async function callTool(name: string, rawArgs: unknown) {
          timeoutMs: 5 * 60 * 1000,
        });
 
-       const type = 'fluxappupdate' as const;
-       const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-       const messageLink = resourceStore.putText({
-         kind: 'message_to_sign',
-         name: `messageToSign ${type}`,
-         description: 'Raw messageToSign bytes (exact data to sign)',
-         mimeType: 'text/plain',
-         text: messageToSign,
-       });
+         const type = 'fluxappupdate' as const;
+         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
+         const messagePreview = buildZelcoreDeeplinkPreview({ message: messageToSign });
+         const messageLink = resourceStore.putText({
+           kind: 'message_to_sign',
+           name: `messageToSign ${type}`,
+           description: 'Raw messageToSign bytes (exact data to sign)',
+           mimeType: 'text/plain',
+           text: messageToSign,
+         });
        const payload = buildSignedPayload({ type, version: typeVersion, spec: verifiedSpec, timestamp });
 
        const authNote = requiresAuth
@@ -7905,38 +7966,42 @@ export async function callTool(name: string, rawArgs: unknown) {
            value: full,
          });
 
-         const summary = {
-           ok: true,
-           requiresAuth,
-           authNote,
-           appname: identity.appname ?? null,
-           owner: identity.owner ?? null,
-           timestamp,
-           type,
-           typeVersion,
-           payment: paymentInfo.payment,
-           messageToSignSha256,
-           messageToSignBytes,
-           messageToSignResourceUri: messageLink.uri,
-           resourceUri: fullLink.uri,
-           signatureNotes: full.signatureNotes,
-           nextActions: [
-             { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
-             { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
-             { tool: 'flux_apps_update', note: 'Submit update after signing (requires zelidauth).' },
-           ],
-         };
+           const summary = {
+             ok: true,
+             requiresAuth,
+             authNote,
+             appname: identity.appname ?? null,
+             owner: identity.owner ?? null,
+             timestamp,
+             type,
+             typeVersion,
+             payment: paymentInfo.payment,
+             messageToSignSha256,
+             messageToSignBytes,
+             messageToSignResourceUri: messageLink.uri,
+             zelcoreSignLink: messagePreview.link,
+             zelcoreWarning: messagePreview.warning,
+             resourceUri: fullLink.uri,
+             signatureNotes: full.signatureNotes,
+             nextActions: [
+               { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+               { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+               { tool: 'flux_apps_update', note: 'Submit update after signing (requires zelidauth).' },
+             ],
+           };
 
-         return {
-           content: [
-             { type: 'text', text: JSON.stringify(summary, null, 2) },
-             { type: 'resource_link', ...fullLink },
-             { type: 'resource_link', ...messageLink },
-           ],
-           structuredContent: summary,
-           isError: false,
-         };
-      }
+           return {
+             content: [
+               { type: 'text', text: `Zelcore sign link:\n${messagePreview.link}` },
+               ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
+               { type: 'text', text: JSON.stringify(summary, null, 2) },
+               { type: 'resource_link', ...fullLink },
+               { type: 'resource_link', ...messageLink },
+             ],
+             structuredContent: summary,
+             isError: false,
+           };
+        }
 
        case 'flux_apps_plan_renew': {
          const requiresAuth = !client.getZelidauthSummary().present;
