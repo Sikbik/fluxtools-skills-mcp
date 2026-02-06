@@ -23,9 +23,10 @@ If the Flux MCP server is available, prefer MCP tools over ad-hoc curl:
 
 Setup instructions: `references/mcp-setup.md`.
 
-## First questions (always ask)
+## First questions (ask only if missing)
 
-1) Node API base URL (direct node): `http://<node-ip>:16127`
+1) Node API base URL (direct node preferred for node-local ops): `http://<node-ip>:16127`
+   - If the user didn’t provide it, start with `flux_get_state` and only ask if you can’t proceed.
 2) What the user is allowed to do (read-only vs lifecycle/system changes)
 3) App name and component name (if composed)
 4) Owner ZelID/Flux address (never ask for private keys)
@@ -63,8 +64,11 @@ Reference: `references/app-spec-v8.md`.
 
 ### 4) Register a new app (network-level)
 
-1) `flux_apps_plan_registration` → returns canonicalized spec + `messageToSign` + payload scaffold (gateway auto-pin is now default).
-2) User signs `messageToSign` with the OWNER ZelID.
+1) `flux_apps_plan_registration` → returns summary + `resource_link`:
+   - `messageToSignResourceUri` (raw message to sign)
+   - `resourceUri` (full plan)
+2) User signs `messageToSign` (open `messageToSignResourceUri`) with the OWNER ZelID.
+   - Optional (Zelcore): `flux_build_zelcore_sign_link { "messageResourceUri": "<messageToSignResourceUri>", "useFluxStorage": true, "confirm": true }`
 3) `flux_apps_register` with `signature` + `timestamp`.
 4) `flux_apps_test_install` with the registration hash (requires `confirm=true`).
 5) Pay the registration fee to the address from `flux_apps_register_and_verify.payment.address` (or from `flux_apps_plan_registration.payment.address`). Amount is available as `payment.amountFlux`. Memo must be the registration hash.
@@ -76,7 +80,7 @@ Reference: `references/register-update.md`.
 
 1) Fetch current spec (MCP: `flux_apps_get_spec`).
 2) Edit desired fields.
-3) `flux_apps_plan_update` → user signs → `flux_apps_update`.
+3) `flux_apps_plan_update` → user signs (open `messageToSignResourceUri`) → `flux_apps_update`.
 4) `flux_apps_get_messages`.
 
 ### 6) Operate an app (lifecycle + observability)

@@ -15,11 +15,13 @@ type + version + JSON.stringify(appSpec) + timestamp
 
 ## Registration
 
-1) `flux_apps_plan_registration` → returns:
-   - `messageToSign`
+1) `flux_apps_plan_registration` → returns summary + `resource_link`:
+   - `messageToSignResourceUri` (raw message-to-sign)
+   - `messageToSignSha256` + `messageToSignBytes` (sanity checks)
    - `timestamp`
-   - `payload` scaffold
-2) User signs `messageToSign` with the OWNER ZelID.
+   - `resourceUri` (full plan JSON)
+2) User signs `messageToSign` (open `messageToSignResourceUri`) with the OWNER ZelID.
+   - Optional (Zelcore): `flux_build_zelcore_sign_link { "messageResourceUri": "<messageToSignResourceUri>", "useFluxStorage": true, "confirm": true }`
 3) `flux_apps_register` with `signature` and the same `timestamp`.
 4) Check propagation: `flux_apps_get_messages`.
 

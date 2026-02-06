@@ -195,18 +195,23 @@ This is about the network-level register/update flow (message propagation), not 
 
 - Use a direct node base URL: `http://<node-ip>:16127`
 - Confirm node health: `GET /flux/info`
-- Confirm you are signing the exact returned message string.
+- Confirm you are signing the exact returned message string (from `messageToSignResourceUri`).
 
 #### MCP-first flow (recommended)
 
 1) Generate a canonical spec + price + message-to-sign scaffold:
 
 - Register:
-  - `flux_apps_plan_registration` → returns `messageToSign`, `payload`, and `hash` details
+  - `flux_apps_plan_registration` → returns summary + `resource_link`:
+    - `messageToSignResourceUri` (raw message-to-sign)
+    - `resourceUri` (full plan JSON)
 - Update:
-  - `flux_apps_plan_update` → returns `messageToSign`, `payload`, and `hash` details
+  - `flux_apps_plan_update` → returns summary + `resource_link`:
+    - `messageToSignResourceUri` (raw message-to-sign)
+    - `resourceUri` (full plan JSON)
 
-2) Sign the returned `messageToSign` with the app owner’s ZelID.
+2) Sign `messageToSign` (open `messageToSignResourceUri`) with the app owner’s ZelID.
+   - Optional (Zelcore): `flux_build_zelcore_sign_link { "messageResourceUri": "<messageToSignResourceUri>", "useFluxStorage": true, "confirm": true }`
 
 3) Submit and verify propagation:
 

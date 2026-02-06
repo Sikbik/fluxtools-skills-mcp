@@ -9,9 +9,10 @@ Use this skill to help users operate Flux nodes and Flux apps via the HTTP API.
 
 Source-of-truth code references use the public repo: `https://github.com/RunOnFlux/flux`.
 
-## Ask first (required context)
+## Ask first (only when missing)
 
 - Node API base URL (direct node preferred): `http://<node-ip>:16127`
+  - If not provided, start with `flux_get_state` and only ask if you can’t proceed.
 - What you’re allowed to do (read-only vs lifecycle/system changes)
 - App name (and component name for composed apps)
 - App owner’s ZelID/Flux address (never ask for private keys)
@@ -84,6 +85,8 @@ Use: `references/api-endpoints.md`.
 - Prefer `flux_apps_plan_registration` / `flux_apps_plan_update` (auto-canonicalizes the spec).
 - Prefer direct node base URLs; if starting from a gateway, use tools with `resolveGateway=true` (now default).
 - Submit `flux_apps_register` / `flux_apps_update` with the owner signature.
+- Signing: plan tools return `messageToSignResourceUri` (raw message-to-sign). For Zelcore, use:
+  - `flux_build_zelcore_sign_link { "messageResourceUri": "<messageToSignResourceUri>", "useFluxStorage": true, "confirm": true }`
 - `flux_apps_test_install` with the registration hash (requires `confirm=true`).
 - Payment: use `flux_apps_register_and_verify.payment.address` (or `flux_apps_plan_registration.payment.address`). Amount is `payment.amountFlux`. Memo must be the registration hash.
 
