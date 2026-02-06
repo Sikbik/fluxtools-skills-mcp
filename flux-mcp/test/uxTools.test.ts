@@ -92,6 +92,27 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: { blocksLasting: 100, daemonPONFork: 1 } });
     }
 
+    if (url === '/apps/deploymentinformation') {
+      return json(res, 200, { status: 'success', data: { address: 't1pay' } });
+    }
+
+    if (url === '/apps/verifyappregistrationspecifications') {
+      const bodyRaw = await readBody(req);
+      const body = bodyRaw ? (JSON.parse(bodyRaw) as Record<string, unknown>) : {};
+      return json(res, 200, { status: 'success', data: body });
+    }
+
+    if (url === '/apps/verifyappupdatespecifications') {
+      const bodyRaw = await readBody(req);
+      const body = bodyRaw ? (JSON.parse(bodyRaw) as Record<string, unknown>) : {};
+      return json(res, 200, { status: 'success', data: body });
+    }
+
+    if (url === '/apps/calculateprice') {
+      await readBody(req);
+      return json(res, 200, { status: 'success', data: { flux: 1.23 } });
+    }
+
     if (url.startsWith('/apps/location/myapp')) {
       const host = serverPort ? `127.0.0.1:${serverPort}` : '127.0.0.1';
       return json(res, 200, { status: 'success', data: [{ ip: host }] });
@@ -319,6 +340,60 @@ describe.sequential('UX tools', () => {
     expect(typeof payload.messageToSignSha256).toBe('string');
     expect(typeof payload.messageToSignBytes).toBe('number');
     expect(Array.isArray(payload.nextActions)).toBe(true);
+  });
+
+  it('flux_apps_plan_registration returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_plan_registration', {
+      spec: { name: 'myapp', owner: 't1owner', description: 'desc' },
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_plan_update returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_plan_update', {
+      spec: { name: 'myapp', owner: 't1owner', description: 'desc' },
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_plan_renew returns summary + resource links', async () => {
+    const r = await callTool('flux_apps_plan_renew', {
+      appname: 'myapp',
+      spec: { name: 'myapp', owner: 't1owner', description: 'desc', version: 8 },
+      weeks: 1,
+      timestamp: 1,
+      typeVersion: 1,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.messageToSign).toBeUndefined();
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.messageToSignResourceUri).toBe('string');
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(1);
   });
 
   it('flux_daemon_call denies non-allowlisted methods', async () => {

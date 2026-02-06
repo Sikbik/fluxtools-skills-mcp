@@ -5899,7 +5899,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const type = 'fluxappregister' as const;
         const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-        const messageDetails = buildMessageToSignDetails(messageToSign);
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
         const messageLink = resourceStore.putText({
           kind: 'message_to_sign',
           name: `messageToSign ${type}`,
@@ -5928,7 +5929,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           ? 'Before submitting registration, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app registration signature). You can sign both in one wallet session: first the login phrase (for zelidauth), then messageToSign (for app registration).'
           : null;
 
-        const out = {
+        const full = {
           requiresAuth,
           authNote,
           verified,
@@ -5939,8 +5940,8 @@ export async function callTool(name: string, rawArgs: unknown) {
           timestamp,
           type,
           typeVersion,
-          messageToSign,
-          ...messageDetails,
+          messageToSignSha256,
+          messageToSignBytes,
           messageToSignResourceUri: messageLink.uri,
           payload,
           signatureNotes: {
@@ -5950,9 +5951,42 @@ export async function callTool(name: string, rawArgs: unknown) {
           next: 'Sign messageToSign with the OWNER ZelID (distinct from login phrase signature), then call flux_apps_register with signature + same timestamp. After registration returns a hash, run flux_apps_test_install (or flux_apps_test_install_pin if you are using a gateway), then pay with memo=hash.',
         };
 
+        const fullLink = resourceStore.putJson({
+          kind: 'apps/plan_registration',
+          name: `Plan registration ${identity.appname}`,
+          description: 'Full output from flux_apps_plan_registration',
+          value: full,
+        });
+
+        const summary = {
+          ok: true,
+          requiresAuth,
+          authNote,
+          appname: identity.appname ?? null,
+          owner: identity.owner ?? null,
+          timestamp,
+          type,
+          typeVersion,
+          payment,
+          messageToSignSha256,
+          messageToSignBytes,
+          messageToSignResourceUri: messageLink.uri,
+          resourceUri: fullLink.uri,
+          signatureNotes: full.signatureNotes,
+          nextActions: [
+            { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+            { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+            { tool: 'flux_apps_register', note: 'Submit registration after signing (requires zelidauth).' },
+          ],
+        };
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
-          structuredContent: out,
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...fullLink },
+            { type: 'resource_link', ...messageLink },
+          ],
+          structuredContent: summary,
           isError: false,
         };
       }
@@ -6247,7 +6281,6 @@ export async function callTool(name: string, rawArgs: unknown) {
 
        const type = 'fluxappupdate' as const;
        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-       const messageDetails = buildMessageToSignDetails(messageToSign);
        const messageLink = resourceStore.putText({
          kind: 'message_to_sign',
          name: `messageToSign ${type}`,
@@ -6261,9 +6294,14 @@ export async function callTool(name: string, rawArgs: unknown) {
          ? 'Before submitting update, you must authenticate (zelidauth). This requires a separate signature over the login phrase (distinct from the app update signature).'
          : null;
 
-        const paymentInfo = await buildPaymentInfoFromPrice(price, '<UPDATE_HASH>');
+       const paymentInfo = await buildPaymentInfoFromPrice(price, '<UPDATE_HASH>');
 
-         const out = {
+         const identity = extractAppIdentity(specInput);
+
+         const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+         const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
+
+         const full = {
            requiresAuth,
            authNote,
            verified,
@@ -6271,8 +6309,8 @@ export async function callTool(name: string, rawArgs: unknown) {
            timestamp,
            type,
            typeVersion,
-           messageToSign,
-           ...messageDetails,
+           messageToSignSha256,
+           messageToSignBytes,
            messageToSignResourceUri: messageLink.uri,
            payload,
            payment: paymentInfo.payment,
@@ -6287,9 +6325,42 @@ export async function callTool(name: string, rawArgs: unknown) {
            next: 'Sign messageToSign with the OWNER ZelID (distinct from login phrase signature), then call flux_apps_update with signature + same timestamp.',
          };
 
+         const fullLink = resourceStore.putJson({
+           kind: 'apps/plan_update',
+           name: `Plan update ${identity.appname ?? 'app'}`,
+           description: 'Full output from flux_apps_plan_update',
+           value: full,
+         });
+
+         const summary = {
+           ok: true,
+           requiresAuth,
+           authNote,
+           appname: identity.appname ?? null,
+           owner: identity.owner ?? null,
+           timestamp,
+           type,
+           typeVersion,
+           payment: paymentInfo.payment,
+           messageToSignSha256,
+           messageToSignBytes,
+           messageToSignResourceUri: messageLink.uri,
+           resourceUri: fullLink.uri,
+           signatureNotes: full.signatureNotes,
+           nextActions: [
+             { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+             { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+             { tool: 'flux_apps_update', note: 'Submit update after signing (requires zelidauth).' },
+           ],
+         };
+
          return {
-           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }, { type: 'resource_link', ...messageLink }],
-           structuredContent: out,
+           content: [
+             { type: 'text', text: JSON.stringify(summary, null, 2) },
+             { type: 'resource_link', ...fullLink },
+             { type: 'resource_link', ...messageLink },
+           ],
+           structuredContent: summary,
            isError: false,
          };
       }
@@ -6395,7 +6466,6 @@ export async function callTool(name: string, rawArgs: unknown) {
          let verified: FluxRequestResult | null = null;
          let price: FluxRequestResult | null = null;
          let messageToSign: string | null = null;
-         let messageDetails: ReturnType<typeof buildMessageToSignDetails> | null = null;
          let messageLink: ReturnType<typeof resourceStore.putText> | null = null;
          let payload: Record<string, unknown> | null = null;
          let paymentInfo: Awaited<ReturnType<typeof buildPaymentInfo>> | null = null;
@@ -6418,7 +6488,6 @@ export async function callTool(name: string, rawArgs: unknown) {
 
            const type = 'fluxappupdate' as const;
            messageToSign = buildMessageToSign({ type, version: typeVersion, spec: verifiedSpec, timestamp });
-           messageDetails = buildMessageToSignDetails(messageToSign);
            messageLink = resourceStore.putText({
              kind: 'message_to_sign',
              name: `messageToSign ${type}`,
@@ -6433,8 +6502,15 @@ export async function callTool(name: string, rawArgs: unknown) {
          const secondsRemaining = estimateSecondsFromBlocks(baseRemaining, secondsPerBlock);
          const timeRemaining = formatDurationSeconds(secondsRemaining);
 
-         const out = {
-           ok: updatedSpec !== null,
+         const ok = updatedSpec !== null;
+
+         const messageToSignSha256 = messageToSign
+           ? createHash('sha256').update(messageToSign, 'utf8').digest('hex')
+           : null;
+         const messageToSignBytes = messageToSign ? Buffer.byteLength(messageToSign, 'utf8') : null;
+
+         const full = {
+           ok,
            requiresAuth,
            appname,
            ownerFilter: ownerFilter ?? null,
@@ -6459,10 +6535,10 @@ export async function callTool(name: string, rawArgs: unknown) {
            verified,
            price,
            timestamp,
-           type: updatedSpec ? 'fluxappupdate' : null,
-           typeVersion: updatedSpec ? typeVersion : null,
-           messageToSign,
-           ...(messageDetails ?? {}),
+           type: ok ? 'fluxappupdate' : null,
+           typeVersion: ok ? typeVersion : null,
+           messageToSignSha256,
+           messageToSignBytes,
            messageToSignResourceUri: messageLink?.uri ?? null,
            payload,
            payment: paymentInfo?.payment ?? null,
@@ -6473,21 +6549,74 @@ export async function callTool(name: string, rawArgs: unknown) {
              loginSignature: 'Sign loginPhrase for zelidauth (auth).',
              appSignature: 'Sign messageToSign for update.',
            },
-           next: updatedSpec
+           next: ok
              ? 'Sign messageToSign with the OWNER ZelID (distinct from login phrase signature), then call flux_apps_update with signature + same timestamp.'
              : 'Provide a full spec (especially for enterprise apps) to proceed with renewal.',
+         };
+
+         const fullLink = resourceStore.putJson({
+           kind: 'apps/plan_renew',
+           name: `Plan renew ${appname}`,
+           description: 'Full output from flux_apps_plan_renew',
+           value: full,
+         });
+
+         const nextActions = ok
+           ? [
+               { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
+               { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
+               { tool: 'flux_apps_update', note: 'Submit update after signing (requires zelidauth).' },
+             ]
+           : [
+               isEnterprise
+                 ? {
+                     tool: 'flux_apps_get_spec_full',
+                     note: 'For enterprise apps: fetch the decrypted spec first (requires zelidauth + Arcane node).',
+                   }
+                 : null,
+               {
+                 tool: 'flux_apps_plan_renew',
+                 note: 'Re-run with a full spec in the spec argument (especially for enterprise apps).',
+               },
+             ].filter(Boolean);
+
+         const summary = {
+           ok,
+           requiresAuth,
+           appname,
+           ownerFilter: ownerFilter ?? null,
+           reference: full.reference,
+           policy: full.policy,
+           expireComputed,
+           specSource,
+           specWarning,
+           isEnterprise,
+           timestamp,
+           type: full.type,
+           typeVersion: full.typeVersion,
+           payment: full.payment,
+           messageToSignSha256,
+           messageToSignBytes,
+           messageToSignResourceUri: full.messageToSignResourceUri,
+           resourceUri: fullLink.uri,
+           signatureNotes: full.signatureNotes,
+           next: full.next,
+           nextActions,
          };
 
          const content: Array<
            | { type: 'text'; text: string }
            | { type: 'resource_link'; uri: string; name: string; description?: string; mimeType?: string }
-         > = [{ type: 'text', text: JSON.stringify(out, null, 2) }];
+         > = [
+           { type: 'text', text: JSON.stringify(summary, null, 2) },
+           { type: 'resource_link', ...fullLink },
+         ];
          if (messageLink) content.push({ type: 'resource_link', ...messageLink });
 
          return {
            content,
-           structuredContent: out,
-           isError: !out.ok,
+           structuredContent: summary,
+           isError: !summary.ok,
          };
       }
 

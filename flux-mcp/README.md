@@ -249,14 +249,16 @@ You can decrypt locally with:
 
 ## Signing tips
 
-- Planning tools now return:
-  - `messageToSignRaw` (exact bytes to sign)
-  - `messageToSignSha256` (checksum)
-  - `messageToSignBase64` (safe transport)
-- To avoid terminal wrapping, use:
+- Planning/signing tools return:
+  - `messageToSignResourceUri` (raw bytes to sign, stored as an MCP resource)
+  - `messageToSignSha256` + `messageToSignBytes` (sanity checks)
+  - `resourceUri` (full plan details, stored as an MCP resource)
+- To view/copy the raw `messageToSign`, open the `resource_link` in your client or run:
+  - `flux_resource_read { "uri": "<messageToSignResourceUri>" }`
+- To open Zelcore directly (recommended for long messages):
+  - `flux_build_zelcore_sign_link { "message": "<raw messageToSign>", "useFluxStorage": true, "confirm": true }`
+- To avoid terminal wrapping, you can also write the message to a file:
   - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
-- To open Zelcore directly:
-  - `flux_build_zelcore_sign_link { "message": "<messageToSignRaw>" }`
 
 ## Resources + large payloads
 
@@ -400,7 +402,7 @@ Mutating (requires `confirm=true` and usually admin/fluxteam privileges):
 
 - `flux_apps_plan_registration`
 
-3) User signs the returned `messageToSign` with the OWNER ZelID.
+3) User signs `messageToSign` (open `messageToSignResourceUri`) with the OWNER ZelID.
 
 4) Submit registration:
 
@@ -422,7 +424,7 @@ Mutating (requires `confirm=true` and usually admin/fluxteam privileges):
 
 - `flux_apps_plan_update`
 
-4) User signs `messageToSign`.
+4) User signs `messageToSign` (open `messageToSignResourceUri`).
 
 5) Submit update:
 
