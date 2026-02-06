@@ -47,6 +47,8 @@ curl -sS "$API/flux/isarcaneos"
 
 Preferred login helper (minimal steps):
 - `flux_auth_login { zelid }` → click the returned `zelcoreLauncherHttpUrl` (if present) → sign → `flux_auth_login { zelid, loginPhrase, signature }`
+  - If you're already logged in, `flux_auth_login { zelid }` should return `alreadyAuthenticated: true` (no re-sign needed).
+  - To force a fresh login phrase anyway: `flux_auth_login { zelid, force: true }`
 
 If your terminal/IDE won’t open `zel:` links:
 - Use `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` to get a clickable `http://127.0.0.1:...` launcher URL (fallback).
@@ -125,6 +127,8 @@ Use: `references/lifecycle-observability.md`.
   - Secrets (passwords/tokens) are redacted by default; only include them if the user explicitly asks:
     - Call with `{ includeSecrets: true, confirm: true }`.
     - Ops kill-switch: start the MCP server with `FLUX_MCP_ALLOW_SECRETS=0` to disable secrets output entirely.
+  - If the user needs to *verify* a secret value without printing it, use `secretChecks`:
+    - Example: `{ "appname": "<app>", "secretChecks": [{"key":"ENS_PASSWORD","equals":"snorlax"}], "confirm": true }`
 
 ### 6) Files and persistence
 

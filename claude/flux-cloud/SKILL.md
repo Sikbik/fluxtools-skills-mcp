@@ -54,6 +54,8 @@ Setup instructions: `references/mcp-setup.md`.
 
 - This signature is separate from the app registration/update signature; authenticate before asking the user to sign the app message.
 - Prefer `flux_auth_login` (minimal steps): `flux_auth_login { zelid }` → user signs phrase → `flux_auth_login { zelid, loginPhrase, signature }`.
+  - If already logged in, `flux_auth_login { zelid }` should return `alreadyAuthenticated: true` (no re-sign needed).
+  - To force a fresh login phrase anyway: `flux_auth_login { zelid, force: true }`.
 - Or use `flux_auth_flow` for a step-by-step plan (optionally pass `gatewayBaseUrl` to start from `https://api.runonflux.io` and resolve the current node).
 - If the user’s terminal won’t open `zel:` links, use:
   - Prefer clicking the `zelcoreLauncherHttpUrl` returned by `flux_auth_login` (when present).
@@ -100,6 +102,8 @@ Reference: `../../codex/flux-cloud/references/git-deployments.md`.
    - Secrets (passwords/tokens) are redacted by default; only include them if the user explicitly asks:
      - Call with `{ includeSecrets: true, confirm: true }`.
      - Ops kill-switch: start the MCP server with `FLUX_MCP_ALLOW_SECRETS=0` to disable secrets output entirely.
+   - If the user needs to *verify* a secret value without printing it, use `secretChecks`:
+     - Example: `{ "appname": "<app>", "secretChecks": [{"key":"ENS_PASSWORD","equals":"snorlax"}], "confirm": true }`
 2) Edit desired fields.
 3) `flux_apps_plan_update` → user signs (open `messageToSignResourceUri`) → `flux_apps_update`.
 4) `flux_apps_get_messages`.
