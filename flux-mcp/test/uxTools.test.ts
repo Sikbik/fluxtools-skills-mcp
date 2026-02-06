@@ -426,6 +426,18 @@ describe.sequential('UX tools', () => {
     expect(structured?.resourceUri).toBeTypeOf('string');
   });
 
+  it('flux_apps_get_spec suggests flux_apps_get_spec_full for enterprise apps', async () => {
+    const r = await callTool('flux_apps_get_spec', { appname: 'myent' });
+    expect(r.isError).not.toBe(true);
+
+    const structured = r.structuredContent as Record<string, unknown> | undefined;
+    expect(structured?.enterpriseDetected).toBe(true);
+
+    const nextActions = structured?.nextActions as Array<{ tool?: string }> | undefined;
+    expect(Array.isArray(nextActions)).toBe(true);
+    expect(nextActions?.some((x) => x.tool === 'flux_apps_get_spec_full')).toBe(true);
+  });
+
   it('flux_apps_get_spec_full discovers an Arcane node and decrypts enterprise specs', async () => {
     const r = await callTool('flux_apps_get_spec_full', { appname: 'myent', setBaseUrlOnSuccess: false });
     expect(r.isError).not.toBe(true);

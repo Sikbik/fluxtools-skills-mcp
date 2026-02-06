@@ -5864,13 +5864,48 @@ export async function callTool(name: string, rawArgs: unknown) {
         const logicalOk = res.ok && isFluxSuccess(res.data);
         const error = extractFluxErrorMessage(res.data);
 
+        let enterpriseDetected: boolean | null = null;
+        const nextActions: Array<{ tool: string; arguments?: Record<string, unknown> }> = [];
+
+        if (logicalOk) {
+          const payload = unwrapFluxEnvelope<unknown>(res.data);
+          if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+            const spec = payload as Record<string, unknown>;
+
+            const versionRaw = spec['version'];
+            const version =
+              typeof versionRaw === 'number'
+                ? versionRaw
+                : typeof versionRaw === 'string'
+                  ? Number(versionRaw)
+                  : NaN;
+
+            const enterpriseRaw = spec['enterprise'];
+            const enterprisePresent = typeof enterpriseRaw === 'string' && enterpriseRaw.trim().length > 0;
+            enterpriseDetected = Number.isFinite(version) && version >= 8 && enterprisePresent;
+
+            if (enterpriseDetected && decrypt !== true) {
+              nextActions.push({ tool: 'flux_apps_get_spec_full', arguments: { appname } });
+            }
+          }
+        } else if (decrypt === true) {
+          nextActions.push({ tool: 'flux_apps_get_spec_full', arguments: { appname } });
+          nextActions.push({ tool: 'flux_enterprise_preflight', arguments: { appname } });
+        }
+
         const summary = {
           ok: logicalOk,
           status: res.status,
           appname,
           decrypt: decrypt ?? null,
           error,
+          enterpriseDetected,
+          note:
+            enterpriseDetected && decrypt !== true
+              ? 'Enterprise v8 apps hide compose/contacts in the base spec. Use flux_apps_get_spec_full to retrieve decrypted compose/contacts for inspection.'
+              : null,
           resourceUri: link.uri,
+          nextActions,
         };
 
         return {
