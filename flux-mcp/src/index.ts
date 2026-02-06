@@ -1133,6 +1133,38 @@ function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function buildZelcoreLauncherHtml(opts: { link: string; title?: string; intro?: string }): string {
+  const safeLink = escapeHtmlAttribute(opts.link);
+  const title = escapeHtmlAttribute(opts.title ?? 'Zelcore Sign');
+  const intro = escapeHtmlAttribute(opts.intro ?? "If your terminal doesn't open zel: links directly, use this page.");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:24px;line-height:1.4}
+      .btn{display:inline-block;padding:12px 16px;background:#111;color:#fff;text-decoration:none;border-radius:10px}
+      code{background:#f3f3f3;padding:2px 6px;border-radius:6px}
+    </style>
+  </head>
+  <body>
+    <h1>${title}</h1>
+    <p>${intro}</p>
+    <p><a class="btn" id="open" href="${safeLink}">Open in Zelcore</a></p>
+    <p>Raw link:</p>
+    <p><code>${safeLink}</code></p>
+    <script>
+      // Some browsers require a user gesture; we still try an automatic redirect once.
+      try { window.location.href = document.getElementById('open').href; } catch (e) {}
+    </script>
+  </body>
+</html>
+`;
+}
+
 function buildZelcoreDeeplinks(opts: { message: string; icon?: string; callback?: string }): {
   link: string;
   clickableLink: string;
@@ -1896,6 +1928,16 @@ export const tools: Tool[] = [
         zelid: { type: 'string', description: 'ZelID (Bitcoin-format address like 1..., 3..., bc1...).' },
         signature: { type: 'string', description: 'Base64 signature of loginPhrase (optional; required to complete login).' },
         loginPhrase: { type: 'string', description: 'Login phrase to sign (optional; required to complete login).' },
+        gatewayBaseUrl: {
+          type: 'string',
+          description:
+            'Optional gateway base URL (e.g. https://api.runonflux.io). If provided (or if current baseUrl is a gateway), the tool will pin to a direct node for authentication.',
+        },
+        autoPinGateway: {
+          type: 'boolean',
+          description: 'If true (default), pin gateway baseUrls (api.runonflux.io / *.node.api.runonflux.io) to a direct node before auth.',
+          default: true,
+        },
         useEmergencyPhrase: { type: 'boolean', description: 'If true, use /id/emergencyphrase instead of /id/loginphrase.', default: false },
         verify: { type: 'boolean', description: 'If true (default), call /id/verifylogin.', default: true },
         setZelidauth: { type: 'boolean', description: 'If true (default), store zelidauth in this MCP session.', default: true },
@@ -3648,71 +3690,173 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(out, { structuredContent: out });
       }
 
-        case 'flux_auth_login': {
-          const zelid = mustBeString(args['zelid'], 'zelid');
-        const signature = asOptionalString(args['signature']);
-        const loginPhraseArg = asOptionalString(args['loginPhrase']);
-        const useEmergencyPhrase = (asOptionalBoolean(args['useEmergencyPhrase']) ?? false) === true;
-        const verify = (asOptionalBoolean(args['verify']) ?? true) === true;
-        const setZelidauth = (asOptionalBoolean(args['setZelidauth']) ?? true) === true;
-        const checkPrivilege = (asOptionalBoolean(args['checkPrivilege']) ?? true) === true;
+	      case 'flux_auth_login': {
+	        const zelid = mustBeString(args['zelid'], 'zelid');
+	        const signature = asOptionalString(args['signature']);
+	        const loginPhraseArg = asOptionalString(args['loginPhrase']);
+	        const gatewayBaseUrlArg = asOptionalString(args['gatewayBaseUrl']);
+	        const autoPinGateway = (asOptionalBoolean(args['autoPinGateway']) ?? true) === true;
+	        const useEmergencyPhrase = (asOptionalBoolean(args['useEmergencyPhrase']) ?? false) === true;
+	        const verify = (asOptionalBoolean(args['verify']) ?? true) === true;
+	        const setZelidauth = (asOptionalBoolean(args['setZelidauth']) ?? true) === true;
+	        const checkPrivilege = (asOptionalBoolean(args['checkPrivilege']) ?? true) === true;
 
-          if (!signature || !loginPhraseArg) {
-          const phrasePath = useEmergencyPhrase ? '/id/emergencyphrase' : '/id/loginphrase';
-          const phraseRes = await client.request(phrasePath);
-          if (!phraseRes.ok || !isFluxSuccess(phraseRes.data)) {
-            throw new Error(extractFluxErrorMessage(phraseRes.data) ?? `Failed to fetch login phrase via ${phrasePath}`);
-          }
+	        const pinGatewayIfNeeded = async (): Promise<{
+	          pinned: boolean;
+	          gatewayBaseUrl: string | null;
+	          recommendedBaseUrl: string | null;
+	          fluxnode: string | null;
+	        }> => {
+	          if (!autoPinGateway && !gatewayBaseUrlArg) {
+	            return { pinned: false, gatewayBaseUrl: null, recommendedBaseUrl: null, fluxnode: null };
+	          }
+
+	          const current = client.getBaseUrl();
+	          const candidateGateway = gatewayBaseUrlArg?.trim() ? gatewayBaseUrlArg.trim() : current;
+	          if (!candidateGateway) return { pinned: false, gatewayBaseUrl: null, recommendedBaseUrl: null, fluxnode: null };
+
+	          let isGateway = false;
+	          try {
+	            const u = new URL(candidateGateway);
+	            const host = u.hostname.toLowerCase();
+	            isGateway = host === 'api.runonflux.io' || host.endsWith('.node.api.runonflux.io');
+	          } catch {
+	            return { pinned: false, gatewayBaseUrl: null, recommendedBaseUrl: null, fluxnode: null };
+	          }
+
+	          if (!isGateway) return { pinned: false, gatewayBaseUrl: null, recommendedBaseUrl: null, fluxnode: null };
+
+	          const prevBase = client.getBaseUrl();
+	          try {
+	            client.setBaseUrl(candidateGateway);
+	            const info = await client.request('/flux/info', { timeoutMs: 20000 });
+	            if (!info.ok || !isFluxSuccess(info.data)) {
+	              return { pinned: false, gatewayBaseUrl: candidateGateway, recommendedBaseUrl: null, fluxnode: null };
+	            }
+
+	            const header = info.headers?.fluxnode;
+	            const fluxnode = typeof header === 'string' ? header : null;
+	            const responseData = info.data;
+
+	            const ip =
+	              responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+	                ? (() => {
+	                    const envelope = (responseData as Record<string, unknown>).data;
+	                    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return undefined;
+
+	                    const node = (envelope as Record<string, unknown>).node;
+	                    if (!node || typeof node !== 'object' || Array.isArray(node)) return undefined;
+
+	                    const status = (node as Record<string, unknown>).status;
+	                    if (!status || typeof status !== 'object' || Array.isArray(status)) return undefined;
+
+	                    const rawIp = (status as Record<string, unknown>).ip;
+	                    return typeof rawIp === 'string' && rawIp.trim() ? rawIp : undefined;
+	                  })()
+	                : undefined;
+
+	            const recommendedBaseUrl = ip ? `http://${ip}:16127` : null;
+	            if (!recommendedBaseUrl) {
+	              if (prevBase) client.setBaseUrl(prevBase);
+	              return { pinned: false, gatewayBaseUrl: candidateGateway, recommendedBaseUrl: null, fluxnode };
+	            }
+
+	            // Persist pin for subsequent calls (auth must be tied to a direct node).
+	            client.setBaseUrl(recommendedBaseUrl);
+	            return { pinned: true, gatewayBaseUrl: candidateGateway.replace(/\/+$/, ''), recommendedBaseUrl, fluxnode };
+	          } catch {
+	            if (prevBase) client.setBaseUrl(prevBase);
+	            return { pinned: false, gatewayBaseUrl: candidateGateway, recommendedBaseUrl: null, fluxnode: null };
+	          }
+	        };
+
+	        const pinInfo = await pinGatewayIfNeeded();
+
+	        if (!signature || !loginPhraseArg) {
+	          const phrasePath = useEmergencyPhrase ? '/id/emergencyphrase' : '/id/loginphrase';
+	          const phraseRes = await client.request(phrasePath);
+	          if (!phraseRes.ok || !isFluxSuccess(phraseRes.data)) {
+	            throw new Error(extractFluxErrorMessage(phraseRes.data) ?? `Failed to fetch login phrase via ${phrasePath}`);
+	          }
           const phrase = unwrapFluxEnvelope<unknown>(phraseRes.data);
           if (typeof phrase !== 'string' || !phrase.trim()) throw new Error('Invalid login phrase response');
 
-            const phraseText = phrase.trim();
-            const preview = buildZelcoreDeeplinkPreview({ message: phraseText });
-            const phraseLink = resourceStore.putText({
-              kind: 'auth/login_phrase',
-              name: 'Login phrase to sign',
-              description: 'Exact login phrase bytes to sign for zelidauth',
-              mimeType: 'text/plain',
-              text: phraseText,
-            });
+	          const phraseText = phrase.trim();
+	          const preview = buildZelcoreDeeplinkPreview({ message: phraseText });
+	          const phraseLink = resourceStore.putText({
+	            kind: 'auth/login_phrase',
+	            name: 'Login phrase to sign',
+	            description: 'Exact login phrase bytes to sign for zelidauth',
+	            mimeType: 'text/plain',
+	            text: phraseText,
+	          });
 
-            const out = {
-              ok: true,
-              zelid,
-              needSignature: true,
-              loginPhrase: phraseText,
-              loginPhraseResourceUri: phraseLink.uri,
-              zelcoreSignLink: preview.link,
-              zelcoreClickableLink: preview.clickableLink,
-              zelcoreBracketedLink: preview.bracketedLink,
-              zelcoreWarning: preview.warning,
-              nextActions: [
-                {
-                  tool: 'flux_auth_login',
-                  arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
-                },
-                {
-                  tool: 'flux_write_zelcore_launcher',
-                  arguments: { messageResourceUri: phraseLink.uri, confirm: true },
-                },
-              ],
-            };
+	          const localLauncherEnabled = String(process.env.FLUX_MCP_LOCAL_LAUNCHER ?? '1').trim().toLowerCase() !== '0';
+	          let launcherUrl: string | null = null;
+	          if (localLauncherEnabled) {
+	            try {
+	              const launcher = await ensureZelcoreLocalLauncher();
+	              const sha = createHash('sha256').update(`${zelid}:${preview.link}`, 'utf8').digest('hex').slice(0, 12);
+	              const httpPath = `/__flux/zelcore/auth/${sha}.html`;
+	              launcher.routes.set(
+	                httpPath,
+	                buildZelcoreLauncherHtml({ link: preview.link, title: 'Flux Login', intro: 'Sign the login phrase in Zelcore.' })
+	              );
+	              launcherUrl = `http://127.0.0.1:${launcher.port}${httpPath}`;
+	            } catch {
+	              launcherUrl = null;
+	            }
+	          }
 
-            return {
-              content: [
-                { type: 'text', text: formatZelcoreLinkForText(preview) },
-                ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
-                { type: 'text', text: JSON.stringify(out, null, 2) },
-                { type: 'resource_link', ...phraseLink },
-              ],
-              structuredContent: out,
-              isError: false,
-            };
-          }
+	          const out = {
+	            ok: true,
+	            zelid,
+	            pinnedBaseUrl: pinInfo.pinned ? pinInfo.recommendedBaseUrl : null,
+	            gatewayBaseUrl: pinInfo.gatewayBaseUrl,
+	            needSignature: true,
+	            loginPhrase: phraseText,
+	            loginPhraseResourceUri: phraseLink.uri,
+	            zelcoreLauncherHttpUrl: launcherUrl,
+	            zelcoreSignLink: preview.link,
+	            zelcoreClickableLink: preview.clickableLink,
+	            zelcoreBracketedLink: preview.bracketedLink,
+	            zelcoreWarning: preview.warning,
+	            nextActions: [
+	              {
+	                tool: 'flux_auth_login',
+	                arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
+	              },
+	              ...(launcherUrl
+	                ? []
+	                : [
+	                    {
+	                      tool: 'flux_write_zelcore_launcher',
+	                      arguments: { messageResourceUri: phraseLink.uri, confirm: true },
+	                    },
+	                  ]),
+	            ],
+	          };
 
-        const loginPhrase = loginPhraseArg.trim();
-        const verifyRes = verify
-          ? await client.request('/id/verifylogin', { method: 'POST', bodyType: 'form', body: { zelid, signature, loginPhrase } })
+	          return {
+	            content: [
+	              {
+	                type: 'text',
+	                text:
+	                  `Login phrase to sign:\n${phraseText}\n\n` +
+	                  (launcherUrl ? `Click to sign (recommended):\n${launcherUrl}\n\n` : '') +
+	                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}\n\n` +
+	                  `Then paste the signature back to flux_auth_login.`,
+	              },
+	              { type: 'resource_link', ...phraseLink },
+	            ],
+	            structuredContent: out,
+	            isError: false,
+	          };
+	        }
+
+	        const loginPhrase = loginPhraseArg.trim();
+	        const verifyRes = verify
+	          ? await client.request('/id/verifylogin', { method: 'POST', bodyType: 'form', body: { zelid, signature, loginPhrase } })
           : null;
 
         if (verifyRes && (!verifyRes.ok || !isFluxSuccess(verifyRes.data))) {
@@ -3728,15 +3872,18 @@ export async function callTool(name: string, rawArgs: unknown) {
         const privilegeOk = privilegeRes ? privilegeRes.ok && isFluxSuccess(privilegeRes.data) : null;
         const privilege = privilegeOk ? unwrapFluxEnvelope<unknown>(privilegeRes!.data) : null;
 
-        const out = {
-          ok: true,
-          baseUrl: client.getBaseUrl(),
-          zelid,
-          zelidauthSet: setZelidauth,
-          verifyCalled: verify,
-          privilegeCalled: checkPrivilege,
-          privilege: typeof privilege === 'string' ? privilege : null,
-        };
+	        const out = {
+	          ok: true,
+	          baseUrl: client.getBaseUrl(),
+	          zelid,
+	          gatewayPinned: pinInfo.pinned,
+	          gatewayBaseUrl: pinInfo.gatewayBaseUrl,
+	          pinnedBaseUrl: pinInfo.pinned ? pinInfo.recommendedBaseUrl : null,
+	          zelidauthSet: setZelidauth,
+	          verifyCalled: verify,
+	          privilegeCalled: checkPrivilege,
+	          privilege: typeof privilege === 'string' ? privilege : null,
+	        };
 
         return jsonResult(out, { structuredContent: out });
       }

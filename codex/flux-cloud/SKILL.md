@@ -46,10 +46,10 @@ curl -sS "$API/flux/isarcaneos"
 - These are two different signatures; authenticate before signing the app message.
 
 Preferred login helper (minimal steps):
-- `flux_auth_login { zelid }` → user signs the returned phrase → `flux_auth_login { zelid, loginPhrase, signature }`
+- `flux_auth_login { zelid }` → click the returned `zelcoreLauncherHttpUrl` (if present) → sign → `flux_auth_login { zelid, loginPhrase, signature }`
 
 If your terminal/IDE won’t open `zel:` links:
-- Use `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` to get a clickable `http://127.0.0.1:...` launcher URL.
+- Use `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` to get a clickable `http://127.0.0.1:...` launcher URL (fallback).
 
 Use:
 - `references/auth-zelidauth.md`
