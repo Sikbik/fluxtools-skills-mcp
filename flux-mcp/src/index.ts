@@ -1080,6 +1080,11 @@ function buildOsc8Link(url: string, label: string): string {
   return `${esc}]8;;${url}${st}${label}${esc}]8;;${st}`;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  // Minimal escaping for inclusion in HTML attributes.
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function buildZelcoreDeeplinks(opts: { message: string; icon?: string; callback?: string }): {
   link: string;
   clickableLink: string;
@@ -2101,6 +2106,31 @@ export const tools: Tool[] = [
         confirm: { type: 'boolean' },
       },
       required: ['path', 'messageToSign', 'confirm'],
+    },
+  },
+  {
+    name: 'flux_write_zelcore_launcher',
+    description:
+      'Write a tiny HTML launcher file that opens a Zelcore deep link in your browser (useful when terminals do not make zel: links clickable). Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        messageResourceUri: {
+          type: 'string',
+          description: 'Resource URI containing the raw message to sign (preferred).',
+        },
+        outPath: {
+          type: 'string',
+          description:
+            "Optional output HTML file path. Default: /tmp/flux-zelcore-launcher-<sha256>.html (contains the message).",
+        },
+        icon: { type: 'string', description: 'Optional icon URL (default ZelID icon).' },
+        callback: { type: 'string', description: 'Optional callback URL (will be url-encoded).' },
+        confirm: { type: 'boolean' },
+      },
+      anyOf: [{ required: ['message'] }, { required: ['messageResourceUri'] }],
+      required: ['confirm'],
     },
   },
   {
@@ -3606,11 +3636,16 @@ export async function callTool(name: string, rawArgs: unknown) {
               loginPhraseResourceUri: phraseLink.uri,
               zelcoreSignLink: preview.link,
               zelcoreClickableLink: preview.clickableLink,
+              zelcoreBracketedLink: preview.bracketedLink,
               zelcoreWarning: preview.warning,
               nextActions: [
                 {
                   tool: 'flux_auth_login',
                   arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
+                },
+                {
+                  tool: 'flux_write_zelcore_launcher',
+                  arguments: { messageResourceUri: phraseLink.uri, confirm: true },
                 },
               ],
             };
@@ -4509,6 +4544,90 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
 
         return jsonResult({ ok: true, path, messageToSignSha256, messageToSignBytes });
+      }
+
+      case 'flux_write_zelcore_launcher': {
+        requireConfirm(args, 'write Zelcore launcher HTML to disk');
+
+        const messageResourceUriRaw = asOptionalString(args['messageResourceUri']);
+        const messageResourceUri = messageResourceUriRaw ? messageResourceUriRaw.trim() : null;
+
+        let message: string;
+        let messageSource: 'argument' | 'resource' = 'argument';
+
+        if (messageResourceUri) {
+          const r = resourceStore.read(messageResourceUri);
+          if (!r) throw new Error(`Resource not found: ${messageResourceUri}`);
+          message = r.text;
+          messageSource = 'resource';
+        } else {
+          message = mustBeString(args['message'], 'message');
+        }
+
+        const iconRaw = asOptionalString(args['icon']);
+        const callbackRaw = asOptionalString(args['callback']);
+        const outPathRaw = asOptionalString(args['outPath']);
+
+        const links = buildZelcoreDeeplinks({
+          message,
+          icon: iconRaw ?? undefined,
+          callback: callbackRaw ?? undefined,
+        });
+
+        const sha = createHash('sha256').update(links.link, 'utf8').digest('hex').slice(0, 12);
+        const outPath = outPathRaw?.trim()
+          ? outPathRaw.trim()
+          : `/tmp/flux-zelcore-launcher-${sha}.html`;
+
+        const safeLink = escapeHtmlAttribute(links.link);
+        const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zelcore Sign</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:24px;line-height:1.4}
+      .btn{display:inline-block;padding:12px 16px;background:#111;color:#fff;text-decoration:none;border-radius:10px}
+      code{background:#f3f3f3;padding:2px 6px;border-radius:6px}
+    </style>
+  </head>
+  <body>
+    <h1>Zelcore Sign</h1>
+    <p>If your terminal doesn't open <code>zel:</code> links directly, use this page.</p>
+    <p><a class="btn" id="open" href="${safeLink}">Open in Zelcore</a></p>
+    <p>Raw link:</p>
+    <p><code>${safeLink}</code></p>
+    <script>
+      // Some browsers require a user gesture; we still try an automatic redirect once.
+      try { window.location.href = document.getElementById('open').href; } catch (e) {}
+    </script>
+  </body>
+</html>
+`;
+
+        await fs.writeFile(outPath, html, { encoding: 'utf8' });
+
+        // file:// URL for Ctrl+Click in terminals/IDEs
+        const fileUrl = outPath.startsWith('/') ? `file://${outPath}` : `file://${path.resolve(outPath)}`;
+
+        const out = {
+          ok: true,
+          path: outPath,
+          fileUrl,
+          link: links.link,
+          clickableLink: links.clickableLink,
+          bracketedLink: links.bracketedLink,
+          messageSource,
+          messageResourceUri: messageSource === 'resource' ? messageResourceUri : null,
+          note: 'Launcher file contains the message/link. Delete it when done.',
+        };
+
+        return {
+          content: [{ type: 'text', text: `Launcher (Ctrl+Click):\n${fileUrl}` }, { type: 'text', text: JSON.stringify(out, null, 2) }],
+          structuredContent: out,
+          isError: false,
+        };
       }
 
       case 'flux_apps_signing_playbook': {
