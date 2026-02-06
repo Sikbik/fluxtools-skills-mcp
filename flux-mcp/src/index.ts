@@ -1175,24 +1175,25 @@ function slugifyPathSegment(value: string): string {
   return s.replace(/^-+/, '').replace(/-+$/, '') || 'x';
 }
 
-async function maybeBuildZelcoreLauncherHttpUrl(opts: {
-  purpose: string;
-  link: string;
-  title?: string;
-  intro?: string;
-}): Promise<string | null> {
+	async function maybeBuildZelcoreLauncherHttpUrl(opts: {
+	  purpose: string;
+	  link: string;
+	  title?: string;
+	  intro?: string;
+	}): Promise<string | null> {
   if (!isLocalLauncherEnabled()) return null;
   try {
     const launcher = await ensureZelcoreLocalLauncher();
     const sha = createHash('sha256').update(`${opts.purpose}:${opts.link}`, 'utf8').digest('hex').slice(0, 12);
-    const p = slugifyPathSegment(opts.purpose);
-    const httpPath = `/__flux/zelcore/${p}/${sha}.html`;
-    launcher.routes.set(httpPath, buildZelcoreLauncherHtml({ link: opts.link, title: opts.title, intro: opts.intro }));
-    return `http://127.0.0.1:${launcher.port}${httpPath}`;
-  } catch {
-    return null;
-  }
-}
+	    const p = slugifyPathSegment(opts.purpose);
+	    const httpPath = `/__flux/zelcore/${p}/${sha}.html`;
+	    launcher.routes.set(httpPath, buildZelcoreLauncherHtml({ link: opts.link, title: opts.title, intro: opts.intro }));
+	    // Many IDE terminals linkify localhost more reliably than 127.0.0.1.
+	    return `http://localhost:${launcher.port}${httpPath}`;
+	  } catch {
+	    return null;
+	  }
+	}
 
 function buildZelcoreDeeplinks(opts: { message: string; icon?: string; callback?: string }): {
   link: string;
@@ -3871,17 +3872,17 @@ export async function callTool(name: string, rawArgs: unknown) {
 	          if (localLauncherEnabled) {
 	            try {
 	              const launcher = await ensureZelcoreLocalLauncher();
-	              const sha = createHash('sha256').update(`${zelid}:${preview.link}`, 'utf8').digest('hex').slice(0, 12);
-	              const httpPath = `/__flux/zelcore/auth/${sha}.html`;
-	              launcher.routes.set(
-	                httpPath,
-	                buildZelcoreLauncherHtml({ link: preview.link, title: 'Flux Login', intro: 'Sign the login phrase in Zelcore.' })
-	              );
-	              launcherUrl = `http://127.0.0.1:${launcher.port}${httpPath}`;
-	            } catch {
-	              launcherUrl = null;
-	            }
-	          }
+		              const sha = createHash('sha256').update(`${zelid}:${preview.link}`, 'utf8').digest('hex').slice(0, 12);
+		              const httpPath = `/__flux/zelcore/auth/${sha}.html`;
+		              launcher.routes.set(
+		                httpPath,
+		                buildZelcoreLauncherHtml({ link: preview.link, title: 'Flux Login', intro: 'Sign the login phrase in Zelcore.' })
+		              );
+		              launcherUrl = `http://localhost:${launcher.port}${httpPath}`;
+		            } catch {
+		              launcherUrl = null;
+		            }
+		          }
 
 	          const out = {
 	            ok: true,
@@ -4913,11 +4914,11 @@ export async function callTool(name: string, rawArgs: unknown) {
         // file:// URL for Ctrl+Click in terminals/IDEs (may be disabled by the IDE for security).
         const fileUrl = outPath.startsWith('/') ? `file://${outPath}` : `file://${path.resolve(outPath)}`;
 
-        // Most IDE terminals always linkify http(s), so we also host the same HTML via a localhost-only server.
-        const launcher = await ensureZelcoreLocalLauncher();
-        const httpPath = `/__flux/zelcore/${sha}.html`;
-        launcher.routes.set(httpPath, html);
-        const httpUrl = `http://127.0.0.1:${launcher.port}${httpPath}`;
+	        // Most IDE terminals always linkify http(s), so we also host the same HTML via a localhost-only server.
+	        const launcher = await ensureZelcoreLocalLauncher();
+	        const httpPath = `/__flux/zelcore/${sha}.html`;
+	        launcher.routes.set(httpPath, html);
+	        const httpUrl = `http://localhost:${launcher.port}${httpPath}`;
 
         const out = {
           ok: true,
