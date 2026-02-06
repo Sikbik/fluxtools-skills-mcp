@@ -7349,13 +7349,34 @@ export async function callTool(name: string, rawArgs: unknown) {
       case 'flux_apps_inspect': {
         const appname = mustBeString(args['appname'], 'appname');
 
-        let res = await client.request('/apps/appinspect', { query: { appname } });
-        const knownError = extractFluxErrorMessage(res.data);
-        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let target = appname;
+        let res = await client.request('/apps/appinspect', { query: { appname: target } });
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: {
+          baseUrl: string;
+          host: string;
+          apiPort: number;
+          containerName: string;
+          previousBaseUrl: string | null;
+        } | null = null;
+
+        if (knownError && knownError.startsWith('Container not found on this node.')) {
           const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
           if (resolved) {
             client.setBaseUrl(resolved.baseUrl);
-            res = await client.request('/apps/appinspect', { query: { appname: resolved.containerName } });
+            target = resolved.containerName;
+            resolvedInfo = {
+              baseUrl: resolved.baseUrl,
+              host: resolved.host,
+              apiPort: resolved.apiPort,
+              containerName: resolved.containerName,
+              previousBaseUrl: attemptedBaseUrl,
+            };
+            res = await client.request('/apps/appinspect', { query: { appname: target } });
+            knownError = extractFluxErrorMessage(res.data);
           }
         }
 
@@ -7366,10 +7387,15 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
+        const ok = res.ok && isFluxSuccess(res.data);
+
         const summary = {
-          ok: res.ok,
+          ok,
           status: res.status,
           appname,
+          target,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
           resourceUri: link.uri,
         };
 
@@ -7379,20 +7405,41 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
       case 'flux_apps_stats': {
         const appname = mustBeString(args['appname'], 'appname');
 
-        let res = await client.request('/apps/appstats', { query: { appname } });
-        const knownError = extractFluxErrorMessage(res.data);
-        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let target = appname;
+        let res = await client.request('/apps/appstats', { query: { appname: target } });
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: {
+          baseUrl: string;
+          host: string;
+          apiPort: number;
+          containerName: string;
+          previousBaseUrl: string | null;
+        } | null = null;
+
+        if (knownError && knownError.startsWith('Container not found on this node.')) {
           const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
           if (resolved) {
             client.setBaseUrl(resolved.baseUrl);
-            res = await client.request('/apps/appstats', { query: { appname: resolved.containerName } });
+            target = resolved.containerName;
+            resolvedInfo = {
+              baseUrl: resolved.baseUrl,
+              host: resolved.host,
+              apiPort: resolved.apiPort,
+              containerName: resolved.containerName,
+              previousBaseUrl: attemptedBaseUrl,
+            };
+            res = await client.request('/apps/appstats', { query: { appname: target } });
+            knownError = extractFluxErrorMessage(res.data);
           }
         }
 
@@ -7403,10 +7450,15 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
+        const ok = res.ok && isFluxSuccess(res.data);
+
         const summary = {
-          ok: res.ok,
+          ok,
           status: res.status,
           appname,
+          target,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
           resourceUri: link.uri,
         };
 
@@ -7416,20 +7468,41 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
       case 'flux_apps_top': {
         const appname = mustBeString(args['appname'], 'appname');
 
-        let res = await client.request('/apps/apptop', { query: { appname } });
-        const knownError = extractFluxErrorMessage(res.data);
-        if (!res.ok && knownError && knownError.startsWith('Container not found on this node.')) {
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let target = appname;
+        let res = await client.request('/apps/apptop', { query: { appname: target } });
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: {
+          baseUrl: string;
+          host: string;
+          apiPort: number;
+          containerName: string;
+          previousBaseUrl: string | null;
+        } | null = null;
+
+        if (knownError && knownError.startsWith('Container not found on this node.')) {
           const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
           if (resolved) {
             client.setBaseUrl(resolved.baseUrl);
-            res = await client.request('/apps/apptop', { query: { appname: resolved.containerName } });
+            target = resolved.containerName;
+            resolvedInfo = {
+              baseUrl: resolved.baseUrl,
+              host: resolved.host,
+              apiPort: resolved.apiPort,
+              containerName: resolved.containerName,
+              previousBaseUrl: attemptedBaseUrl,
+            };
+            res = await client.request('/apps/apptop', { query: { appname: target } });
+            knownError = extractFluxErrorMessage(res.data);
           }
         }
 
@@ -7440,10 +7513,15 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
+        const ok = res.ok && isFluxSuccess(res.data);
+
         const summary = {
-          ok: res.ok,
+          ok,
           status: res.status,
           appname,
+          target,
+          resolved: resolvedInfo,
+          error: ok ? null : knownError,
           resourceUri: link.uri,
         };
 
@@ -7453,7 +7531,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -7461,7 +7539,36 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const range = asOptionalNumber(args['range']);
 
-        const res = await client.request('/apps/appmonitor', { query: { appname, range } });
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        let target = appname;
+        let res = await client.request('/apps/appmonitor', { query: { appname: target, range } });
+        let knownError = extractFluxErrorMessage(res.data);
+
+        let resolvedInfo: {
+          baseUrl: string;
+          host: string;
+          apiPort: number;
+          containerName: string;
+          previousBaseUrl: string | null;
+        } | null = null;
+
+        if (knownError && knownError.startsWith('Container not found on this node.')) {
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            client.setBaseUrl(resolved.baseUrl);
+            target = resolved.containerName;
+            resolvedInfo = {
+              baseUrl: resolved.baseUrl,
+              host: resolved.host,
+              apiPort: resolved.apiPort,
+              containerName: resolved.containerName,
+              previousBaseUrl: attemptedBaseUrl,
+            };
+            res = await client.request('/apps/appmonitor', { query: { appname: target, range } });
+            knownError = extractFluxErrorMessage(res.data);
+          }
+        }
 
         const link = resourceStore.putJson({
           kind: 'apps/monitor',
@@ -7470,11 +7577,16 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: res,
         });
 
+        const ok = res.ok && isFluxSuccess(res.data);
+
         const summary = {
-          ok: res.ok,
+          ok,
           status: res.status,
           appname,
+          target,
+          resolved: resolvedInfo,
           range: range ?? null,
+          error: ok ? null : knownError,
           resourceUri: link.uri,
         };
 
@@ -7484,7 +7596,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -7497,14 +7609,93 @@ export async function callTool(name: string, rawArgs: unknown) {
         }
         const env = normalizeEnvParams(args['env']);
 
-        return jsonResult(
-          await client.request('/apps/appexec', {
+        const attemptedBaseUrl = client.getBaseUrl() ?? null;
+
+        const parseTextAsJson = (text: string): unknown | null => {
+          const trimmed = (text ?? '').trim();
+          if (!trimmed) return null;
+          try {
+            return JSON.parse(trimmed);
+          } catch {
+            return null;
+          }
+        };
+
+        const execOnce = async (target: string) =>
+          client.request('/apps/appexec', {
             method: 'POST',
-            body: { appname, cmd, env },
+            body: { appname: target, cmd, env },
             allowMutation: true,
             responseType: 'text',
-          })
-        );
+          });
+
+        let target = appname;
+        let res = await execOnce(target);
+        let text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+        let parsed = typeof res.data === 'string' ? parseTextAsJson(res.data) : res.data;
+        let knownError = parsed ? extractFluxErrorMessage(parsed) : null;
+        let fluxOk = parsed ? isFluxSuccess(parsed) : null;
+
+        let resolvedInfo: {
+          baseUrl: string;
+          host: string;
+          apiPort: number;
+          containerName: string;
+          previousBaseUrl: string | null;
+        } | null = null;
+
+        if (knownError && knownError.startsWith('Container not found on this node.')) {
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          if (resolved) {
+            client.setBaseUrl(resolved.baseUrl);
+            target = resolved.containerName;
+            resolvedInfo = {
+              baseUrl: resolved.baseUrl,
+              host: resolved.host,
+              apiPort: resolved.apiPort,
+              containerName: resolved.containerName,
+              previousBaseUrl: attemptedBaseUrl,
+            };
+
+            res = await execOnce(target);
+            text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+            parsed = typeof res.data === 'string' ? parseTextAsJson(res.data) : res.data;
+            knownError = parsed ? extractFluxErrorMessage(parsed) : null;
+            fluxOk = parsed ? isFluxSuccess(parsed) : null;
+          }
+        }
+
+        const ok = res.ok && fluxOk !== false;
+
+        const link = resourceStore.putText({
+          kind: 'apps/appexec',
+          name: `${appname} exec`,
+          description: 'Raw /apps/appexec output',
+          mimeType: 'text/plain',
+          text,
+        });
+
+        const summary = {
+          ok,
+          status: res.status,
+          appname,
+          target,
+          resolved: resolvedInfo,
+          cmd,
+          envCount: env.length,
+          fluxOk,
+          error: ok ? null : knownError,
+          resourceUri: link.uri,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+          ],
+          structuredContent: summary,
+          isError: !ok,
+        };
       }
 
       case 'flux_apps_list_folder': {

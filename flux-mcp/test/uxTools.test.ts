@@ -129,7 +129,44 @@ describe.sequential('UX tools', () => {
     }
 
     if (url === '/apps/listrunningapps') {
-      return json(res, 200, { status: 'success', data: [{ name: 'myapp', app: 'myapp' }] });
+      return json(res, 200, { status: 'success', data: [{ name: 'fluxmyapp', app: 'myapp' }] });
+    }
+
+    if (url.startsWith('/apps/appinspect')) {
+      const u = new URL(url, 'http://127.0.0.1');
+      const appname = u.searchParams.get('appname') ?? '';
+      if (appname === 'myapp') {
+        return json(res, 200, {
+          status: 'error',
+          data: "Cannot read properties of undefined (reading 'Id')",
+        });
+      }
+      return json(res, 200, { status: 'success', data: { State: { Status: 'running' } } });
+    }
+
+    if (url.startsWith('/apps/appmonitor')) {
+      const u = new URL(url, 'http://127.0.0.1');
+      const appname = u.searchParams.get('appname') ?? '';
+      if (appname === 'myapp') {
+        return json(res, 200, {
+          status: 'error',
+          data: "Cannot read properties of undefined (reading 'Id')",
+        });
+      }
+      return json(res, 200, { status: 'success', data: [] });
+    }
+
+    if (url === '/apps/appexec') {
+      const bodyRaw = await readBody(req);
+      const body = bodyRaw ? (JSON.parse(bodyRaw) as Record<string, unknown>) : {};
+      const appname = typeof body.appname === 'string' ? body.appname : '';
+      if (appname === 'myapp') {
+        return json(res, 200, {
+          status: 'error',
+          data: "Cannot read properties of undefined (reading 'Id')",
+        });
+      }
+      return json(res, 200, { status: 'success', data: { stdout: 'ok' } });
     }
 
     await readBody(req);
@@ -512,6 +549,40 @@ describe.sequential('UX tools', () => {
 
     const links = r.content.filter((c) => c.type === 'resource_link');
     expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flux_apps_inspect auto-resolves container not found', async () => {
+    const r = await callTool('flux_apps_inspect', { appname: 'myapp' });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.target).toBe('fluxmyapp');
+    expect(payload.resolved).toBeTruthy();
+  });
+
+  it('flux_apps_monitor auto-resolves container not found', async () => {
+    const r = await callTool('flux_apps_monitor', { appname: 'myapp', range: 1 });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.target).toBe('fluxmyapp');
+    expect(payload.resolved).toBeTruthy();
+  });
+
+  it('flux_apps_exec auto-resolves container not found', async () => {
+    const r = await callTool('flux_apps_exec', { confirm: true, appname: 'myapp', cmd: ['echo', 'hi'] });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.target).toBe('fluxmyapp');
+    expect(payload.resolved).toBeTruthy();
+    expect(typeof payload.resourceUri).toBe('string');
+
+    const links = r.content.filter((c) => c.type === 'resource_link');
+    expect(links.length).toBeGreaterThanOrEqual(1);
   });
 
   it('flux_daemon_call denies non-allowlisted methods', async () => {

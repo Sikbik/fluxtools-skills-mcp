@@ -362,6 +362,8 @@ High-level signing workflow helpers:
 - `flux_apps_monitor`
 - `flux_apps_exec` (requires `confirm=true`)
 
+Note: observability/exec tools accept a global app name. If the container is not found on the current node, they auto-resolve the correct node/container via `/apps/location` + `/apps/listrunningapps` and retry. Raw outputs (logs, exec output, monitoring payloads) are kept in `resource_link` to reduce chat bloat.
+
 ### Apps: files (volume browser)
 
 Read-only:
