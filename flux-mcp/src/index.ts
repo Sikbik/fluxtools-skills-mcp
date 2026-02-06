@@ -1887,6 +1887,11 @@ export const tools: Tool[] = [
           type: 'number',
           description: 'Max bytes for responseType=base64 (default 1048576).',
         },
+        includeBody: {
+          type: 'boolean',
+          description:
+            'If true, also include the full response body in tool output (can be large). Default false (response is stored as a resource_link).',
+        },
       },
       required: ['path'],
     },
@@ -4396,6 +4401,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const allowMutation = (asOptionalBoolean(args['allowMutation']) ?? false) === true;
         const responseType = asResponseType(args['responseType']);
         const maxBytes = asOptionalNumber(args['maxBytes']);
+        const includeBody = (asOptionalBoolean(args['includeBody']) ?? false) === true;
 
         let query: Record<string, unknown> | undefined;
         if (queryRaw !== undefined) {
@@ -4405,21 +4411,64 @@ export async function callTool(name: string, rawArgs: unknown) {
           query = queryRaw as Record<string, unknown>;
         }
 
-        return jsonResult(
-          await client.request(pathname, {
-            method,
-            query,
-            body,
-            zelidauth,
-            useStoredZelidauth,
-            enterpriseKey,
-            useStoredEnterpriseKey,
-            timeoutMs,
-            allowMutation,
-            responseType,
-            maxBytes,
-          })
-        );
+        const res = await client.request(pathname, {
+          method,
+          query,
+          body,
+          zelidauth,
+          useStoredZelidauth,
+          enterpriseKey,
+          useStoredEnterpriseKey,
+          timeoutMs,
+          allowMutation,
+          responseType,
+          maxBytes,
+        });
+
+        const link = resourceStore.putJson({
+          kind: 'flux/request',
+          name: `${(method ?? (body === undefined ? 'GET' : 'POST')).toUpperCase()} ${pathname}`,
+          description: 'Raw flux_request response + request params',
+          value: {
+            request: {
+              method: method ?? null,
+              path: pathname,
+              query: query ?? null,
+              allowMutation,
+              responseType: responseType ?? 'auto',
+              maxBytes: maxBytes ?? null,
+              timeoutMs: timeoutMs ?? null,
+              usedStoredZelidauth: useStoredZelidauth !== false,
+              usedStoredEnterpriseKey: useStoredEnterpriseKey !== false,
+            },
+            response: res,
+          },
+        });
+
+        const summary = {
+          ok: res.ok,
+          status: res.status,
+          method: (method ?? (body === undefined ? 'GET' : 'POST')).toUpperCase(),
+          path: pathname,
+          fluxOk: res.ok ? isFluxSuccess(res.data) : false,
+          error: res.ok ? (extractFluxErrorMessage(res.data) ?? null) : (extractFluxErrorMessage(res.data) ?? String(res.data)),
+          resourceUri: link.uri,
+        };
+
+        const content: Array<
+          | { type: 'text'; text: string }
+          | { type: 'resource_link'; uri: string; name: string; description?: string; mimeType?: string }
+        > = [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }];
+
+        if (includeBody) {
+          content.push({ type: 'text', text: `\n\n${JSON.stringify(res, null, 2)}` });
+        }
+
+        return {
+          content,
+          structuredContent: summary,
+          isError: summary.ok !== true || summary.fluxOk !== true,
+        };
       }
 
       case 'flux_node_health': {
