@@ -883,6 +883,40 @@ describe.sequential('UX tools', () => {
     expect((spec?.enterprise as string).length).toBeGreaterThan(0);
   });
 
+  it('flux_git_deploy_register_and_verify submits a registration from planResourceUri', async () => {
+    const plan = await callTool('flux_git_deploy_plan_registration', {
+      name: 'mygitapp',
+      owner: 't1owner',
+      repoUrl: 'https://github.com/test/repo',
+      exposedPort: 20001,
+      managementPort: 20002,
+      appPort: 3000,
+    });
+    expect(plan.isError).not.toBe(true);
+
+    const planSummary = JSON.parse(plan.content[0]?.text ?? '{}') as Record<string, unknown>;
+    const planUri = planSummary.resourceUri;
+    expect(typeof planUri).toBe('string');
+
+    const r = await callTool('flux_git_deploy_register_and_verify', {
+      planResourceUri: planUri,
+      signature: 'sig',
+      confirm: true,
+      poll: false,
+    });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.status).toBe('submitted');
+    expect(payload.hash).toBe('hreg');
+
+    const payment = payload.payment as Record<string, unknown> | undefined;
+    expect(payment && payment.memo).toBe('hreg');
+
+    expect(seen.some((x) => x.url === '/apps/appregister')).toBe(true);
+  });
+
   it('flux_apps_update_and_verify returns summary + resource links', async () => {
     const r = await callTool('flux_apps_update_and_verify', {
       confirm: true,

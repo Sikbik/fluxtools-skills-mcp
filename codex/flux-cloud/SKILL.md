@@ -102,6 +102,8 @@ Flux Git deployments (formerly Orbit) register a normal v8 app spec that uses `r
   - `flux_git_deploy_plan_registration`
 - For private repos:
   - pass `repoToken` + `enterprise: true` + `confirm: true` (credentials are encrypted into `spec.enterprise`)
+- After signing:
+  - Prefer `flux_git_deploy_register_and_verify` (takes the plan `resourceUri`, so you don’t paste the spec).
 
 Use: `references/git-deployments.md`.
 

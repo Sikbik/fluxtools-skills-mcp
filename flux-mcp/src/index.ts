@@ -2560,6 +2560,31 @@ export const tools: Tool[] = [
       required: ['name', 'owner', 'repoUrl'],
     },
   },
+  {
+    name: 'flux_git_deploy_register_and_verify',
+    description:
+      'Submit a Flux Git deployments (Orbit) registration using a prior plan resource (flux_git_deploy_plan_registration), then optionally poll for propagation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        planResourceUri: {
+          type: 'string',
+          description: 'resourceUri from flux_git_deploy_plan_registration (recommended: avoids pasting spec).',
+        },
+        signature: {
+          type: 'string',
+          description: 'Owner signature over (type+version+spec+timestamp) from the plan.',
+        },
+        poll: { type: 'boolean', description: 'If false, skip polling (return hash immediately).', default: true },
+        attempts: { type: 'number', description: 'Poll attempts (default 10)' },
+        intervalMs: { type: 'number', description: 'Delay between polls in ms (default 3000)' },
+        pollTimeoutMs: { type: 'number', description: 'Timeout per polling request in ms (optional).' },
+        verifyGlobal: { type: 'boolean', description: 'If true, also verify /apps/globalappsspecifications contains the app', default: true },
+        confirm: { type: 'boolean', description: 'Required to submit registration' },
+      },
+      required: ['planResourceUri', 'signature', 'confirm'],
+    },
+  },
 
   // Register/update signing workflow
   {
@@ -6604,7 +6629,10 @@ export async function callTool(name: string, rawArgs: unknown) {
           nextActions: [
             { tool: 'flux_build_zelcore_sign_link', note: 'Pass the raw message from messageToSignResourceUri.' },
             { tool: 'flux_write_message_to_sign', note: 'Write messageToSign to disk for manual signing (confirm required).' },
-            { tool: 'flux_apps_register', note: 'Submit registration after signing (requires zelidauth).' },
+            {
+              tool: 'flux_git_deploy_register_and_verify',
+              arguments: { planResourceUri: fullLink.uri, signature: '<SIGNATURE>', confirm: true },
+            },
           ],
         };
 
@@ -6616,6 +6644,222 @@ export async function callTool(name: string, rawArgs: unknown) {
           ],
           structuredContent: summary,
           isError: false,
+        };
+      }
+
+      case 'flux_git_deploy_register_and_verify': {
+        requireConfirm(args, 'git deploy: apps/appregister');
+        assertAuthenticatedFor('apps/appregister');
+
+        const planResourceUri = mustBeString(args['planResourceUri'], 'planResourceUri');
+        const signature = mustBeString(args['signature'], 'signature');
+
+        const attempts = asOptionalNumber(args['attempts']) ?? 10;
+        const intervalMs = asOptionalNumber(args['intervalMs']) ?? 3000;
+        const poll = (asOptionalBoolean(args['poll']) ?? true) === true;
+        const pollTimeoutMs = asOptionalNumber(args['pollTimeoutMs']);
+        const verifyGlobal = (asOptionalBoolean(args['verifyGlobal']) ?? true) === true;
+
+        const planFound = resourceStore.read(planResourceUri);
+        if (!planFound) {
+          throw new Error(
+            'Plan resource not found or expired. Re-run flux_git_deploy_plan_registration to generate a fresh planResourceUri.'
+          );
+        }
+
+        let planJson: unknown;
+        try {
+          planJson = JSON.parse(planFound.text);
+        } catch {
+          throw new Error('planResourceUri did not contain valid JSON.');
+        }
+
+        if (!planJson || typeof planJson !== 'object' || Array.isArray(planJson)) {
+          throw new Error('planResourceUri JSON must be an object.');
+        }
+
+        const plan = planJson as Record<string, unknown>;
+
+        const spec = mustBeObject(plan['spec'], 'plan.spec');
+        const timestamp = mustBeNumber(plan['timestamp'], 'plan.timestamp');
+        const typeVersion = asOptionalNumber(plan['typeVersion']) ?? 1;
+
+        const { appname, owner } = extractAppIdentity(spec);
+
+        const type = 'fluxappregister' as const;
+        const messageToSign = buildMessageToSign({ type, version: typeVersion, spec, timestamp });
+        const messageToSignSha256 = createHash('sha256').update(messageToSign, 'utf8').digest('hex');
+        const messageToSignBytes = Buffer.byteLength(messageToSign, 'utf8');
+
+        const messageLink = resourceStore.putText({
+          kind: 'message_to_sign',
+          name: `messageToSign ${type} (git deploy)`,
+          description: 'Raw messageToSign bytes (exact data to sign)',
+          mimeType: 'text/plain',
+          text: messageToSign,
+        });
+
+        const payload = buildSignedPayload({ type, version: typeVersion, spec, timestamp, signature });
+
+        const submit = await client.request('/apps/appregister', {
+          method: 'POST',
+          body: payload,
+          allowMutation: true,
+        });
+
+        const registered = submit.ok && isFluxSuccess(submit.data);
+        const submitError = registered ? null : extractFluxErrorMessage(submit.data) ?? 'Registration submission failed';
+
+        const hash = registered ? extractHashFromAppMessageResponse(submit.data) : undefined;
+
+        let propagation: Awaited<ReturnType<typeof pollMessagePropagation>> | null = null;
+        if (poll && registered && hash) {
+          propagation = await pollMessagePropagation({ hash, attempts, intervalMs, timeoutMs: pollTimeoutMs });
+        }
+
+        let globalCheck: FluxRequestResult | null = null;
+        let globalPresent: boolean | null = null;
+        if (poll && verifyGlobal && propagation?.permanentPresent === true && appname) {
+          globalCheck = await client.request('/apps/globalappsspecifications', {
+            query: { appname, owner: owner ?? undefined },
+          });
+          if (globalCheck.ok && isFluxSuccess(globalCheck.data)) {
+            const globalSpecs = unwrapFluxEnvelope<unknown>(globalCheck.data);
+            if (Array.isArray(globalSpecs)) {
+              globalPresent = globalSpecs.some((x) => {
+                if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+                const n = (x as Record<string, unknown>).name;
+                const o = (x as Record<string, unknown>).owner;
+                const nameOk = typeof n === 'string' && n === appname;
+                const ownerOk = !owner || (typeof o === 'string' && o === owner);
+                return nameOk && ownerOk;
+              });
+            } else {
+              globalPresent = hasNonEmptyValue(globalSpecs);
+            }
+          }
+        }
+
+        const status = !registered
+          ? 'error'
+          : !hash
+            ? 'error'
+            : !poll
+              ? 'submitted'
+              : propagation?.permanentPresent !== true
+                ? 'awaiting_payment'
+                : globalPresent === false
+                  ? 'verifying_global'
+                  : 'verified';
+
+        const done = status === 'verified';
+        const ok = registered;
+
+        const paymentFromPlan =
+          plan['payment'] && typeof plan['payment'] === 'object' && !Array.isArray(plan['payment'])
+            ? (plan['payment'] as Record<string, unknown>)
+            : null;
+
+        const planAddress = paymentFromPlan && typeof paymentFromPlan['address'] === 'string' ? paymentFromPlan['address'] : null;
+        const planAmountRaw = paymentFromPlan ? paymentFromPlan['amountFlux'] : null;
+        const planAmount = typeof planAmountRaw === 'number' ? planAmountRaw : Number(planAmountRaw);
+
+        const needsPaymentFallback =
+          !(planAddress && planAddress.trim()) || !Number.isFinite(planAmount);
+        const paymentFallback = needsPaymentFallback && hash ? await buildPaymentInfo(spec, hash) : null;
+
+        const payment = {
+          address:
+            planAddress && planAddress.trim()
+              ? planAddress
+              : paymentFallback?.payment.address ?? null,
+          amountFlux:
+            Number.isFinite(planAmount)
+              ? Number(planAmount.toFixed(2))
+              : paymentFallback?.payment.amountFlux ?? null,
+          memo: hash ?? null,
+          note: hash
+            ? 'Pay to address with memo=hash (after optional test install).'
+            : 'After submission returns a hash, pay to address with memo=hash.',
+        };
+
+        const message =
+          status === 'submitted'
+            ? 'Registration submitted. Poll for propagation with flux_apps_wait_for_propagation.'
+            : status === 'awaiting_payment'
+              ? 'Registration broadcasted. Next: (recommended) flux_apps_test_install with this hash, then pay with memo=hash.'
+              : status === 'verifying_global'
+                ? 'Registration appears permanent, but global app spec not visible yet. Re-check shortly.'
+                : status === 'error'
+                  ? submitError ?? 'Registration submission failed.'
+                  : 'Registration verified.';
+
+        const nextActions = status === 'verified' || !hash
+          ? []
+          : [
+              { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
+              { tool: 'flux_apps_wait_for_propagation', arguments: { hash, attempts, intervalMs } },
+              { tool: 'flux_apps_test_install', arguments: { hash, confirm: true } },
+              appname ? { tool: 'flux_apps_global_status', arguments: { appname, zelid: owner } } : null,
+            ].filter(Boolean);
+
+        const link = resourceStore.putJson({
+          kind: 'git_deploy/register_and_verify',
+          name: `Git deploy register and verify ${appname ?? hash ?? 'app'}`,
+          description: 'Registration submission + propagation checks (git deploy)',
+          value: {
+            planResourceUri,
+            git: plan['git'] ?? null,
+            appname: appname ?? null,
+            owner: owner ?? null,
+            hash: hash ?? null,
+            attempts,
+            intervalMs,
+            poll,
+            registered,
+            payload,
+            submit,
+            propagation,
+            globalCheck,
+            globalPresent,
+            payment,
+          },
+        });
+
+        const summary = {
+          ok,
+          status,
+          done,
+          registered,
+          git: plan['git'] ?? null,
+          appname: appname ?? null,
+          owner: owner ?? null,
+          hash: hash ?? null,
+          attemptsUsed: propagation?.attemptsUsed ?? 0,
+          temporaryPresent: propagation?.temporaryPresent ?? null,
+          permanentPresent: propagation?.permanentPresent ?? null,
+          globalPresent,
+          messageToSignSha256,
+          messageToSignBytes,
+          messageToSignResourceUri: messageLink.uri,
+          message,
+          payment,
+          resourceUri: link.uri,
+          nextActions,
+          signatureNotes: {
+            loginSignature: 'Sign loginPhrase for zelidauth (auth).',
+            appSignature: 'Sign messageToSign for registration.',
+          },
+        };
+
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(summary, null, 2) },
+            { type: 'resource_link', ...link },
+            { type: 'resource_link', ...messageLink },
+          ],
+          structuredContent: summary,
+          isError: status === 'error',
         };
       }
 

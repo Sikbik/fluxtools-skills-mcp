@@ -63,8 +63,8 @@ This repo ships MCP tools that do this safely.
 4. Sign the returned message:
    - Use `messageToSignResourceUri` + `flux_build_zelcore_sign_link { "messageResourceUri": "...", "useFluxStorage": true, "confirm": true }`
 5. Submit registration:
-   - `flux_apps_register`
+   - Prefer: `flux_git_deploy_register_and_verify { "planResourceUri": "<resourceUri from plan>", "signature": "<signature>", "confirm": true }`
+   - (Fallback) `flux_apps_register { "spec": <spec>, "signature": "<signature>", "timestamp": <timestamp> }`
 6. (Optional) Test install + pay:
    - `flux_apps_test_install` (requires `confirm:true`)
    - Pay to the address returned in the plan/register output with memo set to the registration hash.
-

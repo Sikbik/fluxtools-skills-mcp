@@ -70,6 +70,10 @@ describe('MCP tool registry', () => {
     expect(names.has('flux_apps_append_backup_task')).toBe(true);
     expect(names.has('flux_apps_append_restore_task')).toBe(true);
     expect(names.has('flux_build_message_to_sign')).toBe(true);
+
+    expect(names.has('flux_git_deploy_generate_spec_v8')).toBe(true);
+    expect(names.has('flux_git_deploy_plan_registration')).toBe(true);
+    expect(names.has('flux_git_deploy_register_and_verify')).toBe(true);
   });
 
   it('defines required args for key tools', () => {
