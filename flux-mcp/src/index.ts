@@ -5890,6 +5890,10 @@ export async function callTool(name: string, rawArgs: unknown) {
         const timeoutMs = asOptionalNumber(args['timeoutMs']);
         const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
 
+        const baseUrlsExplicit =
+          Array.isArray(baseUrlsRaw) &&
+          baseUrlsRaw.some((x) => typeof x === 'string' && x.trim().length > 0);
+
         const baseUrls = Array.isArray(baseUrlsRaw)
           ? baseUrlsRaw.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean)
           : [];
@@ -5989,6 +5993,11 @@ export async function callTool(name: string, rawArgs: unknown) {
             error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
             baseUrlUsed,
             resourceUri: baseLink.uri,
+            nextActions: [
+              { tool: 'flux_auth_flow', arguments: {} },
+              { tool: 'flux_node_health', arguments: {} },
+              { tool: 'flux_get_state', arguments: {} },
+            ],
           };
 
           return {
@@ -6001,7 +6010,64 @@ export async function callTool(name: string, rawArgs: unknown) {
           };
         }
 
-        const preferred = [baseUrlUsed, ...normalized.filter((u) => u !== baseUrlUsed)];
+        let preferred = [baseUrlUsed, ...normalized.filter((u) => u !== baseUrlUsed)];
+
+        let arcaneDiscovery: {
+          baseUrlUsed: string;
+          baseUrlUsedArcane: boolean | null;
+          discoveredArcaneBaseUrls: string[];
+        } | null = null;
+
+        if (!baseUrlsExplicit) {
+          const arcaneTimeoutMs = Math.min(timeoutMs ?? 15000, 15000);
+
+          // If the node that served the base spec isn't Arcane, try to find an Arcane node from the app's locations.
+          let baseUrlUsedArcane: boolean | null = null;
+          try {
+            const arcaneRes = await withBaseUrl(baseUrlUsed, async () =>
+              client.request('/flux/isarcaneos', { timeoutMs: arcaneTimeoutMs })
+            );
+            if (arcaneRes.ok && isFluxSuccess(arcaneRes.data)) {
+              const payload = unwrapFluxEnvelope<unknown>(arcaneRes.data);
+              if (typeof payload === 'boolean') baseUrlUsedArcane = payload;
+            }
+          } catch {
+            // ignore (we'll fall back to the provided baseUrls list)
+          }
+
+          const discoveredArcaneBaseUrls: string[] = [];
+
+          if (baseUrlUsedArcane === false) {
+            const located = await withBaseUrl(baseUrlUsed, async () => getLocationCandidates({ client, appname }));
+
+            if (located.ok && located.candidates.length > 0) {
+              for (const c of located.candidates.slice(0, 10)) {
+                const tmp = new FluxClient({
+                  baseUrl: c.baseUrl,
+                  zelidauth: client.getZelidauthValueForBaseUrl(c.baseUrl) ?? undefined,
+                  enterpriseKey: client.getEnterpriseKeyValueForBaseUrl(c.baseUrl) ?? undefined,
+                });
+                tmp.setHttpDefaults(client.getHttpDefaults());
+
+                const r = await tmp.request('/flux/isarcaneos', { timeoutMs: arcaneTimeoutMs });
+                if (r.ok && isFluxSuccess(r.data)) {
+                  const payload = unwrapFluxEnvelope<unknown>(r.data);
+                  if (payload === true) discoveredArcaneBaseUrls.push(c.baseUrl);
+                }
+
+                if (discoveredArcaneBaseUrls.length >= 5) break;
+              }
+            }
+          }
+
+          if (baseUrlUsedArcane !== null || discoveredArcaneBaseUrls.length > 0) {
+            arcaneDiscovery = { baseUrlUsed, baseUrlUsedArcane, discoveredArcaneBaseUrls };
+          }
+
+          if (discoveredArcaneBaseUrls.length > 0) {
+            preferred = Array.from(new Set([...discoveredArcaneBaseUrls, ...preferred]));
+          }
+        }
 
         // 2a) Resolve original owner (needed for /apps/getpublickey).
         let owner = ownerArg ?? null;
@@ -6019,13 +6085,22 @@ export async function callTool(name: string, rawArgs: unknown) {
           );
 
           if (!ownerAttempt.ok) {
+            const arcaneSuggestion =
+              arcaneDiscovery?.discoveredArcaneBaseUrls?.length ? arcaneDiscovery.discoveredArcaneBaseUrls[0] : null;
+
             const summary = {
               ok: false,
               appname,
               enterprise: true,
               error: 'Unable to resolve app original owner.',
               failures: ownerAttempt.failures,
+              arcane: arcaneDiscovery,
               resourceUri: baseLink.uri,
+              nextActions: [
+                ...(arcaneSuggestion ? [{ tool: 'flux_set_base_url', arguments: { baseUrl: arcaneSuggestion } }] : []),
+                { tool: 'flux_apps_get_owner', arguments: { appname } },
+                { tool: 'flux_node_health', arguments: {} },
+              ],
             };
 
             return {
@@ -6060,6 +6135,9 @@ export async function callTool(name: string, rawArgs: unknown) {
         );
 
         if (!publicKeyAttempt.ok) {
+          const arcaneSuggestion =
+            arcaneDiscovery?.discoveredArcaneBaseUrls?.length ? arcaneDiscovery.discoveredArcaneBaseUrls[0] : null;
+
           const summary = {
             ok: false,
             appname,
@@ -6067,7 +6145,14 @@ export async function callTool(name: string, rawArgs: unknown) {
             owner,
             error: 'Unable to fetch enterprise public key (Arcane node + zelidauth required).',
             failures: publicKeyAttempt.failures,
+            arcane: arcaneDiscovery,
             resourceUri: baseLink.uri,
+            nextActions: [
+              ...(arcaneSuggestion ? [{ tool: 'flux_set_base_url', arguments: { baseUrl: arcaneSuggestion } }] : []),
+              { tool: 'flux_node_health', arguments: {} },
+              { tool: 'flux_enterprise_preflight', arguments: { appname, owner } },
+              { tool: 'flux_auth_flow', arguments: {} },
+            ],
           };
 
           return {
@@ -6117,10 +6202,16 @@ export async function callTool(name: string, rawArgs: unknown) {
             owner,
             baseUrlUsed: arcaneBaseUrlUsed,
             error: extractFluxErrorMessage(encryptedRes.data) ?? 'Failed to fetch enterprise encrypted spec',
+            arcane: arcaneDiscovery,
             resources: {
               baseSpec: baseLink.uri,
               encryptedSpec: encryptedLink.uri,
             },
+            nextActions: [
+              { tool: 'flux_enterprise_preflight', arguments: { appname, owner } },
+              { tool: 'flux_node_health', arguments: {} },
+              { tool: 'flux_auth_flow', arguments: {} },
+            ],
           };
 
           return {

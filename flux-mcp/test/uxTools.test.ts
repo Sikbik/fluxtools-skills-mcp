@@ -1,17 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { generateKeyPairSync } from 'node:crypto';
+import { constants, createCipheriv, generateKeyPairSync, privateDecrypt, randomBytes } from 'node:crypto';
 
 import { callTool } from '../src/index.js';
 
 type Seen = { method: string; url: string };
 
-const rsaPublicKeyBase64 = (() => {
-  const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const rsaKeys = (() => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const der = publicKey.export({ type: 'spki', format: 'der' });
-  return Buffer.from(der).toString('base64');
+  return { publicKeyBase64: Buffer.from(der).toString('base64'), privateKey };
 })();
+
+const rsaPublicKeyBase64 = rsaKeys.publicKeyBase64;
+const rsaPrivateKey = rsaKeys.privateKey;
 
 function readBody(req: IncomingMessage) {
   return new Promise<string>((resolve) => {
@@ -39,6 +42,10 @@ describe.sequential('UX tools', () => {
 
     if (url === '/flux/version') {
       return json(res, 200, { status: 'success', data: { version: 'test' } });
+    }
+
+    if (url === '/flux/isarcaneos') {
+      return json(res, 200, { status: 'success', data: false });
     }
 
     if (url === '/id/loginphrase') {
@@ -127,6 +134,29 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: rsaPublicKeyBase64 });
     }
 
+    if (url === '/apps/appspecifications/myent') {
+      return json(res, 200, {
+        status: 'success',
+        data: {
+          version: 8,
+          name: 'myent',
+          owner: 'zelid',
+          enterprise: 'ENCRYPTED',
+        },
+      });
+    }
+
+    if (url === '/apps/appspecifications/myent/true') {
+      return json(res, 200, {
+        status: 'error',
+        data: 'Application Specifications can only be validated on a node running Arcane OS.',
+      });
+    }
+
+    if (url === '/apps/apporiginalowner/myent') {
+      return json(res, 200, { status: 'success', data: 'zelid' });
+    }
+
     if (url === '/apps/appregister') {
       await readBody(req);
       return json(res, 200, { status: 'success', data: { hash: 'hreg' } });
@@ -137,7 +167,7 @@ describe.sequential('UX tools', () => {
       return json(res, 200, { status: 'success', data: { hash: 'hupd' } });
     }
 
-    if (url.startsWith('/apps/location/myapp')) {
+    if (url.startsWith('/apps/location/myapp') || url.startsWith('/apps/location/myent')) {
       const host1 = serverPort ? `127.0.0.1:${serverPort}` : '127.0.0.1';
       const host2 = server2Port ? `127.0.0.1:${server2Port}` : null;
       const data = [{ ip: host1 }, ...(host2 ? [{ ip: host2 }] : [])];
@@ -216,6 +246,45 @@ describe.sequential('UX tools', () => {
   const server2 = createServer(async (req, res) => {
     const url = req.url ?? '';
     seen2.push({ method: req.method ?? '', url });
+
+    if (url === '/flux/isarcaneos') {
+      return json(res, 200, { status: 'success', data: true });
+    }
+
+    if (url === '/apps/apporiginalowner/myent') {
+      return json(res, 200, { status: 'success', data: 'zelid' });
+    }
+
+    if (url === '/apps/getpublickey') {
+      await readBody(req);
+      return json(res, 200, { status: 'success', data: rsaPublicKeyBase64 });
+    }
+
+    if (url === '/apps/appspecifications/myent/true') {
+      // Simulate Arcane enterprise session encryption:
+      // decrypt enterprise-key (RSA-OAEP sha256) -> AES key base64 -> encrypt JSON payload with AES-256-GCM.
+      const enterpriseKeyHeader = req.headers['enterprise-key'];
+      const enterpriseKey = typeof enterpriseKeyHeader === 'string' ? enterpriseKeyHeader : '';
+      if (!enterpriseKey) return json(res, 200, { status: 'error', data: 'missing enterprise-key header' });
+
+      const aesKeyBase64 = privateDecrypt(
+        { key: rsaPrivateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+        Buffer.from(enterpriseKey, 'base64'),
+      ).toString('utf-8');
+
+      const aesKey = Buffer.from(aesKeyBase64, 'base64');
+      if (aesKey.length !== 32) return json(res, 200, { status: 'error', data: 'bad aes key' });
+
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', aesKey, nonce);
+      const plaintext = JSON.stringify({ compose: [{ name: 'web', repotag: 'nginx:latest' }], contacts: [] });
+      const start = cipher.update(plaintext, 'utf8');
+      const end = cipher.final();
+      const tag = cipher.getAuthTag();
+      const enterprise = Buffer.concat([nonce, start, end, tag]).toString('base64');
+
+      return json(res, 200, { status: 'success', data: { enterprise } });
+    }
 
     if (url.startsWith('/apps/getfolderinfo')) {
       return json(res, 200, {
@@ -355,6 +424,24 @@ describe.sequential('UX tools', () => {
 
     const structured = r.structuredContent as Record<string, unknown> | undefined;
     expect(structured?.resourceUri).toBeTypeOf('string');
+  });
+
+  it('flux_apps_get_spec_full discovers an Arcane node and decrypts enterprise specs', async () => {
+    const r = await callTool('flux_apps_get_spec_full', { appname: 'myent', setBaseUrlOnSuccess: false });
+    expect(r.isError).not.toBe(true);
+
+    const payload = JSON.parse(r.content[0]?.text ?? '{}') as Record<string, unknown>;
+    expect(payload.ok).toBe(true);
+    expect(payload.enterprise).toBe(true);
+
+    const resources = payload.resources as Record<string, unknown> | undefined;
+    expect(resources).toBeTruthy();
+    expect(typeof resources?.mergedSpec).toBe('string');
+
+    expect(seen.some((x) => x.url === '/apps/location/myent')).toBe(true);
+    expect(seen2.some((x) => x.url === '/flux/isarcaneos')).toBe(true);
+    expect(seen2.some((x) => x.url === '/apps/getpublickey')).toBe(true);
+    expect(seen2.some((x) => x.url === '/apps/appspecifications/myent/true')).toBe(true);
   });
 
   it('flux_apps_logs returns resource_link summary', async () => {
