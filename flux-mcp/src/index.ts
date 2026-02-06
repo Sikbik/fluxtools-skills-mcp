@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import { createPublicKey, publicEncrypt, randomBytes, constants, createHash, createDecipheriv, createCipheriv } from 'node:crypto';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -1064,6 +1065,53 @@ function decryptEnterprisePayload(enterpriseBase64: string, aesKeyBase64: string
 }
 
 const DEFAULT_ZELCORE_ICON = 'https://raw.githubusercontent.com/runonflux/flux/master/zelID.svg';
+
+type ZelcoreLocalLauncher = {
+  server: http.Server;
+  port: number;
+  routes: Map<string, string>;
+};
+
+let zelcoreLocalLauncher: ZelcoreLocalLauncher | null = null;
+
+async function ensureZelcoreLocalLauncher(): Promise<ZelcoreLocalLauncher> {
+  if (zelcoreLocalLauncher) return zelcoreLocalLauncher;
+
+  const routes = new Map<string, string>();
+
+  const server = http.createServer((req, res) => {
+    try {
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      const html = routes.get(url.pathname);
+      if (!html) {
+        res.statusCode = 404;
+        res.setHeader('content-type', 'text/plain; charset=utf-8');
+        res.end('Not found');
+        return;
+      }
+
+      res.statusCode = 200;
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      res.end(html);
+    } catch (e) {
+      res.statusCode = 500;
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.end(String(e instanceof Error ? e.message : e));
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+
+  const addr = server.address();
+  if (!addr || typeof addr === 'string') throw new Error('Could not determine localhost launcher port.');
+  const port = addr.port;
+
+  zelcoreLocalLauncher = { server, port, routes };
+  return zelcoreLocalLauncher;
+}
 
 function isOsc8Enabled(): boolean {
   // Default on: most modern terminals (including VS Code) support OSC8 links.
@@ -4608,13 +4656,20 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         await fs.writeFile(outPath, html, { encoding: 'utf8' });
 
-        // file:// URL for Ctrl+Click in terminals/IDEs
+        // file:// URL for Ctrl+Click in terminals/IDEs (may be disabled by the IDE for security).
         const fileUrl = outPath.startsWith('/') ? `file://${outPath}` : `file://${path.resolve(outPath)}`;
+
+        // Most IDE terminals always linkify http(s), so we also host the same HTML via a localhost-only server.
+        const launcher = await ensureZelcoreLocalLauncher();
+        const httpPath = `/__flux/zelcore/${sha}.html`;
+        launcher.routes.set(httpPath, html);
+        const httpUrl = `http://127.0.0.1:${launcher.port}${httpPath}`;
 
         const out = {
           ok: true,
           path: outPath,
           fileUrl,
+          httpUrl,
           link: links.link,
           clickableLink: links.clickableLink,
           bracketedLink: links.bracketedLink,
@@ -4624,7 +4679,11 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
 
         return {
-          content: [{ type: 'text', text: `Launcher (Ctrl+Click):\n${fileUrl}` }, { type: 'text', text: JSON.stringify(out, null, 2) }],
+          content: [
+            { type: 'text', text: `Launcher (http, Ctrl+Click):\n${httpUrl}` },
+            { type: 'text', text: `Launcher (file, fallback):\n${fileUrl}` },
+            { type: 'text', text: JSON.stringify(out, null, 2) },
+          ],
           structuredContent: out,
           isError: false,
         };
