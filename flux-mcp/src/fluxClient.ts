@@ -357,7 +357,7 @@ export class FluxClient {
       method?: string;
       query?: Record<string, unknown>;
       body?: unknown;
-      bodyType?: 'json' | 'form' | 'multipart' | 'fluxos';
+      bodyType?: 'json' | 'text' | 'form' | 'multipart' | 'fluxos';
       zelidauth?: unknown;
       useStoredZelidauth?: boolean;
       enterpriseKey?: unknown;
@@ -426,6 +426,12 @@ export class FluxClient {
       if (bodyType === 'json') {
         body = JSON.stringify(opts.body);
         headers['content-type'] = 'application/json';
+      } else if (bodyType === 'text') {
+        // Workaround: Flux v8.5.0 nodes apply express.json() globally, but
+        // /apps/getpublickey reads the raw request stream (req.on('data'/'end')).
+        // Sending text/plain bypasses express.json so the handler receives the body.
+        body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
+        headers['content-type'] = 'text/plain';
       } else if (bodyType === 'fluxos') {
         body = JSON.stringify(opts.body);
         headers['content-type'] = 'application/x-www-form-urlencoded';

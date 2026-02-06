@@ -954,6 +954,7 @@ async function buildGitDeploySpecV8(opts: {
     } else {
       const res = await opts.client.request('/apps/getpublickey', {
         method: 'POST',
+        bodyType: 'text',
         body: { owner, name: appname },
         timeoutMs: 60 * 1000,
       });
@@ -3959,7 +3960,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           runWithBaseUrl(baseUrl, async () => {
             const res = await client.request('/apps/getpublickey', {
               method: 'POST',
-              bodyType: 'json',
+              bodyType: 'text',
               body: { owner, name: appname },
               timeoutMs,
             });
@@ -6455,7 +6456,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           withBaseUrl(baseUrl, async () => {
             const res = await client.request('/apps/getpublickey', {
               method: 'POST',
-              bodyType: 'json',
+              bodyType: 'text',
               body: { owner, name: appname },
               timeoutMs,
             });
@@ -6639,7 +6640,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult(
           await client.request('/apps/getpublickey', {
             method: 'POST',
-            bodyType: 'json',
+            bodyType: 'text',
             body: { owner, name },
           })
         );
