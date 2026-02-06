@@ -1136,6 +1136,10 @@ function extractAppIdentity(spec: Record<string, unknown>): { appname?: string; 
   };
 }
 
+function isFluxEnvelopeOk(res: FluxRequestResult): boolean {
+  return res.ok && isFluxSuccess(res.data);
+}
+
 function extractFluxAmountFromPrice(priceRes: FluxRequestResult): number | null {
   if (!priceRes.ok || !isFluxSuccess(priceRes.data)) return null;
   const priceData = unwrapFluxEnvelope<unknown>(priceRes.data);
@@ -4415,8 +4419,10 @@ export async function callTool(name: string, rawArgs: unknown) {
           },
         });
 
+        const ok = isFluxEnvelopeOk(balanceRes);
+
         const summary = {
-          ok: balanceRes.ok,
+          ok,
           httpStatus: balanceRes.status,
           address,
           confirmed: Number.isFinite(confirmed) ? confirmed : null,
@@ -4473,22 +4479,26 @@ export async function callTool(name: string, rawArgs: unknown) {
             String(p['conntime'] ?? '-'),
           ]);
 
+          const ok = isFluxEnvelopeOk(res);
+
           return buildTableResult({
             headers: ['addr', 'subver', 'inbound', 'conntime'],
             rows,
             maxRows: 50,
-            summary: { ok: res.ok, httpStatus: res.status, method, peerCount: peers.length, resourceUri: link.uri },
+            summary: { ok, httpStatus: res.status, method, peerCount: peers.length, resourceUri: link.uri },
             resource: link,
           });
         }
 
         const rows: string[][] = Object.entries(typeof redacted === 'object' && redacted !== null && !Array.isArray(redacted) ? (redacted as Record<string, unknown>) : { result: redacted }).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)]);
 
+        const ok = isFluxEnvelopeOk(res);
+
         return buildTableResult({
           headers: ['Key', 'Value'],
           rows,
           maxRows: 50,
-          summary: { ok: res.ok, httpStatus: res.status, method, resourceUri: link.uri },
+          summary: { ok, httpStatus: res.status, method, resourceUri: link.uri },
           resource: link,
         });
       }
@@ -5067,7 +5077,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             ? isArcanePayload.trim().toLowerCase() === 'true'
             : null;
 
-        const ok = versionRes.ok && infoRes.ok && isArcaneRes.ok;
+        const ok = isFluxEnvelopeOk(versionRes) && isFluxEnvelopeOk(infoRes) && isFluxEnvelopeOk(isArcaneRes);
         const summary = {
           ok,
           baseUrl: client.getBaseUrl(),
@@ -5132,7 +5142,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
 
         const summary = {
-          ok: res.ok,
+          ok: isFluxEnvelopeOk(res),
           status: res.status,
           count: items.length,
         };
@@ -5163,7 +5173,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         const rows = names.map((n) => [n]);
 
         const summary = {
-          ok: res.ok,
+          ok: isFluxEnvelopeOk(res),
           status: res.status,
           count: names.length,
         };
@@ -5213,7 +5223,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
 
         const summary = {
-          ok: res.ok,
+          ok: isFluxEnvelopeOk(res),
           status: res.status,
           hash: hash ?? null,
           owner: owner ?? null,
@@ -6218,11 +6228,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           description: 'Raw /apps/registrationinformation response',
           value: res,
         });
-        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, resourceUri: link.uri };
         return {
           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -6234,11 +6245,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           description: 'Raw /apps/deploymentinformation response',
           value: res,
         });
-        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, resourceUri: link.uri };
         return {
           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -7609,11 +7621,12 @@ export async function callTool(name: string, rawArgs: unknown) {
             description: 'Raw /apps/temporarymessages response',
             value: res,
           });
-          const summary = { ok: res.ok, status: res.status, kind, hash, resourceUri: link.uri };
+          const ok = isFluxEnvelopeOk(res);
+          const summary = { ok, status: res.status, kind, hash, resourceUri: link.uri };
           return {
             content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
             structuredContent: summary,
-            isError: !res.ok,
+            isError: !ok,
           };
         }
 
@@ -7625,11 +7638,12 @@ export async function callTool(name: string, rawArgs: unknown) {
             description: 'Raw /apps/permanentmessages response',
             value: res,
           });
-          const summary = { ok: res.ok, status: res.status, kind, hash, resourceUri: link.uri };
+          const ok = isFluxEnvelopeOk(res);
+          const summary = { ok, status: res.status, kind, hash, resourceUri: link.uri };
           return {
             content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
             structuredContent: summary,
-            isError: !res.ok,
+            isError: !ok,
           };
         }
 
@@ -7645,13 +7659,16 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: { temporary, permanent },
         });
 
+        const tempOk = isFluxEnvelopeOk(temporary);
+        const permOk = isFluxEnvelopeOk(permanent);
+
         const summary = {
-          ok: temporary.ok && permanent.ok,
+          ok: tempOk && permOk,
           hash,
           kind,
           resourceUri: link.uri,
-          temporary: { ok: temporary.ok, status: temporary.status },
-          permanent: { ok: permanent.ok, status: permanent.status },
+          temporary: { ok: tempOk, status: temporary.status },
+          permanent: { ok: permOk, status: permanent.status },
         };
 
         return {
@@ -7927,10 +7944,10 @@ export async function callTool(name: string, rawArgs: unknown) {
         } else {
           res = await client.request('/apps/applog', { query: { appname: appname, lines } });
           target = appname;
-          if (!res.ok) {
+          if (!isFluxEnvelopeOk(res)) {
             const fallback = `fluxserver_${appname}`;
             const r2 = await client.request('/apps/applog', { query: { appname: fallback, lines } });
-            if (r2.ok) {
+            if (isFluxEnvelopeOk(r2)) {
               res = r2;
               target = fallback;
             }
@@ -7951,8 +7968,10 @@ export async function callTool(name: string, rawArgs: unknown) {
         const logLines = logText.split(/\r?\n/).filter((l) => l.length);
         const preview = logLines.slice(-Math.min(logLines.length, 50));
 
+        const ok = isFluxEnvelopeOk(res);
+
         const summary = {
-          ok: res.ok,
+          ok,
           status: res.status,
           appname,
           resolved: resolved
@@ -7960,10 +7979,10 @@ export async function callTool(name: string, rawArgs: unknown) {
             : null,
           target,
           lines,
-          preview: res.ok ? preview : null,
-          error: res.ok ? null : knownError,
+          preview: ok ? preview : null,
+          error: ok ? null : knownError,
           resourceUri: link.uri,
-          nextActions: res.ok
+          nextActions: ok
             ? []
             : [
                 { tool: 'flux_apps_resolve_runtime_target', arguments: { appname } },
@@ -7978,7 +7997,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -9029,11 +9048,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           description: 'Raw /syncthing/metrics response',
           value: res,
         });
-        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, resourceUri: link.uri };
         return {
           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -9053,7 +9073,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
         const headers = ['OK', 'Message'];
         const rows = [[String(okValue ?? '-'), typeof messageValue === 'string' ? messageValue : '-']];
-        const summary = { ok: res.ok, status: res.status };
+        const summary = { ok: isFluxEnvelopeOk(res), status: res.status };
         return buildTableResult({
           headers,
           rows,
@@ -9071,11 +9091,12 @@ export async function callTool(name: string, rawArgs: unknown) {
           description: 'Raw /syncthing/system/status response',
           value: res,
         });
-        const summary = { ok: res.ok, status: res.status, resourceUri: link.uri };
+        const ok = isFluxEnvelopeOk(res);
+        const summary = { ok, status: res.status, resourceUri: link.uri };
         return {
           content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }, { type: 'resource_link', ...link }],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: !ok,
         };
       }
 
@@ -9106,7 +9127,7 @@ export async function callTool(name: string, rawArgs: unknown) {
               : '-';
           return [id, label, p, type, rescan];
         });
-        const summary = { ok: res.ok, status: res.status, count: folders.length };
+        const summary = { ok: isFluxEnvelopeOk(res), status: res.status, count: folders.length };
         return buildTableResult({
           headers,
           rows,
@@ -9141,7 +9162,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           const paused = d.paused === true ? 'yes' : 'no';
           return [name, deviceID, addresses, introducer, paused];
         });
-        const summary = { ok: res.ok, status: res.status, count: devices.length };
+        const summary = { ok: isFluxEnvelopeOk(res), status: res.status, count: devices.length };
         return buildTableResult({
           headers,
           rows,
@@ -9168,7 +9189,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         });
 
         const summary = {
-          ok: res.ok,
+          ok: isFluxEnvelopeOk(res),
           status: res.status,
           folder,
           levels: levels ?? null,
@@ -9182,7 +9203,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             { type: 'resource_link', ...link },
           ],
           structuredContent: summary,
-          isError: !res.ok,
+          isError: summary.ok !== true,
         };
       }
 
