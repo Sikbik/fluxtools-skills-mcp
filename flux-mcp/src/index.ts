@@ -1063,6 +1063,77 @@ function decryptEnterprisePayload(enterpriseBase64: string, aesKeyBase64: string
   return decrypted.toString('utf8');
 }
 
+function isSensitiveEnvKey(key: string): boolean {
+  const k = key.trim();
+  if (!k) return false;
+  // Conservative: only redact keys that are overwhelmingly likely to be secrets.
+  return /(pass(word)?|secret|token|api[_-]?key|private|bearer|jwt|session|cookie)/i.test(k);
+}
+
+function sanitizeEnvironmentParameters(
+  params: unknown,
+  opts: { includeSecrets: boolean }
+): { value: unknown; redactedKeys: string[]; redactedCount: number } {
+  if (opts.includeSecrets) return { value: params, redactedKeys: [], redactedCount: 0 };
+  if (!Array.isArray(params)) return { value: params, redactedKeys: [], redactedCount: 0 };
+
+  const redactedKeys: string[] = [];
+  let redactedCount = 0;
+
+  const out = params.map((raw) => {
+    if (typeof raw !== 'string') return raw;
+    const idx = raw.indexOf('=');
+    if (idx <= 0) return raw;
+    const key = raw.slice(0, idx).trim();
+    if (!isSensitiveEnvKey(key)) return raw;
+    redactedKeys.push(key);
+    redactedCount++;
+    return `${key}=<redacted>`;
+  });
+
+  return { value: out, redactedKeys, redactedCount };
+}
+
+function sanitizeEnterpriseObject(
+  enterpriseObj: Record<string, unknown>,
+  opts: { includeSecrets: boolean }
+): { enterprise: Record<string, unknown>; redactions: { envKeys: string[]; envCount: number; repoauthCount: number } } {
+  if (opts.includeSecrets) {
+    return { enterprise: enterpriseObj, redactions: { envKeys: [], envCount: 0, repoauthCount: 0 } };
+  }
+
+  // Deep clone to avoid mutating the original decrypted object.
+  const cloned = JSON.parse(JSON.stringify(enterpriseObj)) as Record<string, unknown>;
+
+  const envKeys = new Set<string>();
+  let envCount = 0;
+  let repoauthCount = 0;
+
+  const compose = cloned['compose'];
+  if (Array.isArray(compose)) {
+    for (const comp of compose) {
+      if (!comp || typeof comp !== 'object' || Array.isArray(comp)) continue;
+      const c = comp as Record<string, unknown>;
+
+      const env = sanitizeEnvironmentParameters(c['environmentParameters'], { includeSecrets: false });
+      c['environmentParameters'] = env.value;
+      for (const k of env.redactedKeys) envKeys.add(k);
+      envCount += env.redactedCount;
+
+      const repoauth = c['repoauth'];
+      if (typeof repoauth === 'string' && repoauth.trim()) {
+        c['repoauth'] = '<redacted>';
+        repoauthCount++;
+      }
+    }
+  }
+
+  return {
+    enterprise: cloned,
+    redactions: { envKeys: Array.from(envKeys).sort(), envCount, repoauthCount },
+  };
+}
+
 async function uploadToFluxStorage(message: string): Promise<string> {
   const publicid = Math.floor(Math.random() * 999999999999999).toString();
   const res = await fetch('https://storage.runonflux.io/v1/public', {
@@ -2407,23 +2478,34 @@ export const tools: Tool[] = [
     name: 'flux_apps_get_spec_full',
     description:
       'Fetch an app spec; for v8+ enterprise apps, performs the Arcane enterprise decrypt flow and returns decrypted compose/contacts (requires zelidauth + Arcane node).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        appname: { type: 'string', description: 'Flux app name' },
-        owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
-        baseUrls: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Optional base URLs to try for Arcane/enterprise operations (e.g. ["http://<ip>:16127", "https://<ip-with-dashes>-16127.node.api.runonflux.io"]).',
-        },
-        timeoutMs: { type: 'number', description: 'Optional request timeout override.' },
-        setBaseUrlOnSuccess: { type: 'boolean', description: 'If true (default), set MCP baseUrl to the successful Arcane node URL.' },
-      },
-      required: ['appname'],
-    },
-  },
+	    inputSchema: {
+	      type: 'object',
+	      properties: {
+	        appname: { type: 'string', description: 'Flux app name' },
+	        owner: { type: 'string', description: 'Original app owner (optional). If omitted, uses /apps/apporiginalowner.' },
+	        baseUrls: {
+	          type: 'array',
+	          items: { type: 'string' },
+	          description:
+	            'Optional base URLs to try for Arcane/enterprise operations (e.g. ["http://<ip>:16127", "https://<ip-with-dashes>-16127.node.api.runonflux.io"]).',
+	        },
+	        timeoutMs: { type: 'number', description: 'Optional request timeout override.' },
+	        setBaseUrlOnSuccess: { type: 'boolean', description: 'If true (default), set MCP baseUrl to the successful Arcane node URL.' },
+	        includeSecrets: {
+	          type: 'boolean',
+	          description:
+	            'If true, includes sensitive values (passwords/tokens) in the decrypted compose env. Requires FLUX_MCP_ALLOW_SECRETS=1 and confirm=true.',
+	          default: false,
+	        },
+	        confirm: {
+	          type: 'boolean',
+	          description: 'Required when includeSecrets=true (acknowledges that secrets may be returned).',
+	          default: false,
+	        },
+	      },
+	      required: ['appname'],
+	    },
+	  },
   {
     name: 'flux_apps_get_public_key',
     description: 'Fetch RSA public key for enterprise encryption (POST /apps/getpublickey). Requires zelidauth and Arcane node.',
@@ -6218,16 +6300,30 @@ export async function callTool(name: string, rawArgs: unknown) {
         };
       }
 
-      case 'flux_apps_get_spec_full': {
-        const appname = mustBeString(args['appname'], 'appname');
-        const ownerArg = asOptionalString(args['owner']);
-        const baseUrlsRaw = args['baseUrls'];
-        const timeoutMs = asOptionalNumber(args['timeoutMs']);
-        const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
+	      case 'flux_apps_get_spec_full': {
+	        const appname = mustBeString(args['appname'], 'appname');
+	        const ownerArg = asOptionalString(args['owner']);
+	        const baseUrlsRaw = args['baseUrls'];
+	        const timeoutMs = asOptionalNumber(args['timeoutMs']);
+	        const setBaseUrlOnSuccess = (asOptionalBoolean(args['setBaseUrlOnSuccess']) ?? true) === true;
+	        const includeSecrets = (asOptionalBoolean(args['includeSecrets']) ?? false) === true;
+	        const confirm = (asOptionalBoolean(args['confirm']) ?? false) === true;
 
-        const baseUrlsExplicit =
-          Array.isArray(baseUrlsRaw) &&
-          baseUrlsRaw.some((x) => typeof x === 'string' && x.trim().length > 0);
+	        if (includeSecrets) {
+	          const allowed = process.env.FLUX_MCP_ALLOW_SECRETS === '1' || process.env.FLUX_MCP_ALLOW_SECRETS === 'true';
+	          if (!allowed) {
+	            throw new Error(
+	              'Refusing to include secrets in decrypted output by default. To allow, set FLUX_MCP_ALLOW_SECRETS=1 and pass confirm=true.'
+	            );
+	          }
+	          if (!confirm) {
+	            throw new Error('includeSecrets=true requires confirm=true.');
+	          }
+	        }
+
+	        const baseUrlsExplicit =
+	          Array.isArray(baseUrlsRaw) &&
+	          baseUrlsRaw.some((x) => typeof x === 'string' && x.trim().length > 0);
 
         const baseUrls = Array.isArray(baseUrlsRaw)
           ? baseUrlsRaw.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean)
@@ -6580,22 +6676,25 @@ export async function callTool(name: string, rawArgs: unknown) {
           throw new Error('Enterprise payload decrypted but was not valid JSON');
         }
 
-        if (!decryptedEnterprise || typeof decryptedEnterprise !== 'object' || Array.isArray(decryptedEnterprise)) {
-          throw new Error('Enterprise payload JSON must be an object');
-        }
+	        if (!decryptedEnterprise || typeof decryptedEnterprise !== 'object' || Array.isArray(decryptedEnterprise)) {
+	          throw new Error('Enterprise payload JSON must be an object');
+	        }
 
-        const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
+	        const enterpriseObj = decryptedEnterprise as Record<string, unknown>;
+	        const sanitized = sanitizeEnterpriseObject(enterpriseObj, { includeSecrets });
 
-        const mergedSpec: Record<string, unknown> = { ...encryptedSpec };
-        if ('compose' in enterpriseObj) mergedSpec.compose = enterpriseObj.compose;
-        if ('contacts' in enterpriseObj) mergedSpec.contacts = enterpriseObj.contacts;
+	        const mergedSpec: Record<string, unknown> = { ...encryptedSpec };
+	        if ('compose' in sanitized.enterprise) mergedSpec.compose = (sanitized.enterprise as any)['compose'];
+	        if ('contacts' in sanitized.enterprise) mergedSpec.contacts = (sanitized.enterprise as any)['contacts'];
 
-        const enterpriseLink = resourceStore.putJson({
-          kind: 'enterprise/decrypted/json',
-          name: `${appname} enterprise decrypted`,
-          description: 'Decrypted enterprise payload (parsed JSON)',
-          value: enterpriseObj,
-        });
+	        const enterpriseLink = resourceStore.putJson({
+	          kind: 'enterprise/decrypted/json',
+	          name: `${appname} enterprise decrypted`,
+	          description: includeSecrets
+	            ? 'Decrypted enterprise payload (parsed JSON, includes secrets)'
+	            : 'Decrypted enterprise payload (parsed JSON, secrets redacted)',
+	          value: sanitized.enterprise,
+	        });
 
         const mergedLink = resourceStore.putJson({
           kind: 'apps/spec/full',
@@ -6604,22 +6703,24 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: mergedSpec,
         });
 
-        const summary = {
-          ok: true,
-          appname,
-          enterprise: true,
-          owner,
-          baseUrlUsed: arcaneBaseUrlUsed,
-          baseUrlSet: setBaseUrlOnSuccess,
-          warning:
-            'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
-          resources: {
-            baseSpec: baseLink.uri,
-            encryptedSpec: encryptedLink.uri,
-            enterpriseDecrypted: enterpriseLink.uri,
-            mergedSpec: mergedLink.uri,
-          },
-        };
+	        const summary = {
+	          ok: true,
+	          appname,
+	          enterprise: true,
+	          owner,
+	          baseUrlUsed: arcaneBaseUrlUsed,
+	          baseUrlSet: setBaseUrlOnSuccess,
+	          includeSecrets,
+	          redactions: includeSecrets ? null : sanitized.redactions,
+	          warning:
+	            'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
+	          resources: {
+	            baseSpec: baseLink.uri,
+	            encryptedSpec: encryptedLink.uri,
+	            enterpriseDecrypted: enterpriseLink.uri,
+	            mergedSpec: mergedLink.uri,
+	          },
+	        };
 
         return {
           content: [
