@@ -111,6 +111,15 @@ Use: `references/git-deployments.md`.
 
 Use: `references/lifecycle-observability.md`.
 
+### App Specs (Enterprise-Aware)
+
+- Prefer `flux_apps_get_spec_full` when the user says "show my app spec" or "what are my app settings".
+  - For non-enterprise apps: it returns the base spec.
+  - For enterprise v8+ apps: it returns decrypted `compose` + `contacts` for inspection (requires `zelidauth`).
+  - Secrets (passwords/tokens) are redacted by default; only include them if the user explicitly asks:
+    - Call with `{ includeSecrets: true, confirm: true }`.
+    - Ops kill-switch: start the MCP server with `FLUX_MCP_ALLOW_SECRETS=0` to disable secrets output entirely.
+
 ### 6) Files and persistence
 
 Use: `references/storage-mounts.md`.

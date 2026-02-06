@@ -91,7 +91,11 @@ Reference: `../../codex/flux-cloud/references/git-deployments.md`.
 
 ### 5) Update an existing app (network-level)
 
-1) Fetch current spec (MCP: `flux_apps_get_spec`).
+1) Fetch current spec (MCP: prefer `flux_apps_get_spec_full` so enterprise apps are handled automatically).
+   - For enterprise v8+ apps, this returns decrypted `compose` + `contacts` for inspection (requires `zelidauth`).
+   - Secrets (passwords/tokens) are redacted by default; only include them if the user explicitly asks:
+     - Call with `{ includeSecrets: true, confirm: true }`.
+     - Ops kill-switch: start the MCP server with `FLUX_MCP_ALLOW_SECRETS=0` to disable secrets output entirely.
 2) Edit desired fields.
 3) `flux_apps_plan_update` → user signs (open `messageToSignResourceUri`) → `flux_apps_update`.
 4) `flux_apps_get_messages`.

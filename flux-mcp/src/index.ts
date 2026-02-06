@@ -6706,24 +6706,36 @@ export async function callTool(name: string, rawArgs: unknown) {
           value: mergedSpec,
         });
 
-	        const summary = {
-	          ok: true,
-	          appname,
-	          enterprise: true,
-	          owner,
-	          baseUrlUsed: arcaneBaseUrlUsed,
-	          baseUrlSet: setBaseUrlOnSuccess,
-	          includeSecrets,
-	          redactions: includeSecrets ? null : sanitized.redactions,
-	          warning:
-	            'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
-	          resources: {
-	            baseSpec: baseLink.uri,
-	            encryptedSpec: encryptedLink.uri,
-	            enterpriseDecrypted: enterpriseLink.uri,
-	            mergedSpec: mergedLink.uri,
-	          },
-	        };
+		        const hasRedactions =
+		          !includeSecrets &&
+		          (sanitized.redactions.envCount > 0 || sanitized.redactions.repoauthCount > 0);
+
+		        const summary = {
+		          ok: true,
+		          appname,
+		          enterprise: true,
+		          owner,
+		          baseUrlUsed: arcaneBaseUrlUsed,
+		          baseUrlSet: setBaseUrlOnSuccess,
+		          includeSecrets,
+		          redactions: includeSecrets ? null : sanitized.redactions,
+		          warning:
+		            'This tool returns decrypted compose/contacts for inspection. Do not submit decrypted specs as a registration/update payload; enterprise apps require encrypted enterprise content.',
+		          nextActions: hasRedactions
+		            ? [
+		                {
+		                  tool: 'flux_apps_get_spec_full',
+		                  arguments: { appname, includeSecrets: true, confirm: true },
+		                },
+		              ]
+		            : [],
+		          resources: {
+		            baseSpec: baseLink.uri,
+		            encryptedSpec: encryptedLink.uri,
+		            enterpriseDecrypted: enterpriseLink.uri,
+		            mergedSpec: mergedLink.uri,
+		          },
+		        };
 
         return {
           content: [
