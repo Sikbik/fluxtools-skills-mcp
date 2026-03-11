@@ -58,8 +58,8 @@ Setup instructions: `references/mcp-setup.md`.
   - To force a fresh login phrase anyway: `flux_auth_login { zelid, force: true }`.
 - Or use `flux_auth_flow` for a step-by-step plan (optionally pass `gatewayBaseUrl` to start from `https://api.runonflux.io` and resolve the current node).
 - If the user’s terminal won’t open `zel:` links, use:
-  - Prefer clicking the `zelcoreLauncherHttpUrl` returned by `flux_auth_login` (when present).
-  - Or use `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` (returns a clickable `http://127.0.0.1:...` launcher URL).
+  - Prefer clicking the `signLauncherHttpUrl` returned by `flux_auth_login` (when present, supports SSP + Zelcore).
+  - Or use `flux_write_sign_launcher { messageResourceUri, confirm: true }` (returns a clickable `http://127.0.0.1:...` launcher URL).
 
 ### 3) Create a v8 app spec
 

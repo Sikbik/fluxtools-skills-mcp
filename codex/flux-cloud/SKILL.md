@@ -51,7 +51,7 @@ Preferred login helper (minimal steps):
   - To force a fresh login phrase anyway: `flux_auth_login { zelid, force: true }`
 
 If your terminal/IDE won’t open `zel:` links:
-- Use `flux_write_zelcore_launcher { messageResourceUri, confirm: true }` to get a clickable `http://127.0.0.1:...` launcher URL (fallback).
+- Use `flux_write_sign_launcher { messageResourceUri, confirm: true }` to get a clickable `http://127.0.0.1:...` launcher URL (supports SSP + Zelcore).
 
 Use:
 - `references/auth-zelidauth.md`
