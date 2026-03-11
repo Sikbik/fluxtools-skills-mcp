@@ -2500,9 +2500,9 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'flux_write_zelcore_launcher',
+    name: 'flux_write_sign_launcher',
     description:
-      'Write a tiny HTML launcher file that opens a Zelcore deep link in your browser (useful when terminals do not make zel: links clickable). Provide either message or messageResourceUri (at least one required). Requires confirm=true.',
+      'Write an HTML launcher file for signing a message with SSP or Zelcore in your browser. Provide either message or messageResourceUri (at least one required). Requires confirm=true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -4193,7 +4193,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 	                ? []
 	                : [
 	                    {
-	                      tool: 'flux_write_zelcore_launcher',
+	                      tool: 'flux_write_sign_launcher',
 	                      arguments: { messageResourceUri: phraseLink.uri, confirm: true },
 	                    },
 	                  ]),
@@ -5146,7 +5146,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult({ ok: true, path, messageToSignSha256, messageToSignBytes });
       }
 
-      case 'flux_write_zelcore_launcher': {
+      case 'flux_write_sign_launcher': {
         requireConfirm(args, 'write Zelcore launcher HTML to disk');
 
         const messageResourceUriRaw = asOptionalString(args['messageResourceUri']);
