@@ -2192,15 +2192,15 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_build_zelcore_sign_link',
-    description: 'Build a Zelcore deeplink for signing a message (zel:?action=sign&message=...).',
+    description: 'Build a Zelcore deeplink for signing a message (zel:?action=sign&message=...). Provide either message or messageResourceUri (at least one required).',
     inputSchema: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw). Required if messageResourceUri is not provided.' },
         messageResourceUri: {
           type: 'string',
           description:
-            'Resource URI containing the raw message to sign (preferred: avoids pasting messageToSign into chat).',
+            'Resource URI containing the raw message to sign (preferred: avoids pasting messageToSign into chat). Required if message is not provided.',
         },
         icon: {
           type: 'string',
@@ -2217,7 +2217,6 @@ export const tools: Tool[] = [
         },
         confirm: { type: 'boolean' },
       },
-      anyOf: [{ required: ['message'] }, { required: ['messageResourceUri'] }],
     },
   },
   {
@@ -2237,25 +2236,24 @@ export const tools: Tool[] = [
   {
     name: 'flux_write_zelcore_launcher',
     description:
-      'Write a tiny HTML launcher file that opens a Zelcore deep link in your browser (useful when terminals do not make zel: links clickable). Requires confirm=true.',
+      'Write a tiny HTML launcher file that opens a Zelcore deep link in your browser (useful when terminals do not make zel: links clickable). Provide either message or messageResourceUri (at least one required). Requires confirm=true.',
     inputSchema: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw). Required if messageResourceUri is not provided.' },
         messageResourceUri: {
           type: 'string',
-          description: 'Resource URI containing the raw message to sign (preferred).',
+          description: 'Resource URI containing the raw message to sign (preferred). Required if message is not provided.',
         },
         outPath: {
           type: 'string',
           description:
-            "Optional output HTML file path. Default: /tmp/flux-zelcore-launcher-<sha256>.html (contains the message).",
+            "Optional output HTML file path. Default: /tmp/flux-sign-launcher-<sha256>.html (contains the message).",
         },
         icon: { type: 'string', description: 'Optional icon URL (default ZelID icon).' },
         callback: { type: 'string', description: 'Optional callback URL (will be url-encoded).' },
         confirm: { type: 'boolean' },
       },
-      anyOf: [{ required: ['message'] }, { required: ['messageResourceUri'] }],
       required: ['confirm'],
     },
   },
