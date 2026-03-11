@@ -1228,7 +1228,10 @@ function buildSignLauncherHtml(opts: { message: string; zelcoreLink: string; tit
       .result.error{background:#fef2f2;border-color:#fca5a5}
       .wallet-section{margin:16px 0;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
       h2{font-size:18px;margin:0 0 8px}
-      .sig-box{font-family:monospace;font-size:13px;width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb;word-break:break-all;min-height:40px}
+      .sig-box{font-family:monospace;font-size:13px;width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb;word-break:break-all;min-height:40px;box-sizing:border-box}
+      .copy-btn{margin-top:8px;padding:6px 14px;font-size:13px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;transition:background .15s}
+      .copy-btn:hover{background:#333}
+      .copy-btn.copied{background:#16a34a}
     </style>
   </head>
   <body>
@@ -1252,7 +1255,8 @@ function buildSignLauncherHtml(opts: { message: string; zelcoreLink: string; tit
     <div class="wallet-section">
       <h2>Signature</h2>
       <p>After signing, copy the signature below and paste it back in the CLI.</p>
-      <div id="sig-output" class="sig-box" style="min-height:40px"></div>
+      <div id="sig-output" class="sig-box"></div>
+      <button class="copy-btn" id="copy-btn" onclick="copySig()" style="display:none">Copy</button>
     </div>
 
     <details style="margin-top:16px">
@@ -1280,6 +1284,7 @@ function buildSignLauncherHtml(opts: { message: string; zelcoreLink: string; tit
           result.style.display = 'block';
           result.innerHTML = '<strong>Signed!</strong><br>Address: <code>' + response.address + '</code><br>Signature: <code>' + response.signature + '</code>';
           sigOutput.textContent = response.signature;
+          document.getElementById('copy-btn').style.display = '';
           // Try to copy to clipboard
           try { await navigator.clipboard.writeText(response.signature); result.innerHTML += '<br><em>(Copied to clipboard)</em>'; } catch(e) {}
         } catch (err) {
@@ -1289,6 +1294,25 @@ function buildSignLauncherHtml(opts: { message: string; zelcoreLink: string; tit
           result.textContent = err.message || String(err);
         } finally {
           btn.disabled = false;
+        }
+      }
+
+      async function copySig() {
+        var sig = document.getElementById('sig-output').textContent;
+        if (!sig) return;
+        var btn = document.getElementById('copy-btn');
+        try {
+          await navigator.clipboard.writeText(sig);
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+        } catch(e) {
+          // fallback: select text
+          var range = document.createRange();
+          range.selectNodeContents(document.getElementById('sig-output'));
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
         }
       }
 
