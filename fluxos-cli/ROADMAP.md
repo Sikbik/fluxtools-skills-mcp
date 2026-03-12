@@ -300,42 +300,42 @@ The fastest useful milestone is not a huge polished CLI. It is a generic tool ru
 - [x] Add command:
   - [x] `flux tool list`
   - [x] `flux tool call <tool-name>`
-- [ ] Support args input:
-  - [ ] `--arg key=value`
-  - [ ] `--args-json '{...}'`
-  - [ ] `--args-file path.json`
-- [ ] Support output modes:
-  - [ ] `--json`
-  - [ ] `--pretty`
-  - [ ] `--raw`
+- [x] Support args input:
+  - [x] `--arg key=value`
+  - [x] `--args-json '{...}'`
+  - [x] `--args-file path.json`
+- [x] Support output modes:
+  - [x] `--json`
+  - [x] `--pretty`
+  - [x] `--raw`
 
 Done when:
 
 - an agent can call any existing Flux tool from the shell without MCP
 
 ### 2.2 Make JSON contracts explicit
-- [ ] Print pure JSON to stdout in `--json` mode
-- [ ] Print human summaries to stdout in pretty mode
-- [ ] Send operational errors to stderr in human mode
-- [ ] Preserve stable keys for automation:
-  - [ ] `ok`
-  - [ ] `status`
-  - [ ] `resourceUri`
-  - [ ] `nextActions`
+- [x] Print pure JSON to stdout in `--json` mode
+- [x] Print human summaries to stdout in pretty mode
+- [x] Send operational errors to stderr in human mode
+- [x] Preserve stable keys for automation:
+  - [x] `ok`
+  - [x] `status`
+  - [x] `resourceUri`
+  - [x] `nextActions`
 
 Done when:
 
 - shell agents can parse the output safely with `jq`
 
 ### 2.3 Add shell-safe exit codes
-- [ ] `0` for success
-- [ ] non-zero for tool execution failure
-- [ ] specific classes if useful:
-  - [ ] validation error
-  - [ ] auth required
-  - [ ] confirm required
-  - [ ] network failure
-  - [ ] Flux error
+- [x] `0` for success
+- [x] non-zero for tool execution failure
+- [x] specific classes if useful:
+  - [x] validation error
+  - [x] auth required
+  - [x] confirm required
+  - [x] network failure
+  - [x] Flux error
 
 Done when:
 
@@ -738,9 +738,9 @@ Recommended implementation order:
 ### Milestone M1 - Generic agent runner
 - [x] `flux tool list`
 - [x] `flux tool call`
-- [ ] `--json`
-- [ ] args via file or JSON
-- [ ] stable exit codes
+- [x] `--json`
+- [x] args via file or JSON
+- [x] stable exit codes
 
 ### Milestone M2 - Persistent operator session
 - [ ] saved base URL

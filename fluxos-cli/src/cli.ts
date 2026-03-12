@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 export type TextWriter = {
   write(chunk: string): void;
 };
@@ -9,9 +11,14 @@ export type CliIo = {
 
 export const EXIT_CODE_SUCCESS = 0;
 export const EXIT_CODE_VALIDATION = 2;
-export const EXIT_CODE_TOOL_FAILURE = 1;
+export const EXIT_CODE_AUTH = 3;
+export const EXIT_CODE_CONFIRM = 4;
+export const EXIT_CODE_NETWORK = 5;
+export const EXIT_CODE_FLUX_FAILURE = 6;
 
-type OutputMode = 'json' | 'pretty';
+type OutputMode = 'json' | 'pretty' | 'raw';
+
+type FailureKind = 'validation' | 'auth' | 'confirm' | 'network' | 'flux';
 
 type ToolDefinition = {
   name: string;
@@ -60,6 +67,12 @@ type ToolCallEnvelope = {
   nextActions?: unknown[];
 };
 
+type ToolCallNormalization = {
+  envelope: ToolCallEnvelope;
+  failureKind?: FailureKind;
+  rawResult: ToolCallResult;
+};
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -67,8 +80,10 @@ Usage:
 
 Commands:
   help                           Show this help output
-  tool list [--json|--pretty]    List callable Flux tools
-  tool call <tool-name> [--json|--pretty]
+  tool list [--json|--pretty|--raw]
+                                 List callable Flux tools
+  tool call <tool-name> [--json|--pretty|--raw] [--arg key=value ...]
+                                 [--args-json '{...}'] [--args-file path.json]
                                  Execute a Flux tool through the shared runtime
 
 Options:
@@ -81,12 +96,15 @@ Package:
 const TOOL_HELP_TEXT = `FluxOS CLI - tool
 
 Usage:
-  flux tool list [--json|--pretty]
-  flux tool call <tool-name> [--json|--pretty]
+  flux tool list [--json|--pretty|--raw]
+  flux tool call <tool-name> [--json|--pretty|--raw] [--arg key=value ...]
+  flux tool call <tool-name> [--json|--pretty|--raw] [--args-json '{...}']
+  flux tool call <tool-name> [--json|--pretty|--raw] [--args-file path.json]
 
 Notes:
-  - This slice supports tool listing and zero-argument tool invocation.
-  - Argument ingestion flags land in a later roadmap slice.
+  - Use one argument mode per invocation: repeated --arg, --args-json, or --args-file.
+  - --json prints the normalized CLI envelope, --pretty prints a human summary,
+    and --raw prints the raw tool payload without CLI wrapping.
 `;
 
 function writeLine(writer: TextWriter, text: string) {
@@ -110,6 +128,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+function isJsonLikeOutputMode(outputMode: OutputMode): boolean {
+  return outputMode === 'json' || outputMode === 'raw';
+}
+
 function parseJsonText(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -118,37 +140,351 @@ function parseJsonText(text: string): unknown {
   }
 }
 
-function parseOutputMode(args: string[]): { outputMode: OutputMode; positional: string[] } | { error: string } {
-  let outputMode: OutputMode = 'pretty';
-  let seenJson = false;
-  let seenPretty = false;
+function parseLooseValue(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return '';
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return text;
+  }
+}
+
+function parseJsonObject(text: string, label: string): Record<string, unknown> {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid JSON for ${label}: ${message}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must decode to a JSON object.`);
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function resolveOutputModePreference(requested: { json: boolean; pretty: boolean; raw: boolean }): OutputMode {
+  if (requested.json) return 'json';
+  if (requested.raw) return 'raw';
+  return 'pretty';
+}
+
+function parseOutputMode(args: string[]): { outputMode: OutputMode; positional: string[] } | { outputMode: OutputMode; error: string } {
+  const requested = { json: false, pretty: false, raw: false };
   const positional: string[] = [];
 
   for (const arg of args) {
     if (arg === '--json') {
-      seenJson = true;
-      outputMode = 'json';
+      requested.json = true;
       continue;
     }
 
     if (arg === '--pretty') {
-      seenPretty = true;
-      outputMode = 'pretty';
+      requested.pretty = true;
+      continue;
+    }
+
+    if (arg === '--raw') {
+      requested.raw = true;
       continue;
     }
 
     positional.push(arg);
   }
 
-  if (seenJson && seenPretty) {
-    return { error: 'Choose only one output mode: --json or --pretty.' };
+  const outputMode = resolveOutputModePreference(requested);
+  const selectedCount = Number(requested.json) + Number(requested.pretty) + Number(requested.raw);
+
+  if (selectedCount > 1) {
+    return { outputMode, error: 'Choose only one output mode: --json, --pretty, or --raw.' };
   }
 
   return { outputMode, positional };
 }
 
+async function parseToolArgs(
+  args: string[]
+): Promise<{ outputMode: OutputMode; rawArgs: Record<string, unknown>; positional: string[] } | { outputMode: OutputMode; error: string }> {
+  const requested = { json: false, pretty: false, raw: false };
+  const positional: string[] = [];
+  const keyValueArgs: string[] = [];
+  let argsJson: string | undefined;
+  let argsFile: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === '--json') {
+      requested.json = true;
+      continue;
+    }
+
+    if (arg === '--pretty') {
+      requested.pretty = true;
+      continue;
+    }
+
+    if (arg === '--raw') {
+      requested.raw = true;
+      continue;
+    }
+
+    if (arg === '--arg' || arg.startsWith('--arg=')) {
+      const value = arg === '--arg' ? args[index + 1] : arg.slice('--arg='.length);
+      if (arg === '--arg') index += 1;
+
+      if (!value) {
+        return { outputMode: resolveOutputModePreference(requested), error: 'Missing value for --arg. Expected key=value.' };
+      }
+
+      keyValueArgs.push(value);
+      continue;
+    }
+
+    if (arg === '--args-json' || arg.startsWith('--args-json=')) {
+      const value = arg === '--args-json' ? args[index + 1] : arg.slice('--args-json='.length);
+      if (arg === '--args-json') index += 1;
+
+      if (!value) {
+        return { outputMode: resolveOutputModePreference(requested), error: 'Missing value for --args-json.' };
+      }
+
+      if (argsJson !== undefined) {
+        return { outputMode: resolveOutputModePreference(requested), error: 'Provide --args-json only once per invocation.' };
+      }
+
+      argsJson = value;
+      continue;
+    }
+
+    if (arg === '--args-file' || arg.startsWith('--args-file=')) {
+      const value = arg === '--args-file' ? args[index + 1] : arg.slice('--args-file='.length);
+      if (arg === '--args-file') index += 1;
+
+      if (!value) {
+        return { outputMode: resolveOutputModePreference(requested), error: 'Missing value for --args-file.' };
+      }
+
+      if (argsFile !== undefined) {
+        return { outputMode: resolveOutputModePreference(requested), error: 'Provide --args-file only once per invocation.' };
+      }
+
+      argsFile = value;
+      continue;
+    }
+
+    positional.push(arg);
+  }
+
+  const outputMode = resolveOutputModePreference(requested);
+  const selectedOutputModes = Number(requested.json) + Number(requested.pretty) + Number(requested.raw);
+  if (selectedOutputModes > 1) {
+    return { outputMode, error: 'Choose only one output mode: --json, --pretty, or --raw.' };
+  }
+
+  const selectedArgModes = Number(keyValueArgs.length > 0) + Number(argsJson !== undefined) + Number(argsFile !== undefined);
+  if (selectedArgModes > 1) {
+    return { outputMode, error: 'Choose only one argument mode: --arg, --args-json, or --args-file.' };
+  }
+
+  try {
+    if (argsJson !== undefined) {
+      return { outputMode, rawArgs: parseJsonObject(argsJson, '--args-json'), positional };
+    }
+
+    if (argsFile !== undefined) {
+      let fileText: string;
+      try {
+        fileText = await readFile(argsFile, 'utf8');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { outputMode, error: `Could not read --args-file ${argsFile}: ${message}` };
+      }
+
+      return { outputMode, rawArgs: parseJsonObject(fileText, `--args-file ${argsFile}`), positional };
+    }
+
+    const rawArgs: Record<string, unknown> = {};
+
+    for (const pair of keyValueArgs) {
+      const separatorIndex = pair.indexOf('=');
+      if (separatorIndex <= 0) {
+        return { outputMode, error: `Invalid --arg value \`${pair}\`. Expected key=value.` };
+      }
+
+      const key = pair.slice(0, separatorIndex).trim();
+      const rawValue = pair.slice(separatorIndex + 1);
+
+      if (!key) {
+        return { outputMode, error: `Invalid --arg value \`${pair}\`. Expected key=value.` };
+      }
+
+      rawArgs[key] = parseLooseValue(rawValue);
+    }
+
+    return { outputMode, rawArgs, positional };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { outputMode, error: message };
+  }
+}
+
 function renderJson(writer: TextWriter, value: unknown) {
   writeLine(writer, JSON.stringify(value, null, 2));
+}
+
+function looksLikeFluxRequestResult(value: unknown): value is Record<string, unknown> & { ok: boolean; status: number | string; data: unknown } {
+  const record = asRecord(value);
+  if (!record) return false;
+
+  return typeof record.ok === 'boolean' && (typeof record.status === 'number' || typeof record.status === 'string') && 'data' in record;
+}
+
+function extractFluxEnvelopeError(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+
+  const status = typeof record.status === 'string' ? record.status.toLowerCase() : undefined;
+  if (!status || status === 'success') return undefined;
+
+  const data = record.data;
+  if (typeof data === 'string' && data.trim()) return data;
+
+  const nested = asRecord(data);
+  if (typeof nested?.message === 'string' && nested.message.trim()) return nested.message;
+
+  return typeof record.status === 'string' ? record.status : undefined;
+}
+
+function extractErrorMessage(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value;
+
+  const record = asRecord(value);
+  if (!record) return undefined;
+
+  if (typeof record.error === 'string' && record.error.trim()) return record.error;
+  if (typeof record.message === 'string' && record.message.trim()) return record.message;
+
+  if (looksLikeFluxRequestResult(value)) {
+    return extractFluxEnvelopeError(record.data) ?? (record.ok === false ? `Flux request failed with status ${String(record.status)}.` : undefined);
+  }
+
+  return extractFluxEnvelopeError(value);
+}
+
+function hasFluxFailure(value: unknown): boolean {
+  if (!looksLikeFluxRequestResult(value)) return false;
+
+  if (value.ok === false) return true;
+  return extractFluxEnvelopeError(value.data) !== undefined;
+}
+
+function classifyFailureKind(message: string): FailureKind {
+  const lower = message.toLowerCase();
+
+  if (
+    lower.includes('authentication required') ||
+    lower.includes('not authenticated') ||
+    lower.includes('zelidauth not set') ||
+    lower.includes('auth required') ||
+    lower.includes('unauthorized')
+  ) {
+    return 'auth';
+  }
+
+  if (lower.includes('confirm=true is required') || lower.includes('requires confirm=true') || lower.includes('confirm required')) {
+    return 'confirm';
+  }
+
+  if (
+    lower.includes('aborterror') ||
+    lower.includes('timeout') ||
+    lower.includes('fetch failed') ||
+    lower.includes('network error') ||
+    lower.includes('econnrefused') ||
+    lower.includes('connection refused') ||
+    lower.includes('ehostunreach') ||
+    lower.includes('host unreachable') ||
+    lower.includes('enotfound') ||
+    lower.includes('host not found') ||
+    lower.includes('request failed after retries') ||
+    lower.includes('econnreset') ||
+    lower.includes('timed out')
+  ) {
+    return 'network';
+  }
+
+  if (
+    lower.startsWith('unknown tool:') ||
+    lower.includes(' must be ') ||
+    lower.includes('must match') ||
+    lower.includes('must start with') ||
+    lower.includes('choose only one') ||
+    lower.includes('unexpected arguments') ||
+    lower.includes('invalid json') ||
+    lower.includes('could not read --args-file') ||
+    lower.includes('resource not found') ||
+    lower.includes('base url not set') ||
+    lower.includes('no baseurl available') ||
+    lower.includes('did not contain valid json') ||
+    lower.includes('json must be an object') ||
+    lower.startsWith('usage:') ||
+    lower.startsWith('invalid --arg value') ||
+    lower.startsWith('missing value for --arg') ||
+    lower.startsWith('missing value for --args-json') ||
+    lower.startsWith('missing value for --args-file') ||
+    lower.startsWith('provide --args-json only once') ||
+    lower.startsWith('provide --args-file only once') ||
+    lower.startsWith('unsupported ')
+  ) {
+    return 'validation';
+  }
+
+  return 'flux';
+}
+
+function failureStatus(kind: FailureKind): string {
+  switch (kind) {
+    case 'validation':
+      return 'validation_error';
+    case 'auth':
+      return 'auth_required';
+    case 'confirm':
+      return 'confirm_required';
+    case 'network':
+      return 'network_error';
+    case 'flux':
+      return 'flux_error';
+  }
+}
+
+function exitCodeForFailureKind(kind: FailureKind): number {
+  switch (kind) {
+    case 'validation':
+      return EXIT_CODE_VALIDATION;
+    case 'auth':
+      return EXIT_CODE_AUTH;
+    case 'confirm':
+      return EXIT_CODE_CONFIRM;
+    case 'network':
+      return EXIT_CODE_NETWORK;
+    case 'flux':
+      return EXIT_CODE_FLUX_FAILURE;
+  }
+}
+
+function buildFailurePayload(kind: FailureKind, message: string, tool?: string) {
+  return {
+    ok: false,
+    status: failureStatus(kind),
+    ...(tool ? { tool } : {}),
+    error: message,
+  };
 }
 
 function normalizeToolCatalogEntry(tool: ToolDefinition): ToolCatalogEntry {
@@ -190,28 +526,53 @@ function extractNextActions(result: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
 }
 
-function normalizeToolCallEnvelope(toolName: string, toolResult: ToolCallResult): ToolCallEnvelope {
-  const result = toolResult.structuredContent ?? readFirstTextContent(toolResult.content) ?? null;
+function deriveSuccessStatus(result: unknown): string | number {
   const record = asRecord(result);
-  const ok = typeof record?.ok === 'boolean' ? record.ok : toolResult.isError !== true;
-  const status = typeof record?.status === 'string' || typeof record?.status === 'number' ? record.status : ok ? 'ok' : 'error';
-  const error = typeof record?.error === 'string' ? record.error : undefined;
+
+  if (!looksLikeFluxRequestResult(result) && (typeof record?.status === 'string' || typeof record?.status === 'number')) {
+    return record.status;
+  }
+
+  if (looksLikeFluxRequestResult(result)) {
+    const requestRecord = result as Record<string, unknown>;
+    const nestedStatus = asRecord(requestRecord.data)?.status;
+    if (typeof nestedStatus === 'string' || typeof nestedStatus === 'number') return nestedStatus;
+  }
+
+  return 'ok';
+}
+
+function normalizeToolCall(toolName: string, toolResult: ToolCallResult): ToolCallNormalization {
+  const result = toolResult.structuredContent ?? readFirstTextContent(toolResult.content) ?? null;
+  const explicitFailure = toolResult.isError === true || hasFluxFailure(result);
+  const error = explicitFailure ? extractErrorMessage(result) ?? 'Flux tool execution failed.' : undefined;
+  const failureKind = explicitFailure && error ? classifyFailureKind(error) : undefined;
+  const ok = failureKind === undefined;
+  const status = ok ? deriveSuccessStatus(result) : failureStatus(failureKind ?? 'flux');
   const resourceUri = extractResourceUri(toolResult.content, result);
   const nextActions = extractNextActions(result);
 
   return {
-    ok,
-    status,
-    tool: toolName,
-    result,
-    ...(error ? { error } : {}),
-    ...(resourceUri ? { resourceUri } : {}),
-    ...(nextActions ? { nextActions } : {}),
+    envelope: {
+      ok,
+      status,
+      tool: toolName,
+      result,
+      ...(error ? { error } : {}),
+      ...(resourceUri ? { resourceUri } : {}),
+      ...(nextActions ? { nextActions } : {}),
+    },
+    ...(failureKind ? { failureKind } : {}),
+    rawResult: toolResult,
   };
 }
 
 function renderToolCallPretty(envelope: ToolCallEnvelope): string {
   const lines = [`Tool: ${envelope.tool}`, `Status: ${String(envelope.status)}`, `OK: ${String(envelope.ok)}`];
+
+  if (envelope.error) {
+    lines.push(`Error: ${envelope.error}`);
+  }
 
   if (envelope.resourceUri) {
     lines.push(`Resource URI: ${envelope.resourceUri}`);
@@ -230,9 +591,14 @@ function renderToolCallPretty(envelope: ToolCallEnvelope): string {
   return lines.join('\n');
 }
 
-function validationError(message: string, io: CliIo): number {
-  writeLine(io.stderr, message);
-  return EXIT_CODE_VALIDATION;
+function emitFailure(kind: FailureKind, message: string, io: CliIo, outputMode: OutputMode, tool?: string): number {
+  if (isJsonLikeOutputMode(outputMode)) {
+    renderJson(io.stdout, buildFailurePayload(kind, message, tool));
+  } else {
+    writeLine(io.stderr, message);
+  }
+
+  return exitCodeForFailureKind(kind);
 }
 
 async function getDefaultToolRuntime(): Promise<ToolRuntime> {
@@ -243,11 +609,11 @@ async function getDefaultToolRuntime(): Promise<ToolRuntime> {
 async function handleToolList(args: string[], io: CliIo, toolRuntime: ToolRuntime): Promise<number> {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
-    return validationError(parsed.error, io);
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
 
   if (parsed.positional.length > 0) {
-    return validationError(`Unexpected arguments for \`flux tool list\`: ${parsed.positional.join(' ')}`, io);
+    return emitFailure('validation', `Unexpected arguments for \`flux tool list\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
   }
 
   const tools = (await toolRuntime.listTools()).map(normalizeToolCatalogEntry).sort((left, right) => left.name.localeCompare(right.name));
@@ -258,7 +624,7 @@ async function handleToolList(args: string[], io: CliIo, toolRuntime: ToolRuntim
     tools,
   };
 
-  if (parsed.outputMode === 'json') {
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
     renderJson(io.stdout, payload);
   } else {
     writeLine(io.stdout, renderToolCatalogPretty(tools));
@@ -267,43 +633,51 @@ async function handleToolList(args: string[], io: CliIo, toolRuntime: ToolRuntim
   return EXIT_CODE_SUCCESS;
 }
 
-function classifyToolFailure(envelope: ToolCallEnvelope): number {
-  if (typeof envelope.error === 'string' && envelope.error.startsWith('Unknown tool:')) {
-    return EXIT_CODE_VALIDATION;
-  }
-
-  return EXIT_CODE_TOOL_FAILURE;
-}
-
 async function handleToolCall(args: string[], io: CliIo, toolRuntime: ToolRuntime): Promise<number> {
   const [toolName, ...rest] = args;
 
   if (!toolName || toolName.startsWith('-')) {
-    return validationError('Usage: flux tool call <tool-name> [--json|--pretty]', io);
-  }
-
-  const parsed = parseOutputMode(rest);
-  if ('error' in parsed) {
-    return validationError(parsed.error, io);
-  }
-
-  if (parsed.positional.length > 0) {
-    return validationError(
-      `Unexpected arguments for \`flux tool call\`: ${parsed.positional.join(' ')}. Argument flags are added in a later slice.`,
-      io
+    const parsed = parseOutputMode(args);
+    const outputMode = parsed.outputMode;
+    return emitFailure(
+      'validation',
+      'Usage: flux tool call <tool-name> [--json|--pretty|--raw] [--arg key=value ...|--args-json {...}|--args-file path.json]',
+      io,
+      outputMode
     );
   }
 
-  const envelope = normalizeToolCallEnvelope(toolName, await toolRuntime.callTool(toolName, {}));
-  const exitCode = envelope.ok ? EXIT_CODE_SUCCESS : classifyToolFailure(envelope);
+  const parsed = await parseToolArgs(rest);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode, toolName);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux tool call\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode, toolName);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = normalizeToolCall(toolName, await toolRuntime.callTool(toolName, parsed.rawArgs));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode, toolName);
+  }
+
+  const exitCode = normalized.failureKind ? exitCodeForFailureKind(normalized.failureKind) : EXIT_CODE_SUCCESS;
 
   if (parsed.outputMode === 'json') {
-    renderJson(io.stdout, envelope);
+    renderJson(io.stdout, normalized.envelope);
     return exitCode;
   }
 
-  const writer = envelope.ok ? io.stdout : io.stderr;
-  writeLine(writer, renderToolCallPretty(envelope));
+  if (parsed.outputMode === 'raw') {
+    renderJson(io.stdout, normalized.rawResult);
+    return exitCode;
+  }
+
+  const writer = normalized.envelope.ok ? io.stdout : io.stderr;
+  writeLine(writer, renderToolCallPretty(normalized.envelope));
   return exitCode;
 }
 
@@ -320,8 +694,10 @@ async function handleToolCommand(args: string[], io: CliIo, toolRuntime: ToolRun
       return handleToolList(rest, io, toolRuntime);
     case 'call':
       return handleToolCall(rest, io, toolRuntime);
-    default:
-      return validationError(`Unknown tool subcommand: ${subcommand}`, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown tool subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
   }
 }
 
@@ -350,6 +726,6 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     writeLine(io.stderr, `flux failed: ${message}`);
-    return EXIT_CODE_TOOL_FAILURE;
+    return EXIT_CODE_FLUX_FAILURE;
   }
 }
