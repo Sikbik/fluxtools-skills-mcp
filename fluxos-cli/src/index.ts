@@ -2,8 +2,14 @@
 
 import { runCli } from './cli.js';
 
-const exitCode = runCli(process.argv.slice(2));
-
-if (exitCode !== 0) {
-  process.exitCode = exitCode;
-}
+runCli(process.argv.slice(2))
+  .then((exitCode) => {
+    if (exitCode !== 0) {
+      process.exitCode = exitCode;
+    }
+  })
+  .catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`flux failed: ${message}\n`);
+    process.exitCode = 1;
+  });

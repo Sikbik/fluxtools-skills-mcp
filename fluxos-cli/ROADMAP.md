@@ -297,9 +297,9 @@ Done when:
 The fastest useful milestone is not a huge polished CLI. It is a generic tool runner.
 
 ### 2.1 Ship `flux tool`
-- [ ] Add command:
-  - [ ] `flux tool list`
-  - [ ] `flux tool call <tool-name>`
+- [x] Add command:
+  - [x] `flux tool list`
+  - [x] `flux tool call <tool-name>`
 - [ ] Support args input:
   - [ ] `--arg key=value`
   - [ ] `--args-json '{...}'`
@@ -736,8 +736,8 @@ Recommended implementation order:
 ## Shippable milestones
 
 ### Milestone M1 - Generic agent runner
-- [ ] `flux tool list`
-- [ ] `flux tool call`
+- [x] `flux tool list`
+- [x] `flux tool call`
 - [ ] `--json`
 - [ ] args via file or JSON
 - [ ] stable exit codes
