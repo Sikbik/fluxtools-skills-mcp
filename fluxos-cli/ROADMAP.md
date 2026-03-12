@@ -235,11 +235,11 @@ Done when:
 This is the most important architectural phase. If skipped, the repo will drift into duplicate logic and inconsistent behavior.
 
 ### 1.1 Inventory reusable MCP logic
-- [ ] Map what `fluxos-cli` can call directly from `flux-mcp` on day one
-- [ ] Identify code that is tightly coupled to MCP transport
-- [ ] Identify code that can move into a shared runtime layer
-- [ ] Identify code that should remain MCP-only
-- [ ] Identify code that should intentionally stay CLI-only even if it duplicates MCP-adjacent behavior
+- [x] Map what `fluxos-cli` can call directly from `flux-mcp` on day one
+- [x] Identify code that is tightly coupled to MCP transport
+- [x] Identify code that can move into a shared runtime layer
+- [x] Identify code that should remain MCP-only
+- [x] Identify code that should intentionally stay CLI-only even if it duplicates MCP-adjacent behavior
 
 Candidate extraction areas:
 
@@ -247,7 +247,7 @@ Candidate extraction areas:
 - [ ] auth helpers
 - [ ] message-to-sign helpers
 - [ ] Flux response normalization helpers
-- [ ] endpoint inventory helpers
+- [x] endpoint inventory helpers
 - [ ] client state mutation helpers
 - [ ] resource handling abstractions
 
@@ -265,26 +265,26 @@ Done when:
 - there is a written extraction plan with concrete file targets
 
 ### 1.2 Create a shared runtime boundary
-- [ ] Define a shared execution interface for calling a Flux operation without MCP transport assumptions
-- [ ] Separate transport concerns from operation logic
+- [x] Define a shared execution interface for calling a Flux operation without MCP transport assumptions
+- [x] Separate transport concerns from operation logic
 - [ ] Decide where shared code will live:
   - [ ] `flux-mcp/src/shared/`
   - [ ] `fluxos-cli/src/shared/`
-  - [ ] a future top-level shared package
-- [ ] Move one low-risk helper first as the extraction test
+  - [x] a future top-level shared package
+- [x] Move one low-risk helper first as the extraction test
 
 Done when:
 
 - one non-trivial workflow is shared by both MCP and CLI without duplicated logic
 
 ### 1.3 Preserve behavior parity
-- [ ] Define a parity checklist between MCP and CLI:
-  - [ ] same defaults
-  - [ ] same safety checks
-  - [ ] same summary semantics
-  - [ ] same auth semantics
-  - [ ] same error classification where reasonable
-- [ ] Add tests that compare shared-core behavior across surfaces
+- [x] Define a parity checklist between MCP and CLI:
+  - [x] same defaults
+  - [x] same safety checks
+  - [x] same summary semantics
+  - [x] same auth semantics
+  - [x] same error classification where reasonable
+- [x] Add tests that compare shared-core behavior across surfaces
 
 Done when:
 

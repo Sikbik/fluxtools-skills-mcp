@@ -21,3 +21,38 @@ Extraction guidance:
 2. Add failing parity tests before extraction.
 3. Keep `flux-mcp` behavior green while wiring `fluxos-cli` to the new helper.
 4. Prefer shared outcome parity over large up-front rewrites.
+
+## Initial v1 boundary
+
+- Shared runtime code now lives in a top-level `shared-runtime/` package when the helper has no MCP transport or CLI UX assumptions.
+- The first extracted helper is `shared-runtime/src/endpoints.js`, which owns endpoint-inventory loading, category summaries, and route search semantics.
+- `flux-mcp/src/endpoints.ts` is now an adapter/re-export layer for the shared helper so MCP keeps its existing import surface.
+- `fluxos-cli/src/runtime/endpoints.ts` is the CLI adapter layer that reuses the shared helper and resolves the bundled `flux-mcp/data/endpoints.json` path.
+
+## Inventory snapshot for phase 1
+
+### Safe day-one shared helpers
+
+- `flux-mcp/src/endpoints.ts` helpers can be reused immediately by the CLI through shared-runtime extraction.
+- `flux-mcp/src/fluxEnvelope.ts` is still a good next extraction candidate because it is pure response-normalization logic.
+- The redaction and prune portions of `flux-mcp/src/resources.ts` are shareable once the CLI disk-backed resource adapter exists.
+
+### Still MCP-coupled
+
+- The MCP server/tool registry in `flux-mcp/src/index.ts` stays MCP-only.
+- MCP `resource_link` transport behavior stays MCP-only; only sanitizer/prune logic should move later.
+
+### Intentionally CLI-only
+
+- Command parser wiring
+- CLI output rendering and exit-code policy
+- Local state/profile persistence
+- Help text and shell ergonomics
+
+## Parity checklist for future extractions
+
+- same defaults
+- same safety checks
+- same summary semantics
+- same auth semantics
+- same error classification where reasonable
