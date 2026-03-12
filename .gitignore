@@ -31,6 +31,9 @@ venv/
 # flux-mcp build output (generated)
 flux-mcp/dist/
 
+# fluxos-cli build output (generated)
+fluxos-cli/dist/
+
 # Packaged skill artifacts (generated)
 dist/*.skill
 
@@ -40,6 +43,10 @@ issues.md
 issue3.md
 roadmap.md
 session-report.md
+
+# Local agent planning files
+/AGENTS.md
+/fluxos-cli/ROADMAP.md
 
 # Local (project-scoped) agent config / skill installs
 .codex/
