@@ -1,0 +1,18 @@
+commands:
+  install: |
+    if [ ! -d flux-mcp/node_modules ]; then npm --prefix flux-mcp ci; fi
+    if [ -f fluxos-cli/package.json ] && [ ! -d fluxos-cli/node_modules ]; then
+      if [ -f fluxos-cli/package-lock.json ]; then npm --prefix fluxos-cli ci; else npm --prefix fluxos-cli install; fi
+    fi
+  build: |
+    npm --prefix flux-mcp run build
+    if [ -f fluxos-cli/package.json ]; then npm --prefix fluxos-cli run build; fi
+  typecheck: |
+    npm --prefix flux-mcp run build
+    if [ -f fluxos-cli/package.json ]; then npm --prefix fluxos-cli run build; fi
+  test: |
+    npm --prefix flux-mcp test -- --maxWorkers=12
+    if [ -f fluxos-cli/package.json ]; then npm --prefix fluxos-cli test -- --maxWorkers=12; fi
+  lint: echo "No lint command is configured for this repo yet"
+
+services: {}
