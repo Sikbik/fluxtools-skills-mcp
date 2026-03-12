@@ -1066,16 +1066,20 @@ function decryptEnterprisePayload(enterpriseBase64: string, aesKeyBase64: string
 
 const DEFAULT_ZELCORE_ICON = 'https://raw.githubusercontent.com/runonflux/flux/master/zelID.svg';
 
-type ZelcoreLocalLauncher = {
+type LocalLauncher = {
   server: http.Server;
   port: number;
   routes: Map<string, string>;
 };
 
+let localLauncher: LocalLauncher | null = null;
+
+// Keep old name as alias for backward compatibility within the file
+type ZelcoreLocalLauncher = LocalLauncher;
 let zelcoreLocalLauncher: ZelcoreLocalLauncher | null = null;
 
-async function ensureZelcoreLocalLauncher(): Promise<ZelcoreLocalLauncher> {
-  if (zelcoreLocalLauncher) return zelcoreLocalLauncher;
+async function ensureLocalLauncher(): Promise<LocalLauncher> {
+  if (localLauncher) return localLauncher;
 
   const routes = new Map<string, string>();
 
@@ -1109,8 +1113,14 @@ async function ensureZelcoreLocalLauncher(): Promise<ZelcoreLocalLauncher> {
   if (!addr || typeof addr === 'string') throw new Error('Could not determine localhost launcher port.');
   const port = addr.port;
 
-  zelcoreLocalLauncher = { server, port, routes };
-  return zelcoreLocalLauncher;
+  localLauncher = { server, port, routes };
+  zelcoreLocalLauncher = localLauncher;
+  return localLauncher;
+}
+
+// Keep old name as alias
+async function ensureZelcoreLocalLauncher(): Promise<LocalLauncher> {
+  return ensureLocalLauncher();
 }
 
 function isOsc8Enabled(): boolean {
@@ -1194,6 +1204,286 @@ function slugifyPathSegment(value: string): string {
 	    return null;
 	  }
 	}
+
+function buildSignLauncherHtml(opts: { message: string; zelcoreLink: string; title?: string; intro?: string }): string {
+  const safeZelcoreLink = escapeHtmlAttribute(opts.zelcoreLink);
+  const safeMessage = escapeHtmlAttribute(opts.message);
+  const title = escapeHtmlAttribute(opts.title ?? 'Flux Sign');
+  const intro = escapeHtmlAttribute(opts.intro ?? 'Sign the message with your preferred wallet.');
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:24px;line-height:1.4;color:#222}
+      .btn{display:inline-block;padding:12px 20px;color:#fff;text-decoration:none;border-radius:10px;border:none;cursor:pointer;font-size:16px;margin:6px 4px}
+      .btn-zelcore{background:#1a1a2e}
+      .btn-ssp{background:#2563eb}
+      .btn:disabled{opacity:.5;cursor:not-allowed}
+      code{background:#f3f3f3;padding:2px 6px;border-radius:6px;word-break:break-all}
+      .result{margin-top:16px;padding:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;display:none}
+      .result.error{background:#fef2f2;border-color:#fca5a5}
+      .wallet-section{margin:16px 0;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+      h2{font-size:18px;margin:0 0 8px}
+      .sig-box{font-family:monospace;font-size:13px;width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb;word-break:break-all;min-height:40px;box-sizing:border-box}
+      .copy-btn{margin-top:8px;padding:6px 14px;font-size:13px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;transition:background .15s}
+      .copy-btn:hover{background:#333}
+      .copy-btn.copied{background:#16a34a}
+    </style>
+  </head>
+  <body>
+    <h1>${title}</h1>
+    <p>${intro}</p>
+
+    <div class="wallet-section">
+      <h2>SSP Wallet</h2>
+      <p>Sign directly in your browser if SSP is installed.</p>
+      <button class="btn btn-ssp" id="ssp-btn" onclick="signWithSSP()">Sign with SSP</button>
+      <span id="ssp-status"></span>
+      <div class="result" id="ssp-result"></div>
+    </div>
+
+    <div class="wallet-section">
+      <h2>Zelcore</h2>
+      <p>Opens the Zelcore desktop app to sign.</p>
+      <a class="btn btn-zelcore" href="${safeZelcoreLink}">Open in Zelcore</a>
+    </div>
+
+    <div class="wallet-section">
+      <h2>Signature</h2>
+      <p>After signing, copy the signature below and paste it back in the CLI.</p>
+      <div id="sig-output" class="sig-box"></div>
+      <button class="copy-btn" id="copy-btn" onclick="copySig()" style="display:none">Copy</button>
+    </div>
+
+    <details style="margin-top:16px">
+      <summary>Raw message to sign</summary>
+      <pre style="white-space:pre-wrap;word-break:break-all;background:#f9fafb;padding:8px;border-radius:6px;max-height:200px;overflow:auto">${safeMessage}</pre>
+    </details>
+
+    <script>
+      var messageToSign = ${JSON.stringify(opts.message)};
+
+      async function signWithSSP() {
+        var btn = document.getElementById('ssp-btn');
+        var status = document.getElementById('ssp-status');
+        var result = document.getElementById('ssp-result');
+        var sigOutput = document.getElementById('sig-output');
+        btn.disabled = true;
+        status.textContent = 'Requesting signature...';
+        result.style.display = 'none';
+        result.className = 'result';
+        try {
+          if (!window.ssp) throw new Error('SSP Wallet not detected. Make sure the SSP extension is installed.');
+          var response = await window.ssp.request('sspwid_sign_message', { message: messageToSign });
+          if (response.status === 'ERROR') throw new Error(response.data || response.result || 'SSP signing failed');
+          status.textContent = '';
+          result.style.display = 'block';
+          result.innerHTML = '<strong>Signed!</strong><br>Address: <code>' + response.address + '</code><br>Signature: <code>' + response.signature + '</code>';
+          sigOutput.textContent = response.signature;
+          document.getElementById('copy-btn').style.display = '';
+          // Try to copy to clipboard
+          try { await navigator.clipboard.writeText(response.signature); result.innerHTML += '<br><em>(Copied to clipboard)</em>'; } catch(e) {}
+        } catch (err) {
+          status.textContent = '';
+          result.style.display = 'block';
+          result.className = 'result error';
+          result.textContent = err.message || String(err);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function copySig() {
+        var sig = document.getElementById('sig-output').textContent;
+        if (!sig) return;
+        var btn = document.getElementById('copy-btn');
+        try {
+          await navigator.clipboard.writeText(sig);
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+        } catch(e) {
+          // fallback: select text
+          var range = document.createRange();
+          range.selectNodeContents(document.getElementById('sig-output'));
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+
+      // Auto-detect SSP availability
+      if (typeof window.ssp === 'undefined') {
+        document.getElementById('ssp-status').textContent = '(SSP not detected)';
+      }
+    </script>
+  </body>
+</html>
+`;
+}
+
+async function maybeBuildSignLauncherHttpUrl(opts: {
+  purpose: string;
+  message: string;
+  zelcoreLink: string;
+  title?: string;
+  intro?: string;
+}): Promise<string | null> {
+  if (!isLocalLauncherEnabled()) return null;
+  try {
+    const launcher = await ensureLocalLauncher();
+    const sha = createHash('sha256').update(`sign:${opts.purpose}:${opts.message}`, 'utf8').digest('hex').slice(0, 12);
+    const p = slugifyPathSegment(opts.purpose);
+    const httpPath = `/__flux/sign/${p}/${sha}.html`;
+    launcher.routes.set(httpPath, buildSignLauncherHtml({
+      message: opts.message,
+      zelcoreLink: opts.zelcoreLink,
+      title: opts.title,
+      intro: opts.intro,
+    }));
+    return `http://localhost:${launcher.port}${httpPath}`;
+  } catch {
+    return null;
+  }
+}
+
+function buildPaymentLauncherHtml(opts: { address: string; amount: string; memo: string }): string {
+  const safeAddress = escapeHtmlAttribute(opts.address);
+  const safeAmount = escapeHtmlAttribute(opts.amount);
+  const safeMemo = escapeHtmlAttribute(opts.memo);
+  const zelcorePayLink = `zel:?action=pay&coin=zelcash&address=${encodeURIComponent(opts.address)}&amount=${encodeURIComponent(opts.amount)}&message=${encodeURIComponent(opts.memo)}`;
+  const safeZelcorePayLink = escapeHtmlAttribute(zelcorePayLink);
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flux Payment</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:24px;line-height:1.4;color:#222}
+      .btn{display:inline-block;padding:12px 20px;color:#fff;text-decoration:none;border-radius:10px;border:none;cursor:pointer;font-size:16px;margin:6px 4px}
+      .btn-zelcore{background:#1a1a2e}
+      .btn-ssp{background:#2563eb}
+      .btn:disabled{opacity:.5;cursor:not-allowed}
+      code{background:#f3f3f3;padding:2px 6px;border-radius:6px;word-break:break-all}
+      .result{margin-top:16px;padding:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;display:none}
+      .result.error{background:#fef2f2;border-color:#fca5a5}
+      .detail{margin:8px 0;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px}
+      .detail-label{font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px}
+      .detail-value{font-family:monospace;font-size:15px;margin-top:4px;word-break:break-all}
+      .wallet-section{margin:16px 0;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+      h2{font-size:18px;margin:0 0 8px}
+    </style>
+  </head>
+  <body>
+    <h1>Flux Payment</h1>
+    <p>Pay for your app registration or update.</p>
+
+    <div class="detail">
+      <div class="detail-label">Amount</div>
+      <div class="detail-value">${safeAmount} FLUX</div>
+    </div>
+    <div class="detail">
+      <div class="detail-label">Address</div>
+      <div class="detail-value">${safeAddress}</div>
+    </div>
+    <div class="detail">
+      <div class="detail-label">Memo</div>
+      <div class="detail-value">${safeMemo}</div>
+    </div>
+
+    <div class="wallet-section">
+      <h2>SSP Wallet</h2>
+      <p>Pay directly from your browser if SSP is installed.</p>
+      <button class="btn btn-ssp" id="ssp-btn" onclick="payWithSSP()">Pay with SSP</button>
+      <span id="ssp-status"></span>
+      <div class="result" id="ssp-result"></div>
+    </div>
+
+    <div class="wallet-section">
+      <h2>Zelcore</h2>
+      <p>Opens the Zelcore desktop app to pay.</p>
+      <a class="btn btn-zelcore" href="${safeZelcorePayLink}">Pay with Zelcore</a>
+    </div>
+
+    <div class="wallet-section">
+      <h2>Manual Payment</h2>
+      <p>Send the exact amount above to the address with the memo. You can use any Flux wallet.</p>
+    </div>
+
+    <script>
+      var paymentData = {
+        address: ${JSON.stringify(opts.address)},
+        amount: ${JSON.stringify(opts.amount)},
+        message: ${JSON.stringify(opts.memo)},
+        chain: 'flux'
+      };
+
+      async function payWithSSP() {
+        var btn = document.getElementById('ssp-btn');
+        var status = document.getElementById('ssp-status');
+        var result = document.getElementById('ssp-result');
+        btn.disabled = true;
+        status.textContent = 'Requesting payment...';
+        result.style.display = 'none';
+        result.className = 'result';
+        try {
+          if (!window.ssp) throw new Error('SSP Wallet not detected. Make sure the SSP extension is installed.');
+          var response = await window.ssp.request('pay', paymentData);
+          if (response.status === 'ERROR') throw new Error(response.data || response.result || 'SSP payment failed');
+          status.textContent = '';
+          result.style.display = 'block';
+          var txid = response.txid || response.data || '';
+          result.innerHTML = '<strong>Payment sent!</strong>' + (txid ? '<br>TxID: <code>' + txid + '</code>' : '');
+          // Try to copy txid to clipboard
+          if (txid) { try { await navigator.clipboard.writeText(txid); result.innerHTML += '<br><em>(TxID copied to clipboard)</em>'; } catch(e) {} }
+        } catch (err) {
+          status.textContent = '';
+          result.style.display = 'block';
+          result.className = 'result error';
+          result.textContent = err.message || String(err);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      // Auto-detect SSP availability
+      if (typeof window.ssp === 'undefined') {
+        document.getElementById('ssp-status').textContent = '(SSP not detected)';
+      }
+    </script>
+  </body>
+</html>
+`;
+}
+
+async function maybeBuildPaymentLauncherHttpUrl(opts: {
+  purpose: string;
+  address: string;
+  amount: string;
+  memo: string;
+}): Promise<string | null> {
+  if (!isLocalLauncherEnabled()) return null;
+  try {
+    const launcher = await ensureLocalLauncher();
+    const sha = createHash('sha256').update(`pay:${opts.purpose}:${opts.memo}`, 'utf8').digest('hex').slice(0, 12);
+    const p = slugifyPathSegment(opts.purpose);
+    const httpPath = `/__flux/pay/${p}/${sha}.html`;
+    launcher.routes.set(httpPath, buildPaymentLauncherHtml({
+      address: opts.address,
+      amount: opts.amount,
+      memo: opts.memo,
+    }));
+    return `http://localhost:${launcher.port}${httpPath}`;
+  } catch {
+    return null;
+  }
+}
 
 function buildZelcoreDeeplinks(opts: { message: string; icon?: string; callback?: string }): {
   link: string;
@@ -2192,15 +2482,15 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_build_zelcore_sign_link',
-    description: 'Build a Zelcore deeplink for signing a message (zel:?action=sign&message=...).',
+    description: 'Build a Zelcore deeplink for signing a message (zel:?action=sign&message=...). Provide either message or messageResourceUri (at least one required).',
     inputSchema: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw). Required if messageResourceUri is not provided.' },
         messageResourceUri: {
           type: 'string',
           description:
-            'Resource URI containing the raw message to sign (preferred: avoids pasting messageToSign into chat).',
+            'Resource URI containing the raw message to sign (preferred: avoids pasting messageToSign into chat). Required if message is not provided.',
         },
         icon: {
           type: 'string',
@@ -2217,7 +2507,6 @@ export const tools: Tool[] = [
         },
         confirm: { type: 'boolean' },
       },
-      anyOf: [{ required: ['message'] }, { required: ['messageResourceUri'] }],
     },
   },
   {
@@ -2235,28 +2524,41 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'flux_write_zelcore_launcher',
+    name: 'flux_write_sign_launcher',
     description:
-      'Write a tiny HTML launcher file that opens a Zelcore deep link in your browser (useful when terminals do not make zel: links clickable). Requires confirm=true.',
+      'Write an HTML launcher file for signing a message with SSP or Zelcore in your browser. Provide either message or messageResourceUri (at least one required). Requires confirm=true.',
     inputSchema: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw).' },
+        message: { type: 'string', description: 'Raw message to sign (messageToSignRaw). Required if messageResourceUri is not provided.' },
         messageResourceUri: {
           type: 'string',
-          description: 'Resource URI containing the raw message to sign (preferred).',
+          description: 'Resource URI containing the raw message to sign (preferred). Required if message is not provided.',
         },
         outPath: {
           type: 'string',
           description:
-            "Optional output HTML file path. Default: /tmp/flux-zelcore-launcher-<sha256>.html (contains the message).",
+            "Optional output HTML file path. Default: /tmp/flux-sign-launcher-<sha256>.html (contains the message).",
         },
         icon: { type: 'string', description: 'Optional icon URL (default ZelID icon).' },
         callback: { type: 'string', description: 'Optional callback URL (will be url-encoded).' },
         confirm: { type: 'boolean' },
       },
-      anyOf: [{ required: ['message'] }, { required: ['messageResourceUri'] }],
       required: ['confirm'],
+    },
+  },
+  {
+    name: 'flux_build_payment_launcher',
+    description:
+      'Build a localhost HTML page for paying with SSP wallet. Opens a page with a "Pay with SSP" button that triggers window.ssp.request("pay", ...) and displays the txid. Also shows payment details for manual payment.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'Flux payment address.' },
+        amount: { type: 'string', description: 'Amount in FLUX (as string, e.g. "15.84").' },
+        memo: { type: 'string', description: 'Payment memo (usually the registration/update hash).' },
+      },
+      required: ['address', 'amount', 'memo'],
     },
   },
   {
@@ -3869,9 +4171,10 @@ export async function callTool(name: string, rawArgs: unknown) {
 
 	          const localLauncherEnabled = isLocalLauncherEnabled();
 	          let launcherUrl: string | null = null;
+	          let signLauncherUrl: string | null = null;
 	          if (localLauncherEnabled) {
 	            try {
-	              const launcher = await ensureZelcoreLocalLauncher();
+	              const launcher = await ensureLocalLauncher();
 		              const sha = createHash('sha256').update(`${zelid}:${preview.link}`, 'utf8').digest('hex').slice(0, 12);
 		              const httpPath = `/__flux/zelcore/auth/${sha}.html`;
 		              launcher.routes.set(
@@ -3882,6 +4185,13 @@ export async function callTool(name: string, rawArgs: unknown) {
 		            } catch {
 		              launcherUrl = null;
 		            }
+	            signLauncherUrl = await maybeBuildSignLauncherHttpUrl({
+	              purpose: 'auth-login',
+	              message: phraseText,
+	              zelcoreLink: preview.link,
+	              title: 'Flux Login',
+	              intro: 'Sign the login phrase with your preferred wallet.',
+	            });
 		          }
 
 	          const out = {
@@ -3892,6 +4202,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 	            needSignature: true,
 	            loginPhrase: phraseText,
 	            loginPhraseResourceUri: phraseLink.uri,
+	            signLauncherHttpUrl: signLauncherUrl,
 	            zelcoreLauncherHttpUrl: launcherUrl,
 	            zelcoreSignLink: preview.link,
 	            zelcoreClickableLink: preview.clickableLink,
@@ -3902,11 +4213,11 @@ export async function callTool(name: string, rawArgs: unknown) {
 	                tool: 'flux_auth_login',
 	                arguments: { zelid, loginPhrase: phraseText, signature: '<SIGNATURE>' },
 	              },
-	              ...(launcherUrl
+	              ...(signLauncherUrl || launcherUrl
 	                ? []
 	                : [
 	                    {
-	                      tool: 'flux_write_zelcore_launcher',
+	                      tool: 'flux_write_sign_launcher',
 	                      arguments: { messageResourceUri: phraseLink.uri, confirm: true },
 	                    },
 	                  ]),
@@ -3919,7 +4230,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 	                type: 'text',
 	                text:
 	                  `Login phrase to sign:\n${phraseText}\n\n` +
-	                  (launcherUrl ? `Click to sign (recommended):\n${launcherUrl}\n\n` : '') +
+	                  (signLauncherUrl ? `Sign (Zelcore or SSP, Ctrl+Click):\n${signLauncherUrl}\n\n` : '') +
+	                  (launcherUrl ? `Zelcore only (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
 	                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}\n\n` +
 	                  `Then paste the signature back to flux_auth_login.`,
 	              },
@@ -4742,6 +5054,13 @@ export async function callTool(name: string, rawArgs: unknown) {
 	            title: 'Flux Sign',
 	            intro: 'Sign the message in Zelcore.',
 	          });
+	          const signLauncherUrl = await maybeBuildSignLauncherHttpUrl({
+	            purpose: `sign-${type}`,
+	            message: messageToSign,
+	            zelcoreLink: preview.link,
+	            title: 'Flux Sign',
+	            intro: 'Sign the message with your preferred wallet.',
+	          });
 
 	          const out: Record<string, unknown> = {
 	            ok: true,
@@ -4751,6 +5070,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 	            messageToSignSha256,
 	            messageToSignBytes,
 	            messageToSignResourceUri: link.uri,
+	            signLauncherHttpUrl: signLauncherUrl,
 	            zelcoreLauncherHttpUrl: launcherUrl,
 	          zelcoreSignLink: preview.link,
 	          zelcoreClickableLink: preview.clickableLink,
@@ -4768,7 +5088,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 		              {
 		                type: 'text',
 		                text:
-		                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                  (signLauncherUrl ? `Sign (Zelcore or SSP, Ctrl+Click):\n${signLauncherUrl}\n\n` : '') +
+		                  (launcherUrl ? `Zelcore only (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
 		                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}`,
 		              },
 		              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
@@ -4849,7 +5170,7 @@ export async function callTool(name: string, rawArgs: unknown) {
         return jsonResult({ ok: true, path, messageToSignSha256, messageToSignBytes });
       }
 
-      case 'flux_write_zelcore_launcher': {
+      case 'flux_write_sign_launcher': {
         requireConfirm(args, 'write Zelcore launcher HTML to disk');
 
         const messageResourceUriRaw = asOptionalString(args['messageResourceUri']);
@@ -4880,34 +5201,14 @@ export async function callTool(name: string, rawArgs: unknown) {
         const sha = createHash('sha256').update(links.link, 'utf8').digest('hex').slice(0, 12);
         const outPath = outPathRaw?.trim()
           ? outPathRaw.trim()
-          : `/tmp/flux-zelcore-launcher-${sha}.html`;
+          : `/tmp/flux-sign-launcher-${sha}.html`;
 
-        const safeLink = escapeHtmlAttribute(links.link);
-        const html = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Zelcore Sign</title>
-    <style>
-      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:24px;line-height:1.4}
-      .btn{display:inline-block;padding:12px 16px;background:#111;color:#fff;text-decoration:none;border-radius:10px}
-      code{background:#f3f3f3;padding:2px 6px;border-radius:6px}
-    </style>
-  </head>
-  <body>
-    <h1>Zelcore Sign</h1>
-    <p>If your terminal doesn't open <code>zel:</code> links directly, use this page.</p>
-    <p><a class="btn" id="open" href="${safeLink}">Open in Zelcore</a></p>
-    <p>Raw link:</p>
-    <p><code>${safeLink}</code></p>
-    <script>
-      // Some browsers require a user gesture; we still try an automatic redirect once.
-      try { window.location.href = document.getElementById('open').href; } catch (e) {}
-    </script>
-  </body>
-</html>
-`;
+        const html = buildSignLauncherHtml({
+          message,
+          zelcoreLink: links.link,
+          title: 'Flux Sign',
+          intro: 'Sign the message with your preferred wallet.',
+        });
 
         await fs.writeFile(outPath, html, { encoding: 'utf8' });
 
@@ -4915,8 +5216,8 @@ export async function callTool(name: string, rawArgs: unknown) {
         const fileUrl = outPath.startsWith('/') ? `file://${outPath}` : `file://${path.resolve(outPath)}`;
 
 	        // Most IDE terminals always linkify http(s), so we also host the same HTML via a localhost-only server.
-	        const launcher = await ensureZelcoreLocalLauncher();
-	        const httpPath = `/__flux/zelcore/${sha}.html`;
+	        const launcher = await ensureLocalLauncher();
+	        const httpPath = `/__flux/sign/${sha}.html`;
 	        launcher.routes.set(httpPath, html);
 	        const httpUrl = `http://localhost:${launcher.port}${httpPath}`;
 
@@ -4937,6 +5238,40 @@ export async function callTool(name: string, rawArgs: unknown) {
           content: [
             { type: 'text', text: `Launcher (http, Ctrl+Click):\n${httpUrl}` },
             { type: 'text', text: `Launcher (file, fallback):\n${fileUrl}` },
+            { type: 'text', text: JSON.stringify(out, null, 2) },
+          ],
+          structuredContent: out,
+          isError: false,
+        };
+      }
+
+      case 'flux_build_payment_launcher': {
+        const address = mustBeString(args['address'], 'address');
+        const amount = mustBeString(args['amount'], 'amount');
+        const memo = mustBeString(args['memo'], 'memo');
+
+        const paymentLauncherUrl = await maybeBuildPaymentLauncherHttpUrl({
+          purpose: 'payment',
+          address,
+          amount,
+          memo,
+        });
+
+        if (!paymentLauncherUrl) {
+          throw new Error('Local launcher is disabled (FLUX_MCP_LOCAL_LAUNCHER=0). Cannot build payment page.');
+        }
+
+        const out = {
+          ok: true,
+          paymentLauncherHttpUrl: paymentLauncherUrl,
+          address,
+          amount,
+          memo,
+        };
+
+        return {
+          content: [
+            { type: 'text', text: `Pay with SSP (Ctrl+Click):\n${paymentLauncherUrl}` },
             { type: 'text', text: JSON.stringify(out, null, 2) },
           ],
           structuredContent: out,
@@ -5004,6 +5339,13 @@ export async function callTool(name: string, rawArgs: unknown) {
             title: 'Flux Sign',
             intro: 'Sign the message in Zelcore.',
           });
+          const signLauncherUrl = await maybeBuildSignLauncherHttpUrl({
+            purpose: `playbook-${type}`,
+            message: messageToSign,
+            zelcoreLink: preview.link,
+            title: 'Flux Sign',
+            intro: 'Sign the message with your preferred wallet.',
+          });
 
           const out: Record<string, unknown> = {
             ok: true,
@@ -5013,6 +5355,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             messageToSignSha256,
             messageToSignBytes,
             messageToSignResourceUri: link.uri,
+            signLauncherHttpUrl: signLauncherUrl,
             zelcoreLauncherHttpUrl: launcherUrl,
             zelcoreSignLink: preview.link,
             zelcoreClickableLink: preview.clickableLink,
@@ -5036,7 +5379,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 	              {
 	                type: 'text',
 	                text:
-	                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+	                  (signLauncherUrl ? `Sign (Zelcore or SSP, Ctrl+Click):\n${signLauncherUrl}\n\n` : '') +
+	                  (launcherUrl ? `Zelcore only (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
 	                  `Raw Zelcore link (copy/paste fallback):\n${preview.link}`,
 	              },
 	              ...(preview.warning ? [{ type: 'text', text: `Note: ${preview.warning}` }] : []),
@@ -8082,6 +8426,13 @@ export async function callTool(name: string, rawArgs: unknown) {
 	            title: 'Flux Registration',
 	            intro: 'Sign the registration message in Zelcore.',
 	          });
+	          const signLauncherUrl = await maybeBuildSignLauncherHttpUrl({
+	            purpose: 'apps-plan-registration',
+	            message: messageToSign,
+	            zelcoreLink: messagePreview.link,
+	            title: 'Flux Registration',
+	            intro: 'Sign the registration message with your preferred wallet.',
+	          });
 	          const messageLink = resourceStore.putText({
 	            kind: 'message_to_sign',
 	            name: `messageToSign ${type}`,
@@ -8152,6 +8503,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 		            messageToSignSha256,
 		            messageToSignBytes,
 		            messageToSignResourceUri: messageLink.uri,
+		            signLauncherHttpUrl: signLauncherUrl,
 		            zelcoreLauncherHttpUrl: launcherUrl,
 		            zelcoreSignLink: messagePreview.link,
 		            zelcoreClickableLink: messagePreview.clickableLink,
@@ -8172,7 +8524,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 		              {
 		                type: 'text',
 		                text:
-		                  (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                  (signLauncherUrl ? `Sign (Zelcore or SSP, Ctrl+Click):\n${signLauncherUrl}\n\n` : '') +
+		                  (launcherUrl ? `Zelcore only (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
 		                  `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
 		              },
 		              ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
@@ -8261,6 +8614,17 @@ export async function callTool(name: string, rawArgs: unknown) {
            value: full,
          });
 
+         // Build payment launcher if we have payment info and a hash
+         let paymentLauncherUrl: string | null = null;
+         if (paymentInfo?.payment?.address && paymentInfo.payment.amountFlux != null && hash) {
+           paymentLauncherUrl = await maybeBuildPaymentLauncherHttpUrl({
+             purpose: 'apps-register',
+             address: paymentInfo.payment.address,
+             amount: String(paymentInfo.payment.amountFlux),
+             memo: hash,
+           });
+         }
+
          const summary = {
            ok: submittedOk,
            status: submittedOk ? 'submitted' : 'error',
@@ -8269,6 +8633,7 @@ export async function callTool(name: string, rawArgs: unknown) {
            hash: hash ?? null,
            error: submitError,
            payment: paymentInfo?.payment ?? null,
+           paymentLauncherHttpUrl: paymentLauncherUrl,
            messageToSignSha256,
            messageToSignBytes,
            messageToSignResourceUri: messageLink.uri,
@@ -8276,6 +8641,9 @@ export async function callTool(name: string, rawArgs: unknown) {
            signatureNotes: full.signatureNotes,
            nextActions: hash
              ? [
+                 ...(paymentLauncherUrl
+                   ? [{ tool: 'flux_build_payment_launcher', note: `Payment page already available at: ${paymentLauncherUrl}` }]
+                   : []),
                  { tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } },
                  { tool: 'flux_apps_test_install', arguments: { hash, confirm: true } },
                ]
@@ -8285,6 +8653,7 @@ export async function callTool(name: string, rawArgs: unknown) {
          return {
            content: [
              { type: 'text', text: JSON.stringify(summary, null, 2) },
+             ...(paymentLauncherUrl ? [{ type: 'text' as const, text: `Pay with SSP (Ctrl+Click):\n${paymentLauncherUrl}` }] : []),
              { type: 'resource_link', ...fullLink },
              { type: 'resource_link', ...messageLink },
            ],
@@ -8452,6 +8821,16 @@ export async function callTool(name: string, rawArgs: unknown) {
                   ? 'Registration submission failed.'
                   : 'Registration verified.';
 
+          let regPaymentLauncherUrl: string | null = null;
+          if (payment.address && payment.amountFlux != null && hash) {
+            regPaymentLauncherUrl = await maybeBuildPaymentLauncherHttpUrl({
+              purpose: 'apps-register-verify',
+              address: payment.address,
+              amount: String(payment.amountFlux),
+              memo: hash,
+            });
+          }
+
           const summary = {
             ok,
             status,
@@ -8469,6 +8848,7 @@ export async function callTool(name: string, rawArgs: unknown) {
             messageToSignResourceUri: messageLink.uri,
             message,
             payment,
+            paymentLauncherHttpUrl: regPaymentLauncherUrl,
             resourceUri: link.uri,
             nextActions,
             signatureNotes: {
@@ -8480,6 +8860,7 @@ export async function callTool(name: string, rawArgs: unknown) {
           return {
             content: [
               { type: 'text', text: JSON.stringify(summary, null, 2) },
+              ...(regPaymentLauncherUrl ? [{ type: 'text' as const, text: `Pay with SSP (Ctrl+Click):\n${regPaymentLauncherUrl}` }] : []),
               { type: 'resource_link', ...link },
               { type: 'resource_link', ...messageLink },
             ],
@@ -8520,6 +8901,13 @@ export async function callTool(name: string, rawArgs: unknown) {
 	           link: messagePreview.link,
 	           title: 'Flux Update',
 	           intro: 'Sign the update message in Zelcore.',
+	         });
+	         const signLauncherUrl = await maybeBuildSignLauncherHttpUrl({
+	           purpose: 'apps-plan-update',
+	           message: messageToSign,
+	           zelcoreLink: messagePreview.link,
+	           title: 'Flux Update',
+	           intro: 'Sign the update message with your preferred wallet.',
 	         });
 	         const messageLink = resourceStore.putText({
 	           kind: 'message_to_sign',
@@ -8585,6 +8973,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 		             messageToSignSha256,
 		             messageToSignBytes,
 		             messageToSignResourceUri: messageLink.uri,
+		             signLauncherHttpUrl: signLauncherUrl,
 		             zelcoreLauncherHttpUrl: launcherUrl,
 		             zelcoreSignLink: messagePreview.link,
 		             zelcoreClickableLink: messagePreview.clickableLink,
@@ -8605,7 +8994,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 		               {
 		                 type: 'text',
 		                 text:
-		                   (launcherUrl ? `Click to sign (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
+		                   (signLauncherUrl ? `Sign (Zelcore or SSP, Ctrl+Click):\n${signLauncherUrl}\n\n` : '') +
+		                   (launcherUrl ? `Zelcore only (Ctrl+Click):\n${launcherUrl}\n\n` : '') +
 		                   `Raw Zelcore link (copy/paste fallback):\n${messagePreview.link}`,
 		               },
 		               ...(messagePreview.warning ? [{ type: 'text', text: `Note: ${messagePreview.warning}` }] : []),
