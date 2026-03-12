@@ -46,7 +46,7 @@ curl -sS "$API/flux/isarcaneos"
 - These are two different signatures; authenticate before signing the app message.
 
 Preferred login helper (minimal steps):
-- `flux_auth_login { zelid }` → click the returned `zelcoreLauncherHttpUrl` (if present) → sign → `flux_auth_login { zelid, loginPhrase, signature }`
+- `flux_auth_login { zelid }` → click the returned `signLauncherHttpUrl` (preferred, supports SSP + Zelcore) or `zelcoreLauncherHttpUrl` → sign → `flux_auth_login { zelid, loginPhrase, signature }`
   - If you're already logged in, `flux_auth_login { zelid }` should return `alreadyAuthenticated: true` (no re-sign needed).
   - To force a fresh login phrase anyway: `flux_auth_login { zelid, force: true }`
 

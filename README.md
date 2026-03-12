@@ -1,31 +1,113 @@
 # Flux Skills
 
-Tools and skills for operating Flux Cloud / FluxOS nodes and apps via MCP or Codex skills.
+> Production-focused MCP tooling and agent skills for Flux Cloud / FluxOS.
 
-## Repo map
+Flux Skills turns the Flux node API into a safer operational surface for agents and operators. It combines a Node.js MCP server, Codex and Claude skill wrappers, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
 
-| Path | What it is |
+This repo is built for people who want to do real work on Flux infrastructure from an MCP client instead of hand-assembling raw REST calls.
+
+## What This Repo Gives You
+
+| Area | What you can do |
 | --- | --- |
-| `flux-mcp/` | MCP server (Node.js 20+, ESM). The main execution layer. |
-| `claude/flux-cloud/` | Claude Code skill wrapper and references. |
-| `codex/flux-cloud/` | Codex skill, references, and helper scripts. |
-| `scripts/` | Skill packaging helper. |
+| App delivery | Generate v8 specs, verify payloads, price deployments, plan registration and updates, sign messages, register apps, renew apps, and monitor propagation. |
+| App operations | Start, stop, restart, redeploy, inspect, monitor, and troubleshoot running apps and components. |
+| Logs and runtime | Tail logs, inspect containers, view stats and process lists, collect monitoring data, and execute commands inside app containers. |
+| Storage and backups | Browse app volumes, download files and folders, mutate directories, inspect backup sizes, list local backups, download archives, and manage FluxDrive backup tasks. |
+| Blockchain and explorer | Check chain sync state, balances, block height, rescan and reindex explorer data, and inspect daemon, mempool, peer, and network information. |
+| Auth and enterprise | Run ZelID auth flows, launch signing and payment flows through Zelcore or SSP Wallet, build `zelidauth`, decrypt enterprise payloads, generate enterprise keys, and work with Arcane-specific app metadata. |
+| Discovery and search | Search the generated Flux endpoint inventory, inspect categories, and fall back to safe escape hatches when you need direct endpoint access. |
 
-## What you can do
+## Capability Map
 
-- Node health and diagnostics
-- App spec v8 workflows (generate, verify, price)
-- Register/update signing flow
-- App lifecycle (start/stop/redeploy) with confirmation gating
-- Logs, inspect, stats, top, monitoring
-- File and volume browser (list, download, mutate)
-- Syncthing health and control
-- Daemon RPC proxy, explorer, backups
-- Endpoint discovery from upstream Flux routes
+### Deploy, register, update, and renew apps
 
-## Quick start: MCP server (Claude, Gemini, other MCP clients)
+- Generate minimal v8 app specs with `flux_generate_app_spec_v8`.
+- Generate Git-based deployment specs with `flux_git_deploy_generate_spec_v8`.
+- Verify and canonicalize registration and update payloads with `flux_apps_verify_registration_spec` and `flux_apps_verify_update_spec`.
+- Calculate pricing with `flux_apps_calculate_price`.
+- Plan registration, update, and renew flows with `flux_apps_plan_registration`, `flux_apps_plan_update`, and `flux_apps_plan_renew`.
+- Build exact signing payloads and checksums with `flux_build_message_to_sign`.
+- Launch browser-friendly signing flows with `flux_auth_login`, `flux_write_sign_launcher`, and `flux_build_zelcore_sign_link`, with support for both Zelcore and SSP Wallet.
+- Submit register and update operations with `flux_apps_register`, `flux_apps_update`, `flux_apps_register_and_verify`, and `flux_apps_update_and_verify`.
+- Validate network propagation with `flux_apps_get_messages` and `flux_apps_wait_for_propagation`.
+- Run post-registration install checks with `flux_apps_test_install`.
+- Handle Git-driven register-and-verify flows with `flux_git_deploy_plan_registration` and `flux_git_deploy_register_and_verify`.
+- Attach backup and restore tasks directly to app specs with `flux_apps_append_backup_task` and `flux_apps_append_restore_task`.
 
-### 0) One-command setup (recommended)
+### Operate and maintain live apps
+
+- List running apps, all apps, and global specs with `flux_apps_list_running`, `flux_apps_list_all`, and `flux_apps_list_global_specs`.
+- Inspect ownership, public keys, registration info, deployment info, and full decrypted specs with `flux_apps_get_owner`, `flux_apps_get_public_key`, `flux_apps_registration_information`, `flux_apps_deployment_information`, and `flux_apps_get_spec_full`.
+- Track app health and runtime state with `flux_app_health_report`, `flux_apps_global_status`, and `flux_apps_troubleshoot`.
+- View app expiry by ZelID with `flux_apps_list_by_zelid_with_expiry`.
+- Start, stop, restart, redeploy, and component-redeploy with `flux_apps_start`, `flux_apps_stop`, `flux_apps_restart`, `flux_apps_redeploy`, and `flux_apps_redeploy_component`.
+- Follow maintenance workflows with `flux_maintenance_checklist`.
+
+### Debug containers, processes, and runtime behavior
+
+- Tail logs with `flux_logs_tail` and `flux_apps_logs`.
+- Resolve the correct runtime node and container automatically with `flux_apps_resolve_runtime_target`.
+- Inspect containers with `flux_apps_inspect`.
+- Review resource usage with `flux_apps_stats`, `flux_apps_top`, and `flux_apps_monitor`.
+- Execute commands inside a running app container with `flux_apps_exec`.
+
+### Work with app files, volumes, backups, and FluxDrive
+
+- Browse app volumes with `flux_apps_list_folder`.
+- Download individual files and whole folders with `flux_apps_download_file` and `flux_apps_download_folder`.
+- Create folders, rename objects, and remove objects with `flux_apps_create_folder`, `flux_apps_rename_object`, and `flux_apps_remove_object`.
+- Inspect backup volume usage with `flux_backup_get_volume_data`.
+- Check remote backup sizes with `flux_backup_get_remote_file_size`.
+- List, remove, and download local backup archives with `flux_backup_list_local`, `flux_backup_remove_file`, and `flux_backup_download_local_file`.
+- Upload local files and URL-sourced files with `flux_ioutils_file_upload` and `flux_ioutils_file_upload_from_url`.
+- Manage FluxDrive backup operations with `flux_fluxdrive_set_base_url`, `flux_fluxdrive_register_backup_file`, `flux_fluxdrive_get_task_status`, `flux_fluxdrive_get_backup_list`, and `flux_fluxdrive_remove_checkpoint`.
+
+### Analyze the Flux blockchain, node state, and explorer
+
+- Check overall node health with `flux_node_health`.
+- Inspect explorer height and sync status with `flux_explorer_height_info` and `flux_explorer_status`.
+- Query balances with `flux_explorer_balance_summary`.
+- Operate explorer services with `flux_explorer_restart`, `flux_explorer_stop`, `flux_explorer_reindex`, and `flux_explorer_rescan`.
+- Access raw daemon RPC-style functionality through `flux_daemon_call`.
+- Use prebuilt daemon helpers for `getinfo`, blockchain info, network info, peer info, mempool info, raw mempool, block count, connection count, and difficulty.
+
+### Reach daemon, network, and maintenance APIs without losing safety
+
+- Use `flux_request` as a controlled escape hatch for endpoints not yet wrapped by a dedicated tool.
+- Enforce `allowMutation=true` for direct mutating calls.
+- Keep high-level lifecycle and file mutations behind `confirm=true`.
+- Search upstream-generated endpoint metadata with `flux_search_endpoints` and `flux_list_endpoint_categories`.
+
+### Handle authentication, signing, and enterprise app workflows
+
+- Resolve and pin a direct node behind the gateway with `flux_resolve_gateway_node` and `flux_set_base_url_from_gateway`.
+- Run guided auth with `flux_auth_flow`, `flux_auth_login`, and `flux_auth_diagnose`.
+- Fetch login phrases with `flux_get_login_phrase` and `flux_get_emergency_phrase`.
+- Verify auth and privilege with `flux_verify_login` and `flux_check_privilege`.
+- Build, set, clear, and inspect `zelidauth` with `flux_build_zelidauth`, `flux_set_zelidauth`, `flux_clear_zelidauth`, and `flux_get_state`.
+- Build browser launchers for signing and payment flows with `flux_write_sign_launcher` and `flux_build_payment_launcher`, supporting both Zelcore and SSP Wallet where applicable.
+- Generate enterprise headers and decrypt enterprise payloads with `flux_enterprise_key_generate`, `flux_set_enterprise_key`, `flux_clear_enterprise_key`, `flux_enterprise_preflight`, and `flux_enterprise_decrypt`.
+
+### Operate Syncthing from the same interface
+
+- Read metrics and health with `flux_syncthing_metrics` and `flux_syncthing_metrics_health`.
+- Inspect system status, folders, devices, and DB contents with `flux_syncthing_system_status`, `flux_syncthing_list_folders`, `flux_syncthing_list_devices`, and `flux_syncthing_db_browse`.
+- Trigger scans and restarts with `flux_syncthing_db_scan` and `flux_syncthing_restart`.
+
+## Why Operators Use This Instead Of Raw Endpoints
+
+- Safe-by-default mutations: high-level mutating tools require `confirm=true`, and direct mutating requests require `allowMutation=true`.
+- Better signing UX: long signing messages can be stored as MCP resources, written to disk, opened in Zelcore, or launched through local browser pages that support both Zelcore and SSP Wallet.
+- Less chat spam: large outputs come back as `resource_link` references instead of flooding the conversation with logs or JSON.
+- Gateway-aware auth: the server can resolve the current gateway node and pin you to the direct node before authentication.
+- Enterprise support: the server handles Arcane public key retrieval, enterprise-key generation, and local enterprise payload decryption.
+- Endpoint discovery built in: the generated Flux route inventory is searchable from inside the MCP session.
+- Works with MCP and skills: you can use the same operational surface from Codex, Claude, Gemini, or any other stdio MCP client.
+
+## Quick Start
+
+### Recommended setup
 
 From the repo root:
 
@@ -35,29 +117,17 @@ node scripts/setup.js
 
 This will:
 
-- build `flux-mcp` (if needed)
-- install the Codex + Claude skills (project-scoped)
-- print ready-to-paste MCP client config snippets with your absolute paths
+- build `flux-mcp` if needed
+- install the Codex and Claude skills in project scope
+- print ready-to-paste MCP configuration snippets with absolute paths
 
-User-scoped install (all projects):
+User-scoped install:
 
 ```bash
 node scripts/setup.js --scope user
 ```
 
-### 1) Prereqs
-
-- Node.js 20+
-- A Flux node API base URL:
-  - Direct node (recommended): `http://<node-ip>:16127`
-  - Public gateway: `https://api.runonflux.io`
-
-Common gotcha:
-- `https://cloud.runonflux.com/` is the UI, not the node API base URL.
-
-### 2) Build the MCP server (one time)
-
-From the repo root:
+### Manual build
 
 ```bash
 cd flux-mcp
@@ -65,106 +135,11 @@ npm ci
 npm run build
 ```
 
-This produces: `flux-mcp/dist/index.js`
+This produces `flux-mcp/dist/index.js`.
 
-Default behavior: if `FLUX_API_BASE_URL` is not set, the MCP server uses `https://api.runonflux.io`.
+### Connect an MCP client
 
-### 3) Connect your client
-
-#### Claude Code (CLI)
-
-```bash
-claude mcp add --transport stdio \
-  --env FLUX_API_BASE_URL=https://api.runonflux.io \
-  flux -- \
-  node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
-```
-
-Verify:
-
-```bash
-claude mcp list
-claude mcp get flux
-```
-
-In the Claude Code UI, you can also run:
-
-```
-/mcp
-```
-
-#### Claude Desktop
-
-Open Claude Desktop, then:
-
-1) Settings -> Developer -> Edit Config
-2) Add a server entry (example below)
-3) Restart Claude Desktop
-
-```json
-{
-  "mcpServers": {
-    "flux": {
-      "command": "node",
-      "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
-      "env": {
-        "FLUX_API_BASE_URL": "https://api.runonflux.io"
-      }
-    }
-  }
-}
-```
-
-#### Gemini CLI
-
-Option A: use the CLI command (writes settings for you):
-
-```bash
-gemini mcp add -s user \
-  -e FLUX_API_BASE_URL=https://api.runonflux.io \
-  flux node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
-```
-
-Option B: edit your settings file directly:
-
-- User scope: `~/.gemini/settings.json`
-- Project scope: `.gemini/settings.json`
-
-```json
-{
-  "mcpServers": {
-    "flux": {
-      "command": "node",
-      "args": ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
-      "env": {
-        "FLUX_API_BASE_URL": "https://api.runonflux.io"
-      }
-    }
-  }
-}
-```
-
-Verify:
-
-```bash
-gemini mcp list
-```
-
-In Gemini CLI, you can also run:
-
-```
-/mcp
-```
-
-Notes:
-- Use an absolute path for `flux-mcp/dist/index.js`.
-- If `gemini mcp` is not available yet, use the settings file method.
-
-#### Codex (CLI + IDE)
-
-Codex supports MCP in both the CLI and IDE extension. Configuration is shared via `~/.codex/config.toml`.
-
-Option A: use the CLI:
+Codex example:
 
 ```bash
 codex mcp add flux \
@@ -172,162 +147,90 @@ codex mcp add flux \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
-Verify:
+The same server works with Claude Code, Claude Desktop, Gemini CLI, and other stdio MCP clients. Full client-specific setup lives in [flux-mcp/README.md](/home/stache/projects/flux-skills/flux-mcp/README.md).
 
-```bash
-codex mcp list
-```
-
-In the Codex TUI, use:
-
-```
-/mcp
-```
-
-Note: `/mcp` is list-only in the Codex TUI. To add or edit servers, use `codex mcp` or edit `~/.codex/config.toml`.
-
-Option B: edit `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.flux]
-command = "node"
-args = ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"]
-
-[mcp_servers.flux.env]
-FLUX_API_BASE_URL = "https://api.runonflux.io"
-```
-
-### 4) First tool calls (any MCP client)
+### First calls worth trying
 
 - `flux_get_state`
-- By default MCP uses the public gateway. To use a direct node:
-  - `flux_set_base_url { "baseUrl": "http://<node-ip>:16127" }`
-- To pin the gateway to its current node (avoids load balancing):
-  - `flux_set_base_url_from_gateway { "gatewayBaseUrl": "https://api.runonflux.io" }`
-- Auth plan (recommended):
-  - `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }`
-- Quick health check:
-  - `flux_node_health`
+- `flux_node_health`
+- `flux_search_endpoints { "query": "applog", "limit": 5 }`
+- `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }`
+- `flux_apps_list_global_specs { "owner": "<zelid>" }`
 
-### 5) Large outputs
+## Skill Installation
 
-Many tools return `resource_link` blocks to keep chat output small.
+### Codex skill
 
-- If your client supports MCP resources, use `resources/read` with the given URI.
-- Otherwise, call `flux_resource_read { "uri": "..." }`.
-
-### 5b) Signing tips (avoid bad signatures)
-
-- `flux_build_message_to_sign` and planning tools include:
-  - `messageToSignRaw` (exact bytes to sign)
-  - `messageToSignSha256` (checksum)
-  - `messageToSignBase64` (safe transport)
-- To avoid terminal wrapping, use:
-  - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
-- To open Zelcore directly:
-  - `flux_build_zelcore_sign_link { "message": "<messageToSignRaw>" }`
-
-### 5c) Renewals
-
-- `flux_apps_plan_renew` computes a safe `expire` for “add weeks” vs “add to remaining” and outputs a ready-to-sign update payload plus payment guidance.
-- `flux_apps_wait_for_propagation` polls temporary/permanent messages without long-running tool timeouts.
-
-### 6) Troubleshooting (MCP)
-
-- Tools not showing up: make sure Node.js 20+ is installed, run `npm ci && npm run build` in `flux-mcp/`, and restart your client.
-- Base URL missing/invalid: set `FLUX_API_BASE_URL` or call `flux_set_base_url`.
-- Connection errors: verify the node API is reachable at `http://<node-ip>:16127` (not the UI port `16126`).
-- Auth errors: run `flux_auth_flow` to refresh `zelidauth`.
-- Gateway weirdness: use a direct node URL or call `flux_set_base_url_from_gateway`.
-
-## Codex skill
-
-Codex supports skills. Install the Flux skill by copying the folder.
-
-Repo scoped (recommended for teams):
+Repo scoped:
 
 ```bash
 mkdir -p .codex/skills
 cp -R codex/flux-cloud .codex/skills/flux-cloud
 ```
 
-User scoped (all projects):
+User scoped:
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 cp -R codex/flux-cloud "${CODEX_HOME:-$HOME/.codex}/skills/flux-cloud"
 ```
 
-Restart Codex to pick it up. Then run `/skills` or type `$flux-cloud`.
-
-Package into a `.skill` artifact (optional):
+Package a `.skill` artifact:
 
 ```bash
 python3 scripts/package_skill.py codex/flux-cloud dist --out-name flux-cloud-codex
 ```
 
-## Optional: Claude Code skill wrapper
+### Claude skill wrapper
 
-This is only for Claude Code's skill system (not required for MCP):
+User scoped:
 
 ```bash
 mkdir -p ~/.claude/skills
 cp -R claude/flux-cloud ~/.claude/skills/flux-cloud
 ```
 
-Or project scoped:
+Project scoped:
 
 ```bash
 mkdir -p .claude/skills
 cp -R claude/flux-cloud .claude/skills/flux-cloud
 ```
 
-Restart Claude Code, then ask:
+Package a `.skill` artifact:
 
+```bash
+python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-claude
 ```
-What skills are available?
-```
 
-## More docs
+## Repository Layout
 
-- `flux-mcp/README.md` - full tool catalog, safety model, and workflows
-- `codex/flux-cloud/references/` - API references and signing details
-- `claude/flux-cloud/references/` - Claude-specific prompts and MCP setup
+| Path | Role |
+| --- | --- |
+| `flux-mcp/` | The main execution layer: MCP server, tool handlers, resources, and HTTP clients. |
+| `codex/flux-cloud/` | Codex skill wrapper, references, examples, and helper scripts. |
+| `claude/flux-cloud/` | Claude Code skill wrapper and references. |
+| `scripts/` | Setup and skill packaging helpers. |
+| `dist/` | Generated `.skill` artifacts. |
+| `flux-mcp/data/endpoints.json` | Generated Flux endpoint inventory used by the MCP search tools. |
 
-## MCP server configuration
+## Read Next
 
-Environment variables:
+| Document | Why you would open it |
+| --- | --- |
+| [flux-mcp/README.md](/home/stache/projects/flux-skills/flux-mcp/README.md) | Full MCP setup, technical workflows, configuration, and categorized tool catalog. |
+| [codex/flux-cloud/SKILL.md](/home/stache/projects/flux-skills/codex/flux-cloud/SKILL.md) | Codex-side workflow guidance and tool usage patterns. |
+| [claude/flux-cloud/SKILL.md](/home/stache/projects/flux-skills/claude/flux-cloud/SKILL.md) | Claude Code workflow guidance. |
+| [codex/flux-cloud/references/](/home/stache/projects/flux-skills/codex/flux-cloud/references) | Detailed Flux API references, app spec notes, signing docs, and troubleshooting. |
 
-- `FLUX_API_BASE_URL` (default): `https://api.runonflux.io`
-  - For a direct node: `http://<node-ip>:16127`
-- `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
-- `FLUX_ENTERPRISE_KEY` (optional): enterprise-key header value (base64 RSA-encrypted AES key)
-- `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
-- `FLUX_ENDPOINTS_PATH` (optional): override bundled endpoints inventory path
+## Endpoint Inventory
 
-You can also set base URL and `zelidauth` at runtime via tools.
-For enterprise renewals, set the header via `FLUX_ENTERPRISE_KEY` or `flux_set_enterprise_key`.
+The endpoint inventory is generated from the public Flux source of truth:
 
-Enterprise-key flow (Arcane nodes):
-1) (If needed) get original owner: `flux_request { "path": "/apps/apporiginalowner/<app>" }`
-2) `flux_apps_get_public_key { "owner": "<zelid>", "name": "<app>" }`
-3) `flux_enterprise_key_generate { "publicKey": "<base64>" }`
-4) `flux_set_enterprise_key { "enterpriseKey": "<base64>" }`
-5) `flux_apps_get_spec { "appname": "<app>", "decrypt": true }`
-
-Shortcut: `flux_enterprise_preflight { "appname": "<app>" }` does steps 1–4 and can optionally verify decrypt.
-
-Note: the response `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
-
-You can decrypt locally with:
-- `flux_enterprise_decrypt { "enterprise": "<base64>", "aesKeyBase64": "<base64>" }`
-
-## Endpoint inventory (generated)
-
-Source of truth in the public Flux repo:
 - `https://github.com/RunOnFlux/flux/blob/master/ZelBack/src/routes.js`
 
-Generated outputs:
+Generated outputs in this repo:
+
 - `codex/flux-cloud/references/endpoints-inventory.md`
 - `codex/flux-cloud/references/endpoints.json`
 - `flux-mcp/data/endpoints.json`
@@ -339,7 +242,15 @@ cd codex/flux-cloud
 node scripts/generate-endpoints.js --ref master --also-mcp
 ```
 
-## Helpful links
+## Core Configuration
 
-- Flux UI: `https://cloud.runonflux.com/`
-- Flux repo (API source of truth): `https://github.com/RunOnFlux/flux`
+Important environment variables:
+
+- `FLUX_API_BASE_URL` - node API base URL, defaults to `https://api.runonflux.io`
+- `FLUX_ZELIDAUTH` - optional preloaded `zelidauth`
+- `FLUX_ENTERPRISE_KEY` - optional preloaded enterprise-key header
+- `FLUX_HTTP_TIMEOUT_MS` - request timeout override
+- `FLUX_ENDPOINTS_PATH` - custom endpoint inventory path
+- `FLUXDRIVE_MWS_BASE_URL` - FluxDrive MWS base URL override
+
+Signing and launcher behavior can also be tuned from the MCP layer. See [flux-mcp/README.md](/home/stache/projects/flux-skills/flux-mcp/README.md) for the full server configuration surface.

@@ -1,31 +1,43 @@
 # Flux MCP
 
-An MCP (Model Context Protocol) server that exposes **Flux Cloud / FluxOS node API** workflows as tools.
+Flux MCP is the execution layer behind the skills in this repo. It exposes Flux Cloud / FluxOS workflows as MCP tools with safer defaults, higher-level planning helpers, signing support, endpoint discovery, and resource-backed outputs for large payloads.
 
-This server is designed to be the “execution layer” behind the Claude/Codex skills in this repo:
+It is designed for day-to-day operations, not just toy demos. You can use it to deploy apps, renew apps, inspect live containers, browse volumes, manage backups, query daemon and explorer data, operate Syncthing, and work through enterprise app flows from one MCP server. Signing and payment helpers support both Zelcore and SSP Wallet.
 
-- deterministic outputs for signing flows
-- safe-by-default behavior for state changes
-- endpoint discovery/search for the full node API surface
+## Capability Surface
 
-## Safety model
+| Domain | What the server covers |
+| --- | --- |
+| Auth and session control | ZelID login flow, `zelidauth` management, privilege checks, gateway pinning, browser-friendly signing launchers for Zelcore and SSP Wallet, and enterprise-key workflows. |
+| App delivery | Spec generation, Git deploy planning, verification, pricing, exact signing payloads, registration, update, renew, payment guidance, and propagation checks. |
+| App operations | Running and global app discovery, lifecycle controls, runtime resolution, troubleshooting, health reporting, and maintenance helpers. |
+| Runtime observability | Logs, container inspect, stats, top, monitoring, and in-container command execution. |
+| Storage and backups | App volume browsing and mutation, local backup operations, FluxDrive task management, and upload helpers. |
+| Chain and daemon analytics | Explorer height and sync checks, balances, rescans, reindex/restart controls, and daemon, network, peer, mempool, and difficulty queries. |
+| Syncthing | Metrics, health, folder and device inventory, DB browsing, scan triggers, and restarts. |
+| Endpoint discovery | Generated route inventory search and category summaries sourced from upstream Flux routes. |
 
-FluxOS exposes many endpoints as `GET` routes (including state-changing actions). This MCP server is built to reduce accidental mutations:
+## Safety Model
 
-- High-level mutating tools require **`confirm=true`**.
-- The generic escape hatch (`flux_request`) requires **`allowMutation=true`** for mutating endpoints.
+FluxOS exposes a lot of power behind HTTP endpoints, including mutating endpoints that are still represented as `GET` routes. This server adds guardrails:
+
+- High-level mutating tools require `confirm=true`.
+- The generic escape hatch, `flux_request`, requires `allowMutation=true` for mutating requests.
+- Large outputs are moved into MCP resources instead of dumping raw payloads into the conversation.
+- Auth flows can resolve the gateway to its active direct node before you sign and bind credentials.
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js 20+
 - A Flux node API base URL:
-  - Direct node (recommended): `http://<node-ip>:16127`
-  - Public gateway: `https://api.runonflux.io`
+  - direct node: `http://<node-ip>:16127`
+  - public gateway: `https://api.runonflux.io`
 
 Common gotcha:
-- `https://cloud.runonflux.com/` is the UI, not the node API base URL.
 
-## One-command setup (recommended)
+- `https://cloud.runonflux.com/` is the Flux UI, not the node API base URL.
+
+## One-Command Setup
 
 From the repo root:
 
@@ -33,9 +45,9 @@ From the repo root:
 node scripts/setup.js
 ```
 
-This builds `flux-mcp` (if needed) and prints ready-to-paste MCP client config snippets.
+This will build `flux-mcp` if needed and print ready-to-paste configuration snippets for supported MCP clients.
 
-## Build (one-time)
+## Build
 
 From the repo root:
 
@@ -45,15 +57,15 @@ npm ci
 npm run build
 ```
 
-(If you prefer `npm install`, that also works — `npm ci` is just reproducible.)
+This produces `dist/index.js`.
 
-This produces: `dist/index.js`
+Default behavior:
 
-Default behavior: if `FLUX_API_BASE_URL` is not set, the MCP server uses `https://api.runonflux.io`.
+- if `FLUX_API_BASE_URL` is not set, the server uses `https://api.runonflux.io`
 
-## Connect your MCP client
+## Connect Your MCP Client
 
-### Claude Code (CLI)
+### Claude Code
 
 ```bash
 claude mcp add --transport stdio \
@@ -69,19 +81,7 @@ claude mcp list
 claude mcp get flux
 ```
 
-In the Claude Code UI, you can also run:
-
-```
-/mcp
-```
-
 ### Claude Desktop
-
-Open Claude Desktop, then:
-
-1) Settings -> Developer -> Edit Config
-2) Add a server entry (example below)
-3) Restart Claude Desktop
 
 ```json
 {
@@ -99,7 +99,7 @@ Open Claude Desktop, then:
 
 ### Gemini CLI
 
-Option A: use the CLI command (writes settings for you):
+CLI:
 
 ```bash
 gemini mcp add -s user \
@@ -107,10 +107,7 @@ gemini mcp add -s user \
   flux node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
-Option B: edit your settings file directly:
-
-- User scope: `~/.gemini/settings.json`
-- Project scope: `.gemini/settings.json`
+Or `~/.gemini/settings.json` / `.gemini/settings.json`:
 
 ```json
 {
@@ -126,27 +123,9 @@ Option B: edit your settings file directly:
 }
 ```
 
-Verify:
+### Codex
 
-```bash
-gemini mcp list
-```
-
-In Gemini CLI, you can also run:
-
-```
-/mcp
-```
-
-Notes:
-- Use an absolute path for `dist/index.js`.
-- If `gemini mcp` is not available yet, use the settings file method.
-
-### Codex (CLI + IDE)
-
-Codex supports MCP in both the CLI and IDE extension. Configuration is shared via `~/.codex/config.toml`.
-
-Option A: use the CLI:
+CLI:
 
 ```bash
 codex mcp add flux \
@@ -154,21 +133,7 @@ codex mcp add flux \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
-Verify:
-
-```bash
-codex mcp list
-```
-
-In the Codex TUI, use:
-
-```
-/mcp
-```
-
-Note: `/mcp` is list-only in the Codex TUI. To add or edit servers, use `codex mcp` or edit `~/.codex/config.toml`.
-
-Option B: edit `~/.codex/config.toml`:
+Or `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.flux]
@@ -179,274 +144,331 @@ args = ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"]
 FLUX_API_BASE_URL = "https://api.runonflux.io"
 ```
 
-### Other MCP clients (stdio)
+### Other stdio MCP clients
 
-If your client supports stdio MCP servers, point it at:
+Point the client at:
 
-- Command: `node /absolute/path/to/flux-skills/flux-mcp/dist/index.js`
-- Environment: `FLUX_API_BASE_URL=https://api.runonflux.io`
+- command: `node /absolute/path/to/flux-skills/flux-mcp/dist/index.js`
+- env: `FLUX_API_BASE_URL=https://api.runonflux.io`
 
-## Run standalone (debug)
+## High-Value Workflows
 
-```bash
-FLUX_API_BASE_URL="https://api.runonflux.io" node dist/index.js
-# or, direct node:
-# FLUX_API_BASE_URL="http://<node-ip>:16127" node dist/index.js
-```
+### Authenticate once, then reuse the session
 
-## Configuration
+Recommended flow:
 
-Environment variables:
+1. `flux_auth_login { "zelid": "<ZELID>" }`
+2. Click the returned `signLauncherHttpUrl` or `zelcoreLauncherHttpUrl`.
+3. Sign the login phrase.
+4. `flux_auth_login { "zelid": "<ZELID>", "loginPhrase": "<PHRASE>", "signature": "<SIGNATURE>" }`
 
-- `FLUX_API_BASE_URL` (default: `https://api.runonflux.io`)
-  - direct node API: `http://<node-ip>:16127`
-- `FLUX_ZELIDAUTH` (optional): pre-set auth header value (JSON string)
-- `FLUX_ENTERPRISE_KEY` (optional): enterprise-key header value (base64 RSA-encrypted AES key)
-- `FLUX_HTTP_TIMEOUT_MS` (optional): default `30000`
-- `FLUX_ENDPOINTS_PATH` (optional): override the bundled endpoints inventory path
+Alternative helpers:
 
-You can also set base URL and `zelidauth` at runtime via tools.
-
-## Common workflow: authenticate once
-
-Fastest path is to use the planner tool and follow its steps:
-
-- `flux_auth_flow` (optionally pass `gatewayBaseUrl`)
-
-Manual path:
-
-1) Set the node base URL (if not set via env):
-
-- `flux_set_base_url`
-
-2) Get a login phrase:
-
-- `flux_get_login_phrase` (or `flux_get_emergency_phrase`)
-
-3) User signs the phrase in their wallet, then verify + store `zelidauth`:
-
-- `flux_verify_login`
+- `flux_auth_flow`
+- `flux_auth_diagnose`
 - `flux_build_zelidauth`
 - `flux_set_zelidauth`
 
-## Enterprise-key flow (Arcane nodes)
+### Plan and register a new app
 
-1) (If needed) get original owner:
+1. Build or supply a v8 spec.
+2. `flux_apps_plan_registration`
+3. Open `messageToSignResourceUri` and sign the exact bytes.
+4. `flux_apps_register`
+5. Run `flux_apps_test_install`
+6. Use `paymentLauncherHttpUrl` or `flux_build_payment_launcher`
+7. Poll propagation with `flux_apps_get_messages` or `flux_apps_wait_for_propagation`
 
-- `flux_request { "path": "/apps/apporiginalowner/<app>" }`
+Related helpers:
 
-2) Fetch RSA public key:
+- `flux_generate_app_spec_v8`
+- `flux_git_deploy_generate_spec_v8`
+- `flux_git_deploy_plan_registration`
+- `flux_git_deploy_register_and_verify`
 
-- `flux_apps_get_public_key { "owner": "<zelid>", "name": "<app>" }`
+### Update or renew an existing app
 
-3) Generate header value:
+1. `flux_apps_get_spec`
+2. Apply the desired changes or renewal policy.
+3. `flux_apps_plan_update` or `flux_apps_plan_renew`
+4. Sign the returned `messageToSign`
+5. `flux_apps_update` or `flux_apps_update_and_verify`
 
-- `flux_enterprise_key_generate { "publicKey": "<base64>" }`
+Useful companions:
 
-4) Set header:
+- `flux_apps_verify_update_spec`
+- `flux_apps_calculate_price`
+- `flux_apps_global_status`
 
-- `flux_set_enterprise_key { "enterpriseKey": "<base64>" }`
+### Operate a live app
 
-5) Fetch decrypted spec:
-
-- `flux_apps_get_spec { "appname": "<app>", "decrypt": true }`
-
-Shortcut: `flux_enterprise_preflight { "appname": "<app>" }` does steps 1–4 and can optionally verify decrypt.
-
-Note: the `enterprise` field is AES-256-GCM encrypted; use the returned `aesKeyBase64` to decrypt it (nonce = first 12 bytes, tag = last 16 bytes).
-You can decrypt locally with:
-- `flux_enterprise_decrypt { "enterprise": "<base64>", "aesKeyBase64": "<base64>" }`
-
-## Signing tips
-
-- Planning/signing tools return:
-  - `messageToSignResourceUri` (raw bytes to sign, stored as an MCP resource)
-  - `messageToSignSha256` + `messageToSignBytes` (sanity checks)
-  - `resourceUri` (full plan details, stored as an MCP resource)
-- To view/copy the raw `messageToSign`, open the `resource_link` in your client or run:
-  - `flux_resource_read { "uri": "<messageToSignResourceUri>" }`
-- To open Zelcore directly (recommended for long messages):
-  - `flux_build_zelcore_sign_link { "messageResourceUri": "<messageToSignResourceUri>", "useFluxStorage": true, "confirm": true }`
-- To avoid terminal wrapping, you can also write the message to a file:
-  - `flux_write_message_to_sign { "path": "./message-to-sign.txt", "messageToSign": "<raw>", "confirm": true }`
-
-## Resources + large payloads
-
-Many tools return `resource_link` blocks instead of dumping large JSON/log payloads into the chat.
-
-- If your client supports MCP resources, use `resources/read` with the URI.
-- Otherwise, use `flux_resource_read` with the same `uri`.
-- Use `flux_resource_prune` to clear stored dynamic resources.
-
-## Tool catalog
-
-### Session + auth
-
-- `flux_get_state` — show base URL + whether `zelidauth` is present + HTTP defaults.
-- `flux_set_base_url` — set `http://<node-ip>:16127`.
-- `flux_set_http_defaults` — set timeout/retry defaults.
-- `flux_auth_flow` — plan a step-by-step auth flow.
-- `flux_auth_diagnose` — preflight checks + actionable next steps.
-- `flux_get_login_phrase` / `flux_get_emergency_phrase` — fetch phrase for ZelID signing.
-- `flux_verify_login` — establish a node session.
-- `flux_check_privilege` — confirm privilege level.
-- `flux_build_zelidauth` — create header JSON string.
-- `flux_set_zelidauth` / `flux_clear_zelidauth` — manage stored auth.
-- `flux_set_enterprise_key` / `flux_clear_enterprise_key` — manage enterprise-key header for renewals.
-- `flux_enterprise_key_generate` — create enterprise-key header value + AES key from a public key.
-- `flux_enterprise_preflight` — fetch public key + generate enterprise-key + (optional) decrypt check.
-- `flux_write_message_to_sign` — write raw messageToSign to a file (avoid terminal wrapping).
-- `flux_build_zelcore_sign_link` — build a Zelcore signing deeplink (optionally with Flux Storage for long messages).
-- `flux_enterprise_decrypt` — decrypt enterprise payload using aesKeyBase64.
-- `flux_resource_read` — read resource URI content.
-- `flux_resource_prune` — prune/clear dynamic resources.
-
-### Endpoint discovery
-
-- `flux_list_endpoint_categories` — counts by category (daemon/apps/flux/syncthing/etc).
-- `flux_search_endpoints` — keyword search over paths/comments/access (table + `resource_link`).
-
-### Generic API caller
-
-- `flux_request`
-  - `path`: `/flux/info`, `/apps/applog`, etc.
-  - `method`: defaults to `GET`.
-  - `query`: object → query string.
-  - `body`: JSON body for POST.
-  - `allowMutation=true`: required for mutating calls.
-  - `enterpriseKey`: override enterprise-key header for this request (optional).
-  - `responseType=base64`: for downloads (returns base64 + headers).
-
-### Node
-
-- `flux_node_health` — fetch `/flux/version`, `/flux/info`, `/flux/isarcaneos`.
-
-### Apps: discovery + metadata
-
-- `flux_apps_list_running` — `GET /apps/listrunningapps`.
-- `flux_apps_list_all` — `GET /apps/listallapps`.
-- `flux_apps_list_global_specs` — `GET /apps/globalappsspecifications` (filter by `owner` to list apps registered under a ZelID).
-- `flux_apps_list_by_zelid_with_expiry`
-  - Default behavior uses `zelidauth.zelid` if set.
-  - Options: `includeExpired` (default false), `limit` (default 50, max 200).
-  - Output: Markdown table + JSON summary + `resource_link`.
-- `flux_apps_get_spec` — `GET /apps/appspecifications/<appname>`.
-- `flux_apps_get_public_key` — `POST /apps/getpublickey` (requires zelidauth + Arcane node).
-- `flux_apps_get_owner` — `GET /apps/appowner/<appname>`.
-- `flux_apps_registration_information` — `GET /apps/registrationinformation`.
-- `flux_apps_deployment_information` — `GET /apps/deploymentinformation`.
-
-### Apps: create/verify/price/register/update (network-level)
-
-- `flux_generate_app_spec_v8` — generate a minimal v8 single-component spec.
-- `flux_apps_verify_registration_spec` — canonicalize for registration.
-- `flux_apps_verify_update_spec` — canonicalize for update.
-- `flux_apps_calculate_price` — price estimate.
-
-High-level signing workflow helpers:
-
-- `flux_apps_plan_registration` — verify + price + build `messageToSign` and payload scaffold.
-- `flux_apps_register` — submit `POST /apps/appregister` (requires owner signature + `zelidauth`).
-- `flux_apps_register_and_verify` — submit + poll propagation (optional).
-- `flux_apps_plan_update` — verify + price + build `messageToSign` and payload scaffold.
-- `flux_apps_plan_renew` — compute expire + verify + price + build `messageToSign` and payload scaffold.
-- `flux_apps_update` — submit `POST /apps/appupdate` (requires owner signature + `zelidauth`).
-- `flux_apps_update_and_verify` — submit + poll propagation (optional).
-- `flux_apps_get_messages` — check `temporarymessages` / `permanentmessages` for a hash.
-- `flux_apps_wait_for_propagation` — poll temporary/permanent messages for a hash.
-
-### Apps: lifecycle (requires `confirm=true`)
-
+- `flux_app_health_report`
+- `flux_apps_logs`
+- `flux_apps_inspect`
+- `flux_apps_stats`
+- `flux_apps_top`
+- `flux_apps_monitor`
+- `flux_apps_exec`
 - `flux_apps_start`
 - `flux_apps_stop`
 - `flux_apps_restart`
 - `flux_apps_redeploy`
 - `flux_apps_redeploy_component`
 
-### Apps: observability
+### Analyze chain and network state
 
+- `flux_node_health`
+- `flux_explorer_status`
+- `flux_explorer_height_info`
+- `flux_explorer_balance_summary`
+- `flux_daemon_get_info`
+- `flux_daemon_get_blockchain_info`
+- `flux_daemon_get_network_info`
+- `flux_daemon_get_peer_info`
+- `flux_daemon_get_mempool_info`
+- `flux_daemon_get_raw_mempool`
+- `flux_daemon_get_block_count`
+- `flux_daemon_get_connection_count`
+- `flux_daemon_get_difficulty`
+
+### Work with files, backups, and FluxDrive
+
+- `flux_apps_list_folder`
+- `flux_apps_download_file`
+- `flux_apps_download_folder`
+- `flux_apps_create_folder`
+- `flux_apps_rename_object`
+- `flux_apps_remove_object`
+- `flux_backup_get_volume_data`
+- `flux_backup_get_remote_file_size`
+- `flux_backup_list_local`
+- `flux_backup_remove_file`
+- `flux_backup_download_local_file`
+- `flux_fluxdrive_register_backup_file`
+- `flux_fluxdrive_get_task_status`
+- `flux_fluxdrive_get_backup_list`
+- `flux_fluxdrive_remove_checkpoint`
+
+## Signing, Launchers, and Payment UX
+
+This server includes several quality-of-life features for signing-heavy Flux workflows.
+
+- Planning tools return `messageToSignResourceUri`, `messageToSignSha256`, and `messageToSignBytes`.
+- `flux_auth_login` returns browser-friendly launcher URLs when available.
+- `flux_write_sign_launcher` writes an HTML signing page that supports both Zelcore and SSP Wallet.
+- `flux_build_zelcore_sign_link` builds raw Zelcore deeplinks and can upload oversized payloads to Flux Storage.
+- `flux_build_payment_launcher` builds a localhost payment page for SSP Wallet payment flows, while the broader signing UX still supports both Zelcore and SSP Wallet.
+- `flux_write_message_to_sign` writes the exact signing bytes to disk when you want to avoid terminal wrapping.
+
+Typical options:
+
+- view the raw message via MCP resources
+- use the localhost sign launcher
+- use the localhost payment launcher
+- use the raw Zelcore deeplink
+- write the message to disk
+
+## Resources and Large Payloads
+
+Many tools return `resource_link` blocks instead of inlining huge payloads.
+
+- If your client supports MCP resources, use `resources/read`.
+- Otherwise use `flux_resource_read`.
+- Use `flux_resource_prune` to clear or prune stored resources.
+
+This is especially useful for:
+
+- long logs
+- decrypted specs
+- message-to-sign payloads
+- endpoint search results
+- monitoring and inspect payloads
+- backup and download metadata
+
+## Configuration
+
+Environment variables supported by the server and client layers:
+
+- `FLUX_API_BASE_URL` - default node API base URL
+- `FLUX_ZELIDAUTH` - optional preloaded `zelidauth`
+- `FLUX_ENTERPRISE_KEY` - optional preloaded enterprise-key header
+- `FLUX_ENDPOINTS_PATH` - override bundled endpoint inventory
+- `FLUX_HTTP_TIMEOUT_MS` - default HTTP timeout
+- `FLUX_HTTP_RETRY_COUNT` - default retry count
+- `FLUX_HTTP_RETRY_BACKOFF_MS` - default retry backoff
+- `FLUXDRIVE_MWS_BASE_URL` - FluxDrive MWS base URL override
+- `FLUX_MCP_LOCAL_LAUNCHER` - enable or disable localhost launcher pages
+- `FLUX_MCP_OSC8_LINKS` - enable or disable OSC8 terminal hyperlinks
+- `FLUX_MCP_ALLOW_SECRETS` - allow or block secret-bearing env output in enterprise spec inspection
+- `FLUX_MCP_RESOURCE_TTL_MS` - dynamic resource retention window
+- `FLUX_MCP_RESOURCE_MAX_ENTRIES` - max number of stored dynamic resources
+- `FLUX_MCP_VERBOSE_TOOL_SCHEMA` - return full tool schemas without compaction
+
+Runtime setters are also available:
+
+- `flux_set_base_url`
+- `flux_set_base_url_from_gateway`
+- `flux_set_http_defaults`
+- `flux_fluxdrive_set_base_url`
+- `flux_set_zelidauth`
+- `flux_set_enterprise_key`
+
+## Capability Catalog
+
+### Session, auth, and enterprise
+
+- `flux_get_state`
+- `flux_resolve_gateway_node`
+- `flux_set_base_url_from_gateway`
+- `flux_set_http_defaults`
+- `flux_auth_flow`
+- `flux_auth_login`
+- `flux_auth_diagnose`
+- `flux_set_base_url`
+- `flux_set_zelidauth`
+- `flux_clear_zelidauth`
+- `flux_get_login_phrase`
+- `flux_get_emergency_phrase`
+- `flux_verify_login`
+- `flux_check_privilege`
+- `flux_build_zelidauth`
+- `flux_set_enterprise_key`
+- `flux_clear_enterprise_key`
+- `flux_enterprise_key_generate`
+- `flux_enterprise_preflight`
+- `flux_enterprise_decrypt`
+- `flux_build_message_to_sign`
+- `flux_build_zelcore_sign_link`
+- `flux_write_message_to_sign`
+- `flux_write_sign_launcher`
+- `flux_build_payment_launcher`
+- `flux_resource_read`
+- `flux_resource_prune`
+
+### Endpoint discovery and escape hatches
+
+- `flux_list_endpoint_categories`
+- `flux_search_endpoints`
+- `flux_request`
+
+### Node, explorer, and daemon analytics
+
+- `flux_node_health`
+- `flux_explorer_height_info`
+- `flux_explorer_status`
+- `flux_explorer_balance_summary`
+- `flux_explorer_restart`
+- `flux_explorer_stop`
+- `flux_explorer_reindex`
+- `flux_explorer_rescan`
+- `flux_daemon_call`
+- `flux_daemon_get_info`
+- `flux_daemon_get_blockchain_info`
+- `flux_daemon_get_network_info`
+- `flux_daemon_get_peer_info`
+- `flux_daemon_get_mempool_info`
+- `flux_daemon_get_raw_mempool`
+- `flux_daemon_get_block_count`
+- `flux_daemon_get_connection_count`
+- `flux_daemon_get_difficulty`
+
+### App discovery and metadata
+
+- `flux_apps_list_running`
+- `flux_apps_list_all`
+- `flux_apps_list_global_specs`
+- `flux_apps_global_status`
+- `flux_apps_troubleshoot`
+- `flux_apps_list_by_zelid_with_expiry`
+- `flux_apps_get_spec`
+- `flux_apps_get_spec_full`
+- `flux_apps_get_public_key`
+- `flux_apps_get_owner`
+- `flux_apps_registration_information`
+- `flux_apps_deployment_information`
+
+### Spec generation, Git deploy, pricing, and planning
+
+- `flux_generate_app_spec_v8`
+- `flux_git_deploy_generate_spec_v8`
+- `flux_git_deploy_plan_registration`
+- `flux_git_deploy_register_and_verify`
+- `flux_apps_verify_registration_spec`
+- `flux_apps_verify_update_spec`
+- `flux_apps_calculate_price`
+- `flux_apps_plan_registration`
+- `flux_apps_signing_playbook`
+- `flux_apps_plan_update`
+- `flux_apps_plan_renew`
+- `flux_apps_append_backup_task`
+- `flux_apps_append_restore_task`
+- `flux_maintenance_checklist`
+
+### Registration, update, and propagation
+
+- `flux_apps_register`
+- `flux_apps_register_and_verify`
+- `flux_apps_test_install`
+- `flux_apps_update`
+- `flux_apps_update_and_verify`
+- `flux_apps_get_messages`
+- `flux_apps_wait_for_propagation`
+
+### Lifecycle, observability, and runtime control
+
+- `flux_apps_start`
+- `flux_apps_stop`
+- `flux_apps_restart`
+- `flux_apps_redeploy`
+- `flux_apps_redeploy_component`
+- `flux_apps_resolve_runtime_target`
 - `flux_apps_logs`
+- `flux_logs_tail`
 - `flux_apps_inspect`
 - `flux_apps_stats`
 - `flux_apps_top`
 - `flux_apps_monitor`
-- `flux_apps_exec` (requires `confirm=true`)
+- `flux_apps_exec`
+- `flux_app_health_report`
 
-Note: observability/exec tools accept a global app name. If the container is not found on the current node, they auto-resolve the correct node/container via `/apps/location` + `/apps/listrunningapps` and retry. Raw outputs (logs, exec output, monitoring payloads) are kept in `resource_link` to reduce chat bloat.
-
-### Apps: files (volume browser)
-
-Read-only:
+### Files, uploads, and backups
 
 - `flux_apps_list_folder`
-- `flux_apps_download_file` (base64)
-- `flux_apps_download_folder` (base64 zip)
-
-Mutating (requires `confirm=true`):
-
+- `flux_apps_download_file`
+- `flux_apps_download_folder`
 - `flux_apps_create_folder`
 - `flux_apps_rename_object`
 - `flux_apps_remove_object`
+- `flux_backup_get_volume_data`
+- `flux_backup_get_remote_file_size`
+- `flux_backup_list_local`
+- `flux_backup_remove_file`
+- `flux_backup_download_local_file`
+- `flux_ioutils_file_upload`
+- `flux_ioutils_file_upload_from_url`
+- `flux_fluxdrive_set_base_url`
+- `flux_fluxdrive_register_backup_file`
+- `flux_fluxdrive_get_task_status`
+- `flux_fluxdrive_get_backup_list`
+- `flux_fluxdrive_remove_checkpoint`
 
 ### Syncthing
 
-Read-only:
-
 - `flux_syncthing_metrics`
-- `flux_syncthing_metrics_health` (table + `resource_link`)
+- `flux_syncthing_metrics_health`
 - `flux_syncthing_system_status`
-- `flux_syncthing_list_folders` (table + `resource_link`)
-- `flux_syncthing_list_devices` (table + `resource_link`)
+- `flux_syncthing_list_folders`
+- `flux_syncthing_list_devices`
 - `flux_syncthing_db_browse`
-
-Mutating (requires `confirm=true` and usually admin/fluxteam privileges):
-
 - `flux_syncthing_db_scan`
 - `flux_syncthing_restart`
 
-## Common workflow: register a new app
-
-1) Build or provide a v8 spec:
-
-- `flux_generate_app_spec_v8`
-
-2) Plan the registration (canonicalize + price + signing payload):
-
-- `flux_apps_plan_registration`
-
-3) User signs `messageToSign` (open `messageToSignResourceUri`) with the OWNER ZelID.
-
-4) Submit registration:
-
-- `flux_apps_register`
-
-5) Monitor message propagation:
-
-- `flux_apps_get_messages`
-
-## Common workflow: update an app
-
-1) Fetch current spec:
-
-- `flux_apps_get_spec`
-
-2) Modify desired fields.
-
-3) Plan update:
-
-- `flux_apps_plan_update`
-
-4) User signs `messageToSign` (open `messageToSignResourceUri`).
-
-5) Submit update:
-
-- `flux_apps_update`
-
 ## Troubleshooting
 
-- MCP tools not showing: ensure Node.js 20+, run `npm ci && npm run build` in `flux-mcp/`, use an absolute path, then restart the client.
-- Connection errors: verify the node API is reachable at `http://<node-ip>:16127` (not the UI port `16126`).
-- Base URL missing/invalid → call `flux_set_base_url` or set `FLUX_API_BASE_URL`.
-- Auth failures → get a fresh phrase, re-sign, and update `zelidauth`.
-- Signature mismatch → always use verify endpoints (`flux_apps_plan_*`) so JSON canonicalization matches what the node verifies.
-- Download too large → increase `maxBytes` for `*_download_*` tools or download a smaller path.
+- Tools not showing up: run `npm ci && npm run build`, use an absolute path to `dist/index.js`, then restart the MCP client.
+- Wrong node or gateway weirdness: set a direct node with `flux_set_base_url` or resolve one with `flux_set_base_url_from_gateway`.
+- Auth problems: use `flux_auth_diagnose`, then fetch a fresh phrase and rebuild `zelidauth`.
+- Signature mismatch: use the plan and verify helpers so the spec is canonicalized before signing.
+- Launcher URLs not appearing: ensure `FLUX_MCP_LOCAL_LAUNCHER` is not disabled.
+- Large JSON or logs overwhelming the chat: read the returned `resource_link` instead of expanding everything inline.
+- Enterprise decrypt flow failing: confirm you are on an Arcane node and that the owner and public key resolution steps succeeded.
