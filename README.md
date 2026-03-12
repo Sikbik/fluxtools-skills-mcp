@@ -1,8 +1,8 @@
-# Flux Skills
+# Flux MCP and Skills
 
 > Production-focused MCP tooling and agent skills for Flux Cloud / FluxOS.
 
-Flux Skills turns the Flux node API into a safer operational surface for agents and operators. It combines a Node.js MCP server, Codex and Claude skill wrappers, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
+This project turns the Flux node API into a safer operational surface for agents and operators. It combines a Node.js MCP server, Codex and Claude skill wrappers, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
 
 This repo is built for people who want to do real work on Flux infrastructure from an MCP client instead of hand-assembling raw REST calls.
 
