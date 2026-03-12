@@ -147,7 +147,7 @@ codex mcp add flux \
   node /absolute/path/to/flux-skills/flux-mcp/dist/index.js
 ```
 
-The same server works with Claude Code, Claude Desktop, Gemini CLI, and other stdio MCP clients. Full client-specific setup lives in [flux-mcp/README.md](/home/stache/projects/flux-skills/flux-mcp/README.md).
+The same server works with Claude Code, Claude Desktop, Gemini CLI, and other stdio MCP clients. Full client-specific setup lives in [flux-mcp/README.md](flux-mcp/README.md).
 
 ### First calls worth trying
 
@@ -218,10 +218,10 @@ python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-cl
 
 | Document | Why you would open it |
 | --- | --- |
-| [flux-mcp/README.md](/home/stache/projects/flux-skills/flux-mcp/README.md) | Full MCP setup, technical workflows, configuration, and categorized tool catalog. |
-| [codex/flux-cloud/SKILL.md](/home/stache/projects/flux-skills/codex/flux-cloud/SKILL.md) | Codex-side workflow guidance and tool usage patterns. |
-| [claude/flux-cloud/SKILL.md](/home/stache/projects/flux-skills/claude/flux-cloud/SKILL.md) | Claude Code workflow guidance. |
-| [codex/flux-cloud/references/](/home/stache/projects/flux-skills/codex/flux-cloud/references) | Detailed Flux API references, app spec notes, signing docs, and troubleshooting. |
+| [flux-mcp/README.md](flux-mcp/README.md) | Full MCP setup, technical workflows, configuration, and categorized tool catalog. |
+| [codex/flux-cloud/SKILL.md](codex/flux-cloud/SKILL.md) | Codex-side workflow guidance and tool usage patterns. |
+| [claude/flux-cloud/SKILL.md](claude/flux-cloud/SKILL.md) | Claude Code workflow guidance. |
+| [codex/flux-cloud/references/](codex/flux-cloud/references/) | Detailed Flux API references, app spec notes, signing docs, and troubleshooting. |
 
 ## Endpoint Inventory
 
@@ -253,4 +253,4 @@ Important environment variables:
 - `FLUX_ENDPOINTS_PATH` - custom endpoint inventory path
 - `FLUXDRIVE_MWS_BASE_URL` - FluxDrive MWS base URL override
 
-Signing and launcher behavior can also be tuned from the MCP layer. See [flux-mcp/README.md](/home/stache/projects/flux-skills/flux-mcp/README.md) for the full server configuration surface.
+Signing and launcher behavior can also be tuned from the MCP layer. See [flux-mcp/README.md](flux-mcp/README.md) for the full server configuration surface.
