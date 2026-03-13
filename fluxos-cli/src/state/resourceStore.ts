@@ -110,6 +110,23 @@ async function saveStoreFile(filePath: string, store: ResourceStoreFileShape): P
   await writeFile(filePath, JSON.stringify(store, null, 2), { encoding: 'utf8', mode: 0o600 });
 }
 
+async function loadPrunedStore(filePath: string): Promise<{ store: ResourceStoreFileShape; pruneResult: ResourcePruneResult }> {
+  const store = await loadStoreFile(filePath);
+  const { resources, result } = pruneResources(store.resources);
+
+  if (
+    result.removedExpired > 0 ||
+    result.removedOverflow > 0 ||
+    resources.length !== store.resources.length
+  ) {
+    const prunedStore = { version: 1 as const, resources };
+    await saveStoreFile(filePath, prunedStore);
+    return { store: prunedStore, pruneResult: result };
+  }
+
+  return { store, pruneResult: result };
+}
+
 function sanitizeTextForMimeType(text: string, mimeType?: string): string {
   if (isJsonMimeType(mimeType)) {
     try {
@@ -186,7 +203,7 @@ export async function persistCliResource(opts: {
 
 export async function listCliResources(): Promise<Array<ResourceDescriptor & { createdAtMs: number; expiresAtMs: number; sizeBytes: number }>> {
   const filePath = resolveCliResourceStorePath();
-  const store = await loadStoreFile(filePath);
+  const { store } = await loadPrunedStore(filePath);
   return [...store.resources]
     .sort((left, right) => right.createdAtMs - left.createdAtMs)
     .map((resource) => ({
@@ -202,7 +219,7 @@ export async function listCliResources(): Promise<Array<ResourceDescriptor & { c
 
 export async function readCliResource(uri: string): Promise<StoredCliResource | null> {
   const filePath = resolveCliResourceStorePath();
-  const store = await loadStoreFile(filePath);
+  const { store } = await loadPrunedStore(filePath);
   const found = store.resources.find((resource) => resource.uri === uri) ?? null;
   if (!found) return null;
   if (isExpired(found)) return null;

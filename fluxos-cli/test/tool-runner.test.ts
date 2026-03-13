@@ -1,6 +1,10 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { callTool, tools } from '../../flux-mcp/dist/index.js';
+import { callTool, tools } from 'flux-mcp';
 import { runCli } from '../src/cli.js';
 
 function createCapture() {
@@ -27,6 +31,22 @@ function createCapture() {
       return stderr;
     },
   };
+}
+
+async function withTempStateDir<T>(run: (stateDir: string) => Promise<T>) {
+  const stateDir = await mkdtemp(join(tmpdir(), 'fluxos-cli-tool-runner-'));
+  const previousStateDir = process.env.FLUXOS_CLI_STATE_DIR;
+
+  process.env.FLUXOS_CLI_STATE_DIR = stateDir;
+
+  try {
+    return await run(stateDir);
+  } finally {
+    if (previousStateDir === undefined) delete process.env.FLUXOS_CLI_STATE_DIR;
+    else process.env.FLUXOS_CLI_STATE_DIR = previousStateDir;
+
+    await rm(stateDir, { recursive: true, force: true });
+  }
 }
 
 describe('tool runner integration', () => {
@@ -61,20 +81,28 @@ describe('tool runner integration', () => {
   });
 
   it('wraps a tool that maps to a future first-class command in the stable envelope', async () => {
-    const capture = createCapture();
+    await withTempStateDir(async () => {
+      const genericCapture = createCapture();
+      const firstClassCapture = createCapture();
 
-    const exitCode = await runCli(['tool', 'call', 'flux_get_state', '--json'], { io: capture.io });
+      const genericExitCode = await runCli(['tool', 'call', 'flux_resource_prune', '--json'], { io: genericCapture.io });
+      const firstClassExitCode = await runCli(['resource', 'prune', '--json'], { io: firstClassCapture.io });
 
-    expect(exitCode).toBe(0);
-    expect(capture.getStderr()).toBe('');
+      expect(genericExitCode).toBe(0);
+      expect(firstClassExitCode).toBe(0);
+      expect(genericCapture.getStderr()).toBe('');
+      expect(firstClassCapture.getStderr()).toBe('');
 
-    const payload = JSON.parse(capture.getStdout()) as Record<string, unknown>;
-    const direct = await callTool('flux_get_state', {});
+      const genericPayload = JSON.parse(genericCapture.getStdout()) as Record<string, unknown>;
+      const firstClassPayload = JSON.parse(firstClassCapture.getStdout()) as Record<string, unknown>;
+      const firstClassComparable = { ...firstClassPayload };
+      delete (firstClassComparable as { status?: unknown }).status;
 
-    expect(payload.ok).toBe(true);
-    expect(payload.status).toBe('ok');
-    expect(payload.tool).toBe('flux_get_state');
-    expect(payload.result).toEqual(direct.structuredContent);
+      expect(genericPayload.ok).toBe(true);
+      expect(genericPayload.status).toBe('ok');
+      expect(genericPayload.tool).toBe('flux_resource_prune');
+      expect(genericPayload.result).toEqual(firstClassComparable);
+    });
   });
 
   it('preserves nextActions for a generic-only tool call', async () => {

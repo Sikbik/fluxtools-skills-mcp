@@ -309,6 +309,141 @@ describe.sequential('resource commands', () => {
     });
   });
 
+  it('keeps persisted resource follow-up actions working across fresh CLI invocations', async () => {
+    await withTempStateDir(undefined, async () => {
+      const createdUri = 'flux://resource/demo/follow-up';
+      const createCaptureOne = createCapture();
+
+      const createExitCode = await runCli(['tool', 'call', 'flux_demo', '--json'], {
+        io: createCaptureOne.io,
+        toolRuntime: {
+          listTools: async () => [],
+          callTool: async () => ({
+            isError: false,
+            structuredContent: {
+              ok: true,
+              resourceUri: createdUri,
+              nextActions: [{ tool: 'flux_resource_read', arguments: { uri: createdUri } }],
+            },
+            content: [
+              { type: 'text', text: '{"ok":true}' },
+              {
+                type: 'resource_link',
+                uri: createdUri,
+                name: 'Persisted follow-up resource',
+                mimeType: 'application/json',
+              },
+            ],
+          }),
+          readResource: async () => ({
+            uri: createdUri,
+            mimeType: 'application/json',
+            text: JSON.stringify({ safe: 'persisted-follow-up' }),
+          }),
+        },
+      });
+
+      expect(createExitCode).toBe(0);
+
+      const createPayload = JSON.parse(createCaptureOne.getStdout()) as {
+        nextActions: Array<{ tool?: string; arguments?: { uri?: string } }>;
+      };
+
+      expect(createPayload.nextActions).toEqual([{ tool: 'flux_resource_read', arguments: { uri: createdUri } }]);
+
+      const followUpCapture = createCapture();
+      const followUp = createPayload.nextActions[0];
+      const followUpExitCode = await runCli(['tool', 'call', followUp.tool ?? '', '--arg', `uri=${createdUri}`, '--json'], {
+        io: followUpCapture.io,
+      });
+
+      expect(followUpExitCode).toBe(0);
+      expect(followUpCapture.getStderr()).toBe('');
+
+      const followUpPayload = JSON.parse(followUpCapture.getStdout()) as {
+        ok: boolean;
+        tool: string;
+        result: { ok: boolean; uri: string; mimeType: string };
+      };
+
+      expect(followUpPayload.ok).toBe(true);
+      expect(followUpPayload.tool).toBe('flux_resource_read');
+      expect(followUpPayload.result).toEqual({ ok: true, uri: createdUri, mimeType: 'application/json' });
+    });
+  });
+
+  it('omits expired resources from listings and prunes them on read misses', async () => {
+    await withTempStateDir({ ttlMs: '25' }, async () => {
+      const createdUri = 'flux://resource/demo/expired-listing';
+
+      const createExitCode = await runCli(['tool', 'call', 'flux_demo', '--json'], {
+        io: createCapture().io,
+        toolRuntime: {
+          listTools: async () => [],
+          callTool: async () => ({
+            isError: false,
+            structuredContent: { ok: true, resourceUri: createdUri },
+            content: [
+              { type: 'text', text: '{"ok":true}' },
+              {
+                type: 'resource_link',
+                uri: createdUri,
+                name: 'Short lived resource',
+                mimeType: 'application/json',
+              },
+            ],
+          }),
+          readResource: async () => ({
+            uri: createdUri,
+            mimeType: 'application/json',
+            text: JSON.stringify({ created: true }),
+          }),
+        },
+      });
+
+      expect(createExitCode).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      const listCapture = createCapture();
+      const listExitCode = await runCli(['resource', 'list', '--json'], { io: listCapture.io });
+
+      expect(listExitCode).toBe(0);
+      expect(listCapture.getStderr()).toBe('');
+
+      const listPayload = JSON.parse(listCapture.getStdout()) as {
+        count: number;
+        resources: Array<{ uri: string }>;
+      };
+
+      expect(listPayload.count).toBe(0);
+      expect(listPayload.resources).toEqual([]);
+
+      const readCapture = createCapture();
+      const readExitCode = await runCli(['resource', 'read', createdUri, '--json'], { io: readCapture.io });
+
+      expect(readExitCode).toBe(2);
+
+      const readPayload = JSON.parse(readCapture.getStdout()) as { ok: boolean; error: string };
+      expect(readPayload.ok).toBe(false);
+      expect(readPayload.error).toBe(`Resource not found: ${createdUri}`);
+
+      const pruneCapture = createCapture();
+      const pruneExitCode = await runCli(['resource', 'prune', '--json'], { io: pruneCapture.io });
+
+      expect(pruneExitCode).toBe(0);
+
+      const prunePayload = JSON.parse(pruneCapture.getStdout()) as {
+        before: number;
+        after: number;
+        removedExpired: number;
+      };
+
+      expect(prunePayload.before).toBe(0);
+      expect(prunePayload.after).toBe(0);
+      expect(prunePayload.removedExpired).toBe(0);
+    });
+  });
+
   it('reports expired and overflow removals when pruning the disk-backed store', async () => {
     await withTempStateDir({ ttlMs: '40', maxEntries: '1' }, async () => {
       let counter = 0;

@@ -11,6 +11,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "flux-mcp": "file:../flux-mcp"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc --watch -p tsconfig.json",

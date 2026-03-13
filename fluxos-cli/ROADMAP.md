@@ -265,8 +265,8 @@ Done when:
 - there is a written extraction plan with concrete file targets
 
 ### 1.2 Create a shared runtime boundary
-- [x] Define a shared execution interface for calling a Flux operation without MCP transport assumptions
-- [x] Separate transport concerns from operation logic
+- [ ] Define a shared execution interface for calling a Flux operation without MCP transport assumptions
+- [ ] Separate transport concerns from operation logic
 - [ ] Decide where shared code will live:
   - [ ] `flux-mcp/src/shared/`
   - [ ] `fluxos-cli/src/shared/`

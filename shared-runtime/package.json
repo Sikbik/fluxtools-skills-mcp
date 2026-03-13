@@ -1,5 +1,8 @@
 {
   "name": "shared-runtime",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "files": [
+    "src"
+  ]
 }
