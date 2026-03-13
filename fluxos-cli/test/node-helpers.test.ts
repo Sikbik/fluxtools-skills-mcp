@@ -445,6 +445,54 @@ describe.sequential('node-helpers', () => {
     });
   });
 
+  it('use-gateway clears stale auth and enterprise key when the resolved node is uncached', async () => {
+    await withTempStateDir(async (stateDir) => {
+      await seedScopedState(stateDir);
+
+      const result = await invokeCli(['node', 'use-gateway', 'https://api.runonflux.io', '--json'], {
+        toolRuntime: createFakeNodeToolRuntime(),
+        persistedStateMode: 'on',
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: true,
+        activeProfile: 'ops',
+        baseUrl: 'http://10.0.0.2:16127',
+        recommendedBaseUrl: 'http://10.0.0.2:16127',
+        auth: { present: false },
+        enterpriseKey: { present: false },
+      });
+
+      const persisted = await readStateFileIfPresent(stateDir);
+      expect(persisted?.profiles.ops).toMatchObject({
+        baseUrl: 'http://10.0.0.2:16127',
+        zelidauth: null,
+        enterpriseKey: null,
+        zelidauthByBaseUrl: {
+          'https://ops.example': JSON.stringify({ zelid: 'ops-user', signature: 'ops-signature', loginPhrase: 'ops-phrase' }),
+        },
+        enterpriseKeyByBaseUrl: {
+          'https://ops.example': 'ops-enterprise-key',
+        },
+      });
+
+      const status = await invokeCli(['auth', 'status', '--json'], {
+        toolRuntime: createFakeNodeToolRuntime(),
+        persistedStateMode: 'on',
+      });
+
+      expect(status.exitCode).toBe(0);
+      expect(JSON.parse(status.stdout)).toMatchObject({
+        ok: true,
+        baseUrl: 'http://10.0.0.2:16127',
+        auth: { present: false },
+        enterpriseKey: { present: false },
+      });
+    });
+  });
+
   it('use-base-url normalizes explicit URLs and adopts matching cached credentials', async () => {
     await withTempStateDir(async (stateDir) => {
       await writeFile(
@@ -506,6 +554,53 @@ describe.sequential('node-helpers', () => {
         ok: true,
         baseUrl: 'http://10.0.0.2:16127',
         auth: { present: true, zelid: 'direct-user' },
+      });
+    });
+  });
+
+  it('use-base-url clears stale auth and enterprise key when the target base URL is uncached', async () => {
+    await withTempStateDir(async (stateDir) => {
+      await seedScopedState(stateDir);
+
+      const result = await invokeCli(['node', 'use-base-url', 'http://10.0.0.9:16127///', '--json'], {
+        persistedStateMode: 'on',
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: true,
+        activeProfile: 'ops',
+        requestedBaseUrl: 'http://10.0.0.9:16127///',
+        baseUrl: 'http://10.0.0.9:16127',
+        auth: { present: false },
+        enterpriseKey: { present: false },
+      });
+
+      const persisted = await readStateFileIfPresent(stateDir);
+      expect(persisted?.profiles.ops).toMatchObject({
+        baseUrl: 'http://10.0.0.9:16127',
+        zelidauth: null,
+        enterpriseKey: null,
+        zelidauthByBaseUrl: {
+          'https://ops.example': JSON.stringify({ zelid: 'ops-user', signature: 'ops-signature', loginPhrase: 'ops-phrase' }),
+        },
+        enterpriseKeyByBaseUrl: {
+          'https://ops.example': 'ops-enterprise-key',
+        },
+      });
+
+      const status = await invokeCli(['auth', 'status', '--json'], {
+        toolRuntime: createFakeNodeToolRuntime(),
+        persistedStateMode: 'on',
+      });
+
+      expect(status.exitCode).toBe(0);
+      expect(JSON.parse(status.stdout)).toMatchObject({
+        ok: true,
+        baseUrl: 'http://10.0.0.9:16127',
+        auth: { present: false },
+        enterpriseKey: { present: false },
       });
     });
   });

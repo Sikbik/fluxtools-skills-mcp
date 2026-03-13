@@ -326,8 +326,8 @@ export function switchPersistedProfileBaseUrl(current: PersistedProfileState, ne
   return {
     ...current,
     baseUrl: normalizedNextBaseUrl,
-    zelidauth: nextZelidauthByBaseUrl[normalizedNextBaseUrl] ?? current.zelidauth,
-    enterpriseKey: nextEnterpriseKeyByBaseUrl[normalizedNextBaseUrl] ?? current.enterpriseKey,
+    zelidauth: nextZelidauthByBaseUrl[normalizedNextBaseUrl] ?? null,
+    enterpriseKey: nextEnterpriseKeyByBaseUrl[normalizedNextBaseUrl] ?? null,
     zelidauthByBaseUrl: nextZelidauthByBaseUrl,
     enterpriseKeyByBaseUrl: nextEnterpriseKeyByBaseUrl,
   };
