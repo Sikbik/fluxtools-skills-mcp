@@ -165,6 +165,15 @@ type AppsTroubleshootParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type AppsTestInstallParseResult =
+  | {
+      outputMode: OutputMode;
+      hash: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -217,6 +226,21 @@ Commands:
                                  Correlate global registry rows with propagation signals
   apps troubleshoot <appname> [--deep] [--json|--pretty|--raw]
                                  Correlate registry, deployment, and runtime evidence for one app
+  apps health [<appname>] [--appname <name>] [--logs-lines <n>] [--monitor-range-ms <ms>] [--json|--pretty|--raw]
+                                 Return a compact runtime health summary with resource-backed observability details
+  apps logs [<appname>] [--appname <name>] [--lines <count|all>] [--json|--pretty|--raw]
+                                 Return a log summary and resource-backed full log payload
+  apps inspect [<appname>] [--appname <name>] [--json|--pretty|--raw]
+                                 Return an inspect summary and resource-backed raw inspect payload
+  apps stats [<appname>] [--appname <name>] [--json|--pretty|--raw]
+                                 Return resource-usage summaries and a resource-backed raw stats payload
+  apps top [<appname>] [--appname <name>] [--json|--pretty|--raw]
+                                 Return process-list summaries and a resource-backed raw top payload
+  apps monitor [<appname>] [--appname <name>] [--range <ms>] [--json|--pretty|--raw]
+                                 Return monitoring summaries and a resource-backed raw monitor payload
+  apps exec [<appname>] [--appname <name>] --cmd <segment> [--cmd <segment> ...] [--env KEY=VALUE ...]
+            [--confirm] [--json|--pretty|--raw]
+                                 Execute a command inside an app container with explicit status output
   apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                                  [--json|--pretty|--raw]
                                  List global apps for a ZelID with expiry metadata
@@ -234,6 +258,8 @@ Commands:
                                  Read app registration metadata
   apps deployment-information [--json|--pretty|--raw]
                                  Read app deployment metadata
+  apps test-install <hash> [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]
+                                 Test install a registration hash and derive semantic success from progress output
   node resolve-gateway [<gateway-base-url>] [--json|--pretty|--raw]
                                  Resolve a gateway to its recommended direct-node target
   node use-gateway [<gateway-base-url>] [--json|--pretty|--raw]
@@ -354,6 +380,14 @@ Usage:
   flux apps list-global [--owner <zelid>] [--appname <name>] [--hash <hash>] [--json|--pretty|--raw]
   flux apps global-status [--zelid <zelid>] [--appname <name>] [--include-expired] [--limit <n>] [--json|--pretty|--raw]
   flux apps troubleshoot <appname> [--deep] [--json|--pretty|--raw]
+  flux apps health [<appname>] [--appname <name>] [--logs-lines <n>] [--monitor-range-ms <ms>] [--json|--pretty|--raw]
+  flux apps logs [<appname>] [--appname <name>] [--lines <count|all>] [--json|--pretty|--raw]
+  flux apps inspect [<appname>] [--appname <name>] [--json|--pretty|--raw]
+  flux apps stats [<appname>] [--appname <name>] [--json|--pretty|--raw]
+  flux apps top [<appname>] [--appname <name>] [--json|--pretty|--raw]
+  flux apps monitor [<appname>] [--appname <name>] [--range <ms>] [--json|--pretty|--raw]
+  flux apps exec [<appname>] [--appname <name>] --cmd <segment> [--cmd <segment> ...] [--env KEY=VALUE ...]
+                 [--confirm] [--json|--pretty|--raw]
   flux apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                     [--json|--pretty|--raw]
   flux apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]
@@ -364,10 +398,13 @@ Usage:
   flux apps get-public-key --owner <zelid> --name <appname> [--json|--pretty|--raw]
   flux apps registration-information [--json|--pretty|--raw]
   flux apps deployment-information [--json|--pretty|--raw]
+  flux apps test-install <hash> [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]
 
 Notes:
   - Discovery commands preserve the shared MCP selectors and defaulting behavior.
   - \`troubleshoot\` adds suspect classifications and suggested next actions on top of MCP summaries.
+  - Runtime debug commands keep large payloads in resources and expose machine-friendly summaries.
+  - \`exec\` and \`test-install\` preserve explicit status fields instead of relying on HTTP status alone.
   - \`by-zelid\` defaults to persisted auth ZelID when no explicit ZelID is provided.
   - \`get-spec\` reads the base spec and points enterprise apps to \`get-spec-full\`.
   - \`get-spec-full\` keeps enterprise inspection explicit; returning secrets requires
@@ -1760,6 +1797,180 @@ function parseAppsTroubleshootArgs(args: string[]): AppsTroubleshootParseResult 
   };
 }
 
+function parseAppsRuntimeTargetArgs(
+  args: string[],
+  options: {
+    command: string;
+    usage: string;
+    stringFlags?: Array<{ flag: string; key: string; repeatable?: boolean }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): AppsTroubleshootParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [{ flag: '--appname', key: 'appname' }, ...(options.stringFlags ?? [])],
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps ${options.command}\`: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const positionalAppname = parsed.positional[0]?.trim() || null;
+  const flagAppname = typeof parsed.rawArgs.appname === 'string' && parsed.rawArgs.appname.trim()
+    ? String(parsed.rawArgs.appname).trim()
+    : null;
+
+  if (positionalAppname && flagAppname && positionalAppname !== flagAppname) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide the app name either positionally or via --appname, not both with different values.',
+    };
+  }
+
+  const appname = positionalAppname ?? flagAppname;
+  if (!appname) {
+    return {
+      outputMode: parsed.outputMode,
+      error: options.usage,
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    appname,
+    rawArgs: {
+      ...parsed.rawArgs,
+      appname,
+    },
+    positional: [],
+  };
+}
+
+function parseAppsHealthArgs(args: string[]): AppsTroubleshootParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'health',
+    usage: 'Usage: flux apps health [<appname>] [--appname <name>] [--logs-lines <n>] [--monitor-range-ms <ms>] [--json|--pretty|--raw]',
+    integerFlags: [
+      { flag: '--logs-lines', key: 'logsLines', min: 1 },
+      { flag: '--monitor-range-ms', key: 'monitorRangeMs', min: 1000 },
+    ],
+  });
+}
+
+function parseAppsLogsArgs(args: string[]): AppsTroubleshootParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'logs',
+    usage: 'Usage: flux apps logs [<appname>] [--appname <name>] [--lines <count|all>] [--json|--pretty|--raw]',
+    stringFlags: [{ flag: '--lines', key: 'lines' }],
+  });
+}
+
+function parseAppsInspectArgs(args: string[]): AppsTroubleshootParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'inspect',
+    usage: 'Usage: flux apps inspect [<appname>] [--appname <name>] [--json|--pretty|--raw]',
+  });
+}
+
+function parseAppsStatsArgs(args: string[]): AppsTroubleshootParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'stats',
+    usage: 'Usage: flux apps stats [<appname>] [--appname <name>] [--json|--pretty|--raw]',
+  });
+}
+
+function parseAppsTopArgs(args: string[]): AppsTroubleshootParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'top',
+    usage: 'Usage: flux apps top [<appname>] [--appname <name>] [--json|--pretty|--raw]',
+  });
+}
+
+function parseAppsMonitorArgs(args: string[]): AppsTroubleshootParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'monitor',
+    usage: 'Usage: flux apps monitor [<appname>] [--appname <name>] [--range <ms>] [--json|--pretty|--raw]',
+    integerFlags: [{ flag: '--range', key: 'range', min: 1 }],
+  });
+}
+
+function parseAppsExecArgs(args: string[]): AppsTroubleshootParseResult {
+  const parsed = parseAppsRuntimeTargetArgs(args, {
+    command: 'exec',
+    usage:
+      'Usage: flux apps exec [<appname>] [--appname <name>] --cmd <segment> [--cmd <segment> ...] [--env KEY=VALUE ...] [--confirm] [--json|--pretty|--raw]',
+    stringFlags: [
+      { flag: '--cmd', key: 'cmd', repeatable: true },
+      { flag: '--env', key: 'env', repeatable: true },
+    ],
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }],
+  });
+
+  if ('error' in parsed) return parsed;
+  const cmd = Array.isArray(parsed.rawArgs.cmd) ? parsed.rawArgs.cmd : [];
+  if (cmd.length === 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux apps exec [<appname>] [--appname <name>] --cmd <segment> [--cmd <segment> ...] [--env KEY=VALUE ...] [--confirm] [--json|--pretty|--raw]',
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsTestInstallArgs(args: string[]): AppsTestInstallParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [{ flag: '--hash', key: 'hash' }],
+    integerFlags: [{ flag: '--timeout-ms', key: 'timeoutMs', min: 1 }],
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps test-install\`: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const positionalHash = parsed.positional[0]?.trim() || null;
+  const flagHash = typeof parsed.rawArgs.hash === 'string' && parsed.rawArgs.hash.trim()
+    ? String(parsed.rawArgs.hash).trim()
+    : null;
+
+  if (positionalHash && flagHash && positionalHash !== flagHash) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide the registration hash either positionally or via --hash, not both with different values.',
+    };
+  }
+
+  const hash = positionalHash ?? flagHash;
+  if (!hash) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux apps test-install <hash> [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    hash,
+    rawArgs: {
+      ...parsed.rawArgs,
+      hash,
+    },
+    positional: [],
+  };
+}
+
 function parseAppsByZelidArgs(args: string[]): AppsByZelidParseResult {
   const parsed = parseAppsFlagArgs(args, {
     stringFlags: [{ flag: '--zelid', key: 'zelid' }],
@@ -3044,6 +3255,11 @@ function asOptionalStringValue(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function asOptionalBooleanValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  return null;
+}
+
 function normalizeRunningAppItems(value: unknown): Array<Record<string, unknown>> {
   return asObjectArray(value).map((entry) => ({
     app: asOptionalStringValue(entry.app) ?? asOptionalStringValue(entry.name) ?? null,
@@ -3253,6 +3469,247 @@ function normalizeSpecValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+function splitNonEmptyLines(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+}
+
+function parseJsonStringValue(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function sumRecordNumberValues(value: Record<string, unknown> | null): number | null {
+  if (!value) return null;
+
+  let total = 0;
+  let seen = false;
+  for (const entryValue of Object.values(value)) {
+    const numeric = asOptionalNumberValue(entryValue);
+    if (numeric === null) continue;
+    total += numeric;
+    seen = true;
+  }
+
+  return seen ? total : null;
+}
+
+function normalizeInspectSummary(value: unknown): Record<string, unknown> | null {
+  const record = asRecord(value) ?? {};
+  if (Object.keys(record).length === 0) return null;
+
+  const config = asRecord(record.Config) ?? {};
+  const state = asRecord(record.State) ?? {};
+  const health = asRecord(state.Health) ?? {};
+
+  return {
+    containerName: asOptionalStringValue(record.Name)?.replace(/^\//, '') ?? null,
+    image: asOptionalStringValue(config.Image),
+    stateStatus: asOptionalStringValue(state.Status),
+    running: asOptionalBooleanValue(state.Running),
+    healthStatus: asOptionalStringValue(health.Status),
+  };
+}
+
+function normalizeStatsSummary(value: unknown): Record<string, unknown> | null {
+  const record = asRecord(value) ?? {};
+  if (Object.keys(record).length === 0) return null;
+
+  const memory = asRecord(record.memory_stats) ?? {};
+  const pids = asRecord(record.pids_stats) ?? {};
+  const networksRaw = asRecord(record.networks) ?? {};
+
+  let networkRxBytes = 0;
+  let networkTxBytes = 0;
+  let networkSeen = false;
+  for (const entry of Object.values(networksRaw)) {
+    const network = asRecord(entry) ?? {};
+    const rx = asOptionalNumberValue(network.rx_bytes);
+    const tx = asOptionalNumberValue(network.tx_bytes);
+    if (rx !== null) {
+      networkRxBytes += rx;
+      networkSeen = true;
+    }
+    if (tx !== null) {
+      networkTxBytes += tx;
+      networkSeen = true;
+    }
+  }
+
+  return {
+    memoryUsageBytes: asOptionalNumberValue(memory.usage),
+    memoryLimitBytes: asOptionalNumberValue(memory.limit),
+    networkRxBytes: networkSeen ? networkRxBytes : null,
+    networkTxBytes: networkSeen ? networkTxBytes : null,
+    pidCount: asOptionalNumberValue(pids.current),
+  };
+}
+
+function normalizeTopSummary(value: unknown): Record<string, unknown> | null {
+  const record = asRecord(value) ?? {};
+  if (Object.keys(record).length === 0) return null;
+
+  const titles = Array.isArray(record.Titles) ? record.Titles.filter((entry): entry is string => typeof entry === 'string') : [];
+  const processes = Array.isArray(record.Processes)
+    ? record.Processes.filter((entry): entry is unknown[] => Array.isArray(entry))
+    : [];
+
+  const firstRow = processes[0] ?? [];
+  const firstCommand = firstRow.find((entry, index) => index > 0 && typeof entry === 'string' && entry.trim())
+    ?? firstRow.find((entry) => typeof entry === 'string' && entry.trim());
+
+  return {
+    processCount: processes.length,
+    columnCount: titles.length,
+    titles,
+    firstCommand: typeof firstCommand === 'string' ? firstCommand : null,
+  };
+}
+
+function normalizeMonitorSummary(value: unknown): Record<string, unknown> | null {
+  const items = asObjectArray(value);
+  if (items.length === 0) return null;
+
+  const timestamps = items.map((entry) => asOptionalNumberValue(entry.timestamp)).filter((entry): entry is number => entry !== null);
+  const cpuTotals = items
+    .map((entry) => sumRecordNumberValues(asRecord(entry.cpu) ?? null) ?? asOptionalNumberValue(entry.cpu))
+    .filter((entry): entry is number => entry !== null);
+
+  return {
+    pointCount: items.length,
+    firstTimestamp: timestamps[0] ?? null,
+    lastTimestamp: timestamps[timestamps.length - 1] ?? null,
+    maxCpu: cpuTotals.length > 0 ? Math.max(...cpuTotals) : null,
+  };
+}
+
+function normalizeLogsSummary(value: unknown, fallbackPreview?: unknown): Record<string, unknown> {
+  const text = typeof value === 'string'
+    ? value
+    : typeof fallbackPreview === 'string'
+      ? fallbackPreview
+      : JSON.stringify(value ?? fallbackPreview ?? null, null, 2);
+
+  const lines = splitNonEmptyLines(text);
+  const preview = Array.isArray(fallbackPreview)
+    ? fallbackPreview.filter((entry): entry is string => typeof entry === 'string')
+    : lines.slice(-Math.min(lines.length, 50));
+
+  return {
+    totalLineCount: lines.length,
+    preview,
+    previewLineCount: preview.length,
+    lastLine: preview.length > 0 ? preview[preview.length - 1] : null,
+  };
+}
+
+function normalizeExecOutputSummary(value: unknown): Record<string, unknown> {
+  const parsed = typeof value === 'string' ? parseJsonStringValue(value) : value;
+  const parsedRecord = asRecord(parsed) ?? {};
+  const data = asRecord(parsedRecord.data) ?? {};
+  const stdoutValue = typeof data.stdout === 'string' ? data.stdout : null;
+  const stderrValue = typeof data.stderr === 'string' ? data.stderr : null;
+
+  return {
+    parsedJson: parsed !== null && parsed !== undefined && parsed !== value ? true : typeof value !== 'string',
+    responseStatus: asOptionalStringValue(parsedRecord.status),
+    stdoutPreview: stdoutValue ? splitNonEmptyLines(stdoutValue)[0] ?? stdoutValue.trim() : null,
+    stderrPreview: stderrValue ? splitNonEmptyLines(stderrValue)[0] ?? stderrValue.trim() : null,
+  };
+}
+
+function normalizeRuntimeCommandStatus(normalized: ToolCallNormalization, successStatus = 'available'): string {
+  if (normalized.envelope.ok) return successStatus;
+  if (normalized.failureKind && normalized.failureKind !== 'flux') {
+    return failureStatus(normalized.failureKind);
+  }
+  return 'error';
+}
+
+function deriveTestInstallSemantic(resourcePayload: unknown): {
+  ok: boolean | null;
+  source: 'json' | 'events' | 'tool';
+  status: string;
+  message: string | null;
+  lastEvent: string | null;
+  eventCount: number;
+  events: string[];
+} {
+  const payload = asRecord(resourcePayload) ?? {};
+  const parsed = asRecord(payload.parsed) ?? {};
+  const events = Array.isArray(parsed.events) ? parsed.events.filter((entry): entry is string => typeof entry === 'string') : [];
+  const jsonObjects = Array.isArray(parsed.jsonObjects)
+    ? parsed.jsonObjects.filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object' && !Array.isArray(entry))
+    : [];
+
+  const lastJson = jsonObjects.length > 0 ? jsonObjects[jsonObjects.length - 1] : null;
+  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  const lastJsonStatus = asOptionalStringValue(lastJson?.status)?.toLowerCase() ?? null;
+  const lastJsonData = asRecord(lastJson?.data) ?? {};
+  const lastJsonMessage = asOptionalStringValue(lastJsonData.message) ?? asOptionalStringValue(lastJson?.data);
+
+  if (lastJsonStatus === 'success') {
+    return {
+      ok: true,
+      source: 'json',
+      status: 'success',
+      message: lastJsonMessage,
+      lastEvent,
+      eventCount: events.length,
+      events,
+    };
+  }
+
+  if (lastJsonStatus === 'error' || lastJsonStatus === 'failed' || lastJsonStatus === 'failure') {
+    return {
+      ok: false,
+      source: 'json',
+      status: 'error',
+      message: lastJsonMessage,
+      lastEvent,
+      eventCount: events.length,
+      events,
+    };
+  }
+
+  const loweredLastEvent = lastEvent?.toLowerCase() ?? '';
+  if (loweredLastEvent.includes('error') || loweredLastEvent.includes('failed') || loweredLastEvent.includes('failure')) {
+    return {
+      ok: false,
+      source: 'events',
+      status: 'error',
+      message: lastEvent,
+      lastEvent,
+      eventCount: events.length,
+      events,
+    };
+  }
+
+  if (loweredLastEvent.includes('success') || loweredLastEvent.includes('installed') || loweredLastEvent.includes('complete')) {
+    return {
+      ok: true,
+      source: 'events',
+      status: 'success',
+      message: lastEvent,
+      lastEvent,
+      eventCount: events.length,
+      events,
+    };
+  }
+
+  return {
+    ok: null,
+    source: 'tool',
+    status: 'pending',
+    message: lastJsonMessage ?? lastEvent,
+    lastEvent,
+    eventCount: events.length,
+    events,
+  };
+}
+
 function renderAppsCollectionPretty(title: string, items: Array<Record<string, unknown>>, formatter: (item: Record<string, unknown>) => string): string {
   if (items.length === 0) return `${title} (0)\nNo matching apps.`;
   return [`${title} (${items.length})`, ...items.map(formatter)].join('\n');
@@ -3438,6 +3895,106 @@ function renderAppsGetPublicKeyPretty(payload: Record<string, unknown>): string 
     `Public key for ${asOptionalStringValue(payload.name) ?? '<unknown>'}`,
     `Owner: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`,
     `Public key: ${asOptionalStringValue(payload.publicKey) ?? '<unavailable>'}`,
+  ].join('\n');
+}
+
+function renderAppsHealthPretty(payload: Record<string, unknown>): string {
+  const health = asRecord(payload.health) ?? {};
+  const lines = [
+    `Health for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Checks: ${String(health.passedChecks ?? 0)}/${String(health.totalChecks ?? 0)} passed`,
+  ];
+
+  const failedChecks = Array.isArray(health.failedChecks) ? health.failedChecks.join(', ') : '';
+  if (failedChecks) lines.push(`Failed: ${failedChecks}`);
+
+  const resources = asRecord(payload.resources) ?? {};
+  if (Object.keys(resources).length > 0) {
+    lines.push('Resources:');
+    for (const [key, value] of Object.entries(resources)) {
+      lines.push(`- ${key}: ${String(value)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function renderAppsLogsPretty(payload: Record<string, unknown>): string {
+  return [
+    `Logs for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Target: ${asOptionalStringValue(payload.target) ?? '<unknown>'}`,
+    `Preview lines: ${String(payload.previewLineCount ?? 0)} / ${String(payload.totalLineCount ?? 0)}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsInspectPretty(payload: Record<string, unknown>): string {
+  const summary = asRecord(payload.inspectSummary) ?? {};
+  return [
+    `Inspect ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Container: ${asOptionalStringValue(summary.containerName) ?? '<unknown>'}`,
+    `Image: ${asOptionalStringValue(summary.image) ?? '-'}`,
+    `State: ${asOptionalStringValue(summary.stateStatus) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsStatsPretty(payload: Record<string, unknown>): string {
+  const summary = asRecord(payload.statsSummary) ?? {};
+  return [
+    `Stats ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Memory: ${String(summary.memoryUsageBytes ?? '-')} / ${String(summary.memoryLimitBytes ?? '-')}`,
+    `Network: rx=${String(summary.networkRxBytes ?? '-')} tx=${String(summary.networkTxBytes ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsTopPretty(payload: Record<string, unknown>): string {
+  const summary = asRecord(payload.topSummary) ?? {};
+  return [
+    `Top ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Processes: ${String(summary.processCount ?? 0)}`,
+    `First command: ${asOptionalStringValue(summary.firstCommand) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsMonitorPretty(payload: Record<string, unknown>): string {
+  const summary = asRecord(payload.monitorSummary) ?? {};
+  return [
+    `Monitor ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Points: ${String(summary.pointCount ?? 0)}`,
+    `Range: ${String(payload.range ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsExecPretty(payload: Record<string, unknown>): string {
+  const outputSummary = asRecord(payload.outputSummary) ?? {};
+  return [
+    `Exec ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Target: ${asOptionalStringValue(payload.target) ?? '<unknown>'}`,
+    `Command: ${Array.isArray(payload.cmd) ? payload.cmd.join(' ') : '-'}`,
+    `Stdout preview: ${asOptionalStringValue(outputSummary.stdoutPreview) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsTestInstallPretty(payload: Record<string, unknown>): string {
+  return [
+    `Test install ${asOptionalStringValue(payload.hash) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Semantic source: ${asOptionalStringValue(payload.semanticSource) ?? '-'}`,
+    `Events: ${String(payload.eventCount ?? 0)}`,
+    `Last event: ${asOptionalStringValue(payload.lastEvent) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
   ].join('\n');
 }
 
@@ -4023,6 +4580,384 @@ async function handleAppsDeploymentInformation(
   return EXIT_CODE_SUCCESS;
 }
 
+async function handleAppsHealth(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsHealthArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_app_health_report', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resources = asRecord(summary.resources) ?? {};
+  const inspectValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(asOptionalStringValue(resources.inspect)));
+  const statsValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(asOptionalStringValue(resources.stats)));
+  const topValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(asOptionalStringValue(resources.top)));
+  const monitorValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(asOptionalStringValue(resources.monitor)));
+  const logsValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(asOptionalStringValue(resources.logs)));
+  const checks: Record<string, { ok?: unknown; status?: unknown; summary: Record<string, unknown> | null }> = {
+    inspect: { ...asRecord(summary.inspect), summary: normalizeInspectSummary(inspectValue) },
+    stats: { ...asRecord(summary.stats), summary: normalizeStatsSummary(statsValue) },
+    top: { ...asRecord(summary.top), summary: normalizeTopSummary(topValue) },
+    monitor: { ...asRecord(summary.monitor), summary: normalizeMonitorSummary(monitorValue) },
+    logs: { ...asRecord(summary.logs), summary: normalizeLogsSummary(logsValue) },
+  };
+  const checkEntries = Object.entries(checks);
+  const passedChecks = checkEntries.filter(([, value]) => value.ok === true).map(([key]) => key);
+  const failedChecks = checkEntries.filter(([, value]) => value.ok !== true).map(([key]) => key);
+  const overallStatus = !normalized.envelope.ok && passedChecks.length === 0
+    ? normalizeRuntimeCommandStatus(normalized)
+    : failedChecks.length === 0
+      ? 'healthy'
+      : passedChecks.length > 0
+        ? 'degraded'
+        : 'error';
+
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: overallStatus,
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    health: {
+      overallStatus,
+      totalChecks: checkEntries.length,
+      passedChecks: passedChecks.length,
+      failedChecks,
+    },
+    checks,
+    resources,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsHealthPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsLogs(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsLogsArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_logs', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const logSummary = normalizeLogsSummary(resourceValue, summary.preview);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalizeRuntimeCommandStatus(normalized),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    httpStatus: asOptionalNumberValue(summary.status),
+    resourceUri: normalized.envelope.resourceUri,
+    ...logSummary,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsLogsPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsInspect(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsInspectArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_inspect', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalizeRuntimeCommandStatus(normalized),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    httpStatus: asOptionalNumberValue(summary.status),
+    resourceUri: normalized.envelope.resourceUri,
+    inspectSummary: normalizeInspectSummary(resourceValue),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsInspectPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsStats(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsStatsArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_stats', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalizeRuntimeCommandStatus(normalized),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    httpStatus: asOptionalNumberValue(summary.status),
+    resourceUri: normalized.envelope.resourceUri,
+    statsSummary: normalizeStatsSummary(resourceValue),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsStatsPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsTop(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsTopArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_top', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalizeRuntimeCommandStatus(normalized),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    httpStatus: asOptionalNumberValue(summary.status),
+    resourceUri: normalized.envelope.resourceUri,
+    topSummary: normalizeTopSummary(resourceValue),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsTopPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsMonitor(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsMonitorArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_monitor', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalizeRuntimeCommandStatus(normalized),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    httpStatus: asOptionalNumberValue(summary.status),
+    range: typeof parsed.rawArgs.range === 'number' ? parsed.rawArgs.range : asOptionalNumberValue(summary.range),
+    resourceUri: normalized.envelope.resourceUri,
+    monitorSummary: normalizeMonitorSummary(resourceValue),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsMonitorPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsExec(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsExecArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_exec', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = await readPersistedResourceValue(normalized.envelope.resourceUri);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'success' : normalizeRuntimeCommandStatus(normalized),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    httpStatus: asOptionalNumberValue(summary.status),
+    resourceUri: normalized.envelope.resourceUri,
+    outputSummary: normalizeExecOutputSummary(resourceValue),
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsExecPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsTestInstall(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsTestInstallArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_test_install', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = await readPersistedResourceValue(normalized.envelope.resourceUri);
+  const semantic = deriveTestInstallSemantic(resourceValue);
+  const semanticOk = semantic.ok ?? normalized.envelope.ok;
+  const resourceRecord = asRecord(resourceValue) ?? {};
+  const responseRecord = asRecord(resourceRecord.response) ?? {};
+  const requestRecord = asRecord(resourceRecord.request) ?? {};
+  const status = semantic.ok === true
+    ? 'success'
+    : semantic.ok === false
+      ? 'error'
+      : normalizeRuntimeCommandStatus(normalized, 'pending');
+  const payload = {
+    ...summary,
+    ok: semanticOk,
+    status,
+    ...(normalized.envelope.error && semantic.ok !== true ? { error: normalized.envelope.error } : {}),
+    hash: parsed.hash,
+    httpStatus: asOptionalNumberValue(summary.httpStatus) ?? asOptionalNumberValue(responseRecord.status),
+    timeoutMs: asOptionalNumberValue(summary.timeoutMs) ?? asOptionalNumberValue(requestRecord.timeoutMs),
+    semanticSource: semantic.source,
+    eventCount: semantic.eventCount,
+    events: semantic.events,
+    lastEvent: semantic.lastEvent,
+    semanticMessage: semantic.message,
+    resourceUri: normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsTestInstallPretty(payload));
+  }
+
+  if (semanticOk) return EXIT_CODE_SUCCESS;
+  return exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
 async function handleAppsCommand(
   args: string[],
   io: CliIo,
@@ -4047,6 +4982,20 @@ async function handleAppsCommand(
       return handleAppsGlobalStatus(rest, io, toolRuntime, mode);
     case 'troubleshoot':
       return handleAppsTroubleshoot(rest, io, toolRuntime, mode);
+    case 'health':
+      return handleAppsHealth(rest, io, toolRuntime, mode);
+    case 'logs':
+      return handleAppsLogs(rest, io, toolRuntime, mode);
+    case 'inspect':
+      return handleAppsInspect(rest, io, toolRuntime, mode);
+    case 'stats':
+      return handleAppsStats(rest, io, toolRuntime, mode);
+    case 'top':
+      return handleAppsTop(rest, io, toolRuntime, mode);
+    case 'monitor':
+      return handleAppsMonitor(rest, io, toolRuntime, mode);
+    case 'exec':
+      return handleAppsExec(rest, io, toolRuntime, mode);
     case 'by-zelid':
       return handleAppsByZelid(rest, io, toolRuntime, mode);
     case 'get-spec':
@@ -4061,6 +5010,8 @@ async function handleAppsCommand(
       return handleAppsRegistrationInformation(rest, io, toolRuntime, mode);
     case 'deployment-information':
       return handleAppsDeploymentInformation(rest, io, toolRuntime, mode);
+    case 'test-install':
+      return handleAppsTestInstall(rest, io, toolRuntime, mode);
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown apps subcommand: ${subcommand}`, io, parsed.outputMode);

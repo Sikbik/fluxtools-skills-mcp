@@ -478,13 +478,13 @@ Done when:
 
 ### 5.3 Add app troubleshooting commands
 - [x] `flux apps troubleshoot`
-- [ ] `flux apps health`
-- [ ] `flux apps logs`
-- [ ] `flux apps inspect`
-- [ ] `flux apps stats`
-- [ ] `flux apps top`
-- [ ] `flux apps monitor`
-- [ ] `flux apps exec`
+- [x] `flux apps health`
+- [x] `flux apps logs`
+- [x] `flux apps inspect`
+- [x] `flux apps stats`
+- [x] `flux apps top`
+- [x] `flux apps monitor`
+- [x] `flux apps exec`
 
 Done when:
 
@@ -504,7 +504,7 @@ Done when:
 - [ ] `flux apps update-and-verify`
 - [ ] `flux apps wait-propagation`
 - [ ] `flux apps messages`
-- [ ] `flux apps test-install`
+- [x] `flux apps test-install`
 
 Done when:
 
