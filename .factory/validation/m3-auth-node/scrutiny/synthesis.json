@@ -1,7 +1,7 @@
 {
   "milestone": "m3-auth-node",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,35 +20,27 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 2,
-    "failed": 1,
-    "failedFeatures": [
-      "m3-node-resolution-and-base-url-helpers"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m3-node-resolution-and-base-url-helpers",
-      "severity": "blocking",
-      "description": "`switchPersistedProfileBaseUrl` falls back to the previous node's auth and enterprise credentials when the target base URL has no cached entry, so `flux node use-base-url`/`use-gateway` can retain stale credentials and does not fully satisfy the per-base-url credential-adoption contract in VAL-NODE-003."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [
     {
       "target": "library",
-      "description": "Updated `.factory/library/environment.md` to document the new per-base-url auth and enterprise-key caches in CLI profile state and to note the current uncached-target stale-credential limitation discovered during m3 scrutiny.",
-      "sourceFeature": "m3-node-resolution-and-base-url-helpers"
+      "description": "Updated `.factory/library/environment.md` to replace the stale m3 scrutiny note so it now reflects that uncached normalized base-url switches clear active auth and enterprise-key state while cached targets still adopt matching credentials.",
+      "sourceFeature": "m3-fix-base-url-switch-stale-credential-leak"
     }
   ],
   "suggestedGuidanceUpdates": [
     {
-      "target": "AGENTS.md",
-      "suggestion": "Reconcile the mission guidance that tells CLI workers to update README coverage before completion with the higher-priority exec policy that forbids doc/README edits unless the user explicitly requests them.",
-      "evidence": "The review for `m3-auth-phrase-diagnose-and-signing-ux` found that mission guidance still required README updates while the worker was correctly following exec-mode instructions not to edit docs for this slice.",
-      "isSystemic": true
+      "target": "cli-command-worker skill",
+      "suggestion": "Require CLI command workers to read `.factory/library/environment.md` during startup alongside the other shared library files so they pick up environment-specific constraints before choosing tooling.",
+      "evidence": "The fix review for `m3-fix-base-url-switch-stale-credential-leak` found that the worker attempted a `jq` inspection step before later reading `.factory/library/environment.md`, even though that library file already documents that `jq` is unavailable in this environment.",
+      "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/m3-auth-node/scrutiny/synthesis.round1.json"
 }

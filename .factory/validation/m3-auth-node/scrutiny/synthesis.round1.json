@@ -1,0 +1,54 @@
+{
+  "milestone": "m3-auth-node",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix /home/stache/projects/flux-skills/flux-mcp test -- --maxWorkers=12 && npm --prefix /home/stache/projects/flux-skills/fluxos-cli test -- --maxWorkers=12",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix /home/stache/projects/flux-skills/flux-mcp run build && npm --prefix /home/stache/projects/flux-skills/fluxos-cli run build",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"No lint command is configured for this repo yet\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": [
+      "m3-node-resolution-and-base-url-helpers"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m3-node-resolution-and-base-url-helpers",
+      "severity": "blocking",
+      "description": "`switchPersistedProfileBaseUrl` falls back to the previous node's auth and enterprise credentials when the target base URL has no cached entry, so `flux node use-base-url`/`use-gateway` can retain stale credentials and does not fully satisfy the per-base-url credential-adoption contract in VAL-NODE-003."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated `.factory/library/environment.md` to document the new per-base-url auth and enterprise-key caches in CLI profile state and to note the current uncached-target stale-credential limitation discovered during m3 scrutiny.",
+      "sourceFeature": "m3-node-resolution-and-base-url-helpers"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Reconcile the mission guidance that tells CLI workers to update README coverage before completion with the higher-priority exec policy that forbids doc/README edits unless the user explicitly requests them.",
+      "evidence": "The review for `m3-auth-phrase-diagnose-and-signing-ux` found that mission guidance still required README updates while the worker was correctly following exec-mode instructions not to edit docs for this slice.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
