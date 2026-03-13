@@ -397,8 +397,8 @@ Done when:
 ### 3.3 Add explicit state visibility
 - [x] `flux state show`
 - [x] `flux state clear`
-- [ ] `flux auth clear`
-- [ ] `flux enterprise-key clear`
+- [x] `flux auth clear`
+- [x] `flux enterprise-key clear`
 
 Done when:
 

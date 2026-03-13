@@ -245,6 +245,20 @@ export async function clearPersistedProfileState(): Promise<PersistedStateSnapsh
   return updatePersistedProfileState(() => defaultProfileState());
 }
 
+export async function clearPersistedAuthState(): Promise<PersistedStateSnapshot> {
+  return updatePersistedProfileState((current) => ({
+    ...current,
+    zelidauth: null,
+  }));
+}
+
+export async function clearPersistedEnterpriseKeyState(): Promise<PersistedStateSnapshot> {
+  return updatePersistedProfileState((current) => ({
+    ...current,
+    enterpriseKey: null,
+  }));
+}
+
 export async function getStateVisibilitySummary(): Promise<StateVisibilitySummary> {
   const snapshot = await loadPersistedStateSnapshot();
 

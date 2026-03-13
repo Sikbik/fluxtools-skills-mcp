@@ -11,6 +11,8 @@ import {
   type ResourcePruneResult,
 } from './state/resourceStore.js';
 import {
+  clearPersistedAuthState,
+  clearPersistedEnterpriseKeyState,
   clearPersistedProfileState,
   defaultPersistedProfileState,
   getStateVisibilitySummary,
@@ -117,6 +119,10 @@ Commands:
                                  Show persisted CLI session state for the active profile
   state clear [--json|--pretty]
                                  Reset persisted CLI session state for the active profile
+  auth clear [--json|--pretty]
+                                 Remove persisted auth material for the active profile
+  enterprise-key clear [--json|--pretty]
+                                 Remove the persisted enterprise key for the active profile
 
 Options:
   -h, --help  Show this help output
@@ -163,6 +169,26 @@ Notes:
   - JSON mode shows redacted auth and enterprise-key summaries only.
 `;
 
+const AUTH_HELP_TEXT = `FluxOS CLI - auth
+
+Usage:
+  flux auth clear [--json|--pretty]
+
+Notes:
+  - Clears only persisted auth material for the active profile.
+  - Base URL, enterprise key, HTTP defaults, and FluxDrive settings stay unchanged.
+`;
+
+const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
+
+Usage:
+  flux enterprise-key clear [--json|--pretty]
+
+Notes:
+  - Clears only the persisted enterprise key for the active profile.
+  - Base URL, auth, HTTP defaults, and FluxDrive settings stay unchanged.
+`;
+
 function writeLine(writer: TextWriter, text: string) {
   writer.write(text.endsWith('\n') ? text : `${text}\n`);
 }
@@ -181,6 +207,14 @@ function renderResourceHelp(): string {
 
 function renderStateHelp(): string {
   return STATE_HELP_TEXT;
+}
+
+function renderAuthHelp(): string {
+  return AUTH_HELP_TEXT;
+}
+
+function renderEnterpriseKeyHelp(): string {
+  return ENTERPRISE_KEY_HELP_TEXT;
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -1283,6 +1317,105 @@ async function handleStateClear(args: string[], io: CliIo): Promise<number> {
   return EXIT_CODE_SUCCESS;
 }
 
+async function handleAuthClear(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux auth clear\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  await clearPersistedAuthState();
+  const state = await getStateVisibilitySummary();
+  const payload = {
+    ok: true,
+    status: 'ok',
+    action: 'clear',
+    target: 'auth',
+    state,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, `Cleared persisted auth for profile ${state.activeProfile}.`);
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAuthCommand(args: string[], io: CliIo): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderAuthHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'clear':
+      return handleAuthClear(rest, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown auth subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleEnterpriseKeyClear(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure(
+      'validation',
+      `Unexpected arguments for \`flux enterprise-key clear\`: ${parsed.positional.join(' ')}`,
+      io,
+      parsed.outputMode
+    );
+  }
+
+  await clearPersistedEnterpriseKeyState();
+  const state = await getStateVisibilitySummary();
+  const payload = {
+    ok: true,
+    status: 'ok',
+    action: 'clear',
+    target: 'enterprise-key',
+    state,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, `Cleared persisted enterprise key for profile ${state.activeProfile}.`);
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleEnterpriseKeyCommand(args: string[], io: CliIo): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderEnterpriseKeyHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'clear':
+      return handleEnterpriseKeyClear(rest, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown enterprise-key subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
 async function handleStateCommand(args: string[], io: CliIo): Promise<number> {
   if (args.length === 0 || isHelpFlag(args[0])) {
     writeLine(io.stdout, renderStateHelp());
@@ -1349,6 +1482,10 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         return await handleResourceCommand(argv.slice(1), io);
       case 'state':
         return await handleStateCommand(argv.slice(1), io);
+      case 'auth':
+        return await handleAuthCommand(argv.slice(1), io);
+      case 'enterprise-key':
+        return await handleEnterpriseKeyCommand(argv.slice(1), io);
       default:
         writeLine(io.stderr, `Unknown command: ${command}`);
         writeLine(io.stderr, '');
