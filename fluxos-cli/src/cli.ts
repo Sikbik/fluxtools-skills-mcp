@@ -20,6 +20,10 @@ import {
   loadPersistedStateSnapshot,
   type PersistedProfileState,
   type PersistedProfilesSummary,
+  setPersistedProfileEnterpriseKey,
+  setPersistedProfileZelidauth,
+  summarizePersistedAuth,
+  switchPersistedProfileBaseUrl,
   updatePersistedProfileState,
   usePersistedProfile,
 } from './state/sessionState.js';
@@ -142,6 +146,12 @@ Commands:
                                  Remove persisted auth material for the active profile
   auth clear [--json|--pretty]
                                  Remove persisted auth material for the active profile
+  node resolve-gateway [<gateway-base-url>] [--json|--pretty|--raw]
+                                 Resolve a gateway to its recommended direct-node target
+  node use-gateway [<gateway-base-url>] [--json|--pretty|--raw]
+                                 Resolve and persist the recommended direct-node target
+  node use-base-url <base-url> [--json|--pretty|--raw]
+                                 Normalize and persist an explicit base URL
   enterprise-key clear [--json|--pretty]
                                  Remove the persisted enterprise key for the active profile
 
@@ -225,6 +235,19 @@ Notes:
   - Base URL, enterprise key, HTTP defaults, and FluxDrive settings stay unchanged.
 `;
 
+const NODE_HELP_TEXT = `FluxOS CLI - node
+
+Usage:
+  flux node resolve-gateway [<gateway-base-url>] [--json|--pretty|--raw]
+  flux node use-gateway [<gateway-base-url>] [--json|--pretty|--raw]
+  flux node use-base-url <base-url> [--json|--pretty|--raw]
+
+Notes:
+  - \`resolve-gateway\` is read-only and reports the recommended direct-node URL.
+  - \`use-gateway\` resolves a gateway and persists the recommended direct-node base URL.
+  - \`use-base-url\` normalizes explicit URLs and adopts matching cached credentials when available.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -261,6 +284,10 @@ function renderProfileHelp(): string {
 
 function renderAuthHelp(): string {
   return AUTH_HELP_TEXT;
+}
+
+function renderNodeHelp(): string {
+  return NODE_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -929,10 +956,16 @@ async function persistMutatedSessionState(
       const baseUrl = typeof rawArgs.baseUrl === 'string' ? rawArgs.baseUrl.trim() : '';
       if (!baseUrl) return;
 
-      await updatePersistedProfileState((current) => ({
-        ...current,
-        baseUrl: normalizeBaseUrl(baseUrl),
-      }));
+      await updatePersistedProfileState((current) => switchPersistedProfileBaseUrl(current, baseUrl));
+      return;
+    }
+
+    case 'flux_set_base_url_from_gateway': {
+      const result = asRecord(normalized.envelope.result);
+      const baseUrl = typeof result?.baseUrl === 'string' ? result.baseUrl.trim() : '';
+      if (!baseUrl) return;
+
+      await updatePersistedProfileState((current) => switchPersistedProfileBaseUrl(current, baseUrl));
       return;
     }
 
@@ -954,18 +987,12 @@ async function persistMutatedSessionState(
       if (typeof rawValue !== 'string' && (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue))) return;
       const serialized = typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue);
 
-      await updatePersistedProfileState((current) => ({
-        ...current,
-        zelidauth: serialized,
-      }));
+      await updatePersistedProfileState((current) => setPersistedProfileZelidauth(current, serialized));
       return;
     }
 
     case 'flux_clear_zelidauth': {
-      await updatePersistedProfileState((current) => ({
-        ...current,
-        zelidauth: null,
-      }));
+      await updatePersistedProfileState((current) => setPersistedProfileZelidauth(current, null));
       return;
     }
 
@@ -982,13 +1009,13 @@ async function persistMutatedSessionState(
       const signature = typeof rawArgs.signature === 'string' ? rawArgs.signature.trim() : '';
       const loginPhrase = typeof rawArgs.loginPhrase === 'string' ? rawArgs.loginPhrase.trim() : '';
 
-      await updatePersistedProfileState((current) => ({
-        ...current,
-        ...(baseUrl ? { baseUrl } : {}),
-        ...(zelidauthSet && zelid && signature && loginPhrase
-          ? { zelidauth: JSON.stringify({ zelid, signature, loginPhrase }) }
-          : {}),
-      }));
+      await updatePersistedProfileState((current) => {
+        const next = baseUrl ? switchPersistedProfileBaseUrl(current, baseUrl) : current;
+
+        return zelidauthSet && zelid && signature && loginPhrase
+          ? setPersistedProfileZelidauth(next, JSON.stringify({ zelid, signature, loginPhrase }))
+          : next;
+      });
       return;
     }
 
@@ -996,18 +1023,12 @@ async function persistMutatedSessionState(
       const enterpriseKey = typeof rawArgs.enterpriseKey === 'string' ? rawArgs.enterpriseKey.trim() : '';
       if (!enterpriseKey) return;
 
-      await updatePersistedProfileState((current) => ({
-        ...current,
-        enterpriseKey,
-      }));
+      await updatePersistedProfileState((current) => setPersistedProfileEnterpriseKey(current, enterpriseKey));
       return;
     }
 
     case 'flux_clear_enterprise_key': {
-      await updatePersistedProfileState((current) => ({
-        ...current,
-        enterpriseKey: null,
-      }));
+      await updatePersistedProfileState((current) => setPersistedProfileEnterpriseKey(current, null));
       return;
     }
 
@@ -2228,6 +2249,294 @@ async function handleAuthCommand(
   }
 }
 
+type NodeGatewayParseResult =
+  | {
+      outputMode: OutputMode;
+      gatewayBaseUrl: string | null;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type NodeBaseUrlParseResult =
+  | {
+      outputMode: OutputMode;
+      baseUrl: string;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const gatewayBaseUrl = parsed.positional[0]?.trim() || null;
+  return {
+    outputMode: parsed.outputMode,
+    gatewayBaseUrl,
+    positional: parsed.positional,
+  };
+}
+
+function parseNodeBaseUrlArgs(args: string[]): NodeBaseUrlParseResult {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  const [baseUrl, ...rest] = parsed.positional;
+  if (!baseUrl || baseUrl.startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux node use-base-url <base-url> [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    baseUrl,
+    positional: rest,
+  };
+}
+
+function normalizeNodeGatewayPayload(result: unknown, activeProfile: string, currentBaseUrl: string | null): Record<string, unknown> {
+  const record = asRecord(result) ?? {};
+
+  return {
+    ok: true,
+    status: typeof record.status === 'string' || typeof record.status === 'number' ? record.status : 'ok',
+    activeProfile,
+    gatewayBaseUrl: typeof record.gatewayBaseUrl === 'string' ? record.gatewayBaseUrl : currentBaseUrl,
+    fluxnode: typeof record.fluxnode === 'string' ? record.fluxnode : null,
+    ip: typeof record.ip === 'string' ? record.ip : null,
+    recommendedBaseUrl: typeof record.recommendedBaseUrl === 'string' ? record.recommendedBaseUrl : null,
+  };
+}
+
+function renderNodeResolveGatewayPretty(payload: Record<string, unknown>): string {
+  return [
+    `Active profile: ${typeof payload.activeProfile === 'string' ? payload.activeProfile : '<unknown>'}`,
+    `Gateway base URL: ${typeof payload.gatewayBaseUrl === 'string' ? payload.gatewayBaseUrl : '<unset>'}`,
+    `Flux node header: ${typeof payload.fluxnode === 'string' ? payload.fluxnode : '<unavailable>'}`,
+    `Resolved IP: ${typeof payload.ip === 'string' ? payload.ip : '<unavailable>'}`,
+    `Recommended base URL: ${typeof payload.recommendedBaseUrl === 'string' ? payload.recommendedBaseUrl : '<unavailable>'}`,
+  ].join('\n');
+}
+
+function normalizeNodeUseGatewayPayload(
+  result: unknown,
+  activeProfile: string,
+  state: PersistedProfileState
+): Record<string, unknown> {
+  const record = asRecord(result) ?? {};
+
+  return {
+    ok: true,
+    status: typeof record.status === 'string' || typeof record.status === 'number' ? record.status : 'ok',
+    activeProfile,
+    gatewayBaseUrl: typeof record.gatewayBaseUrl === 'string' ? record.gatewayBaseUrl : null,
+    fluxnode: typeof record.fluxnode === 'string' ? record.fluxnode : null,
+    ip: typeof record.ip === 'string' ? record.ip : null,
+    recommendedBaseUrl: typeof record.recommendedBaseUrl === 'string' ? record.recommendedBaseUrl : null,
+    baseUrl: state.baseUrl,
+    auth: summarizePersistedAuth(state.zelidauth),
+    enterpriseKey: { present: Boolean(state.enterpriseKey) },
+  };
+}
+
+function renderNodeUseGatewayPretty(payload: Record<string, unknown>): string {
+  const auth = asRecord(payload.auth);
+  return [
+    `Active profile: ${typeof payload.activeProfile === 'string' ? payload.activeProfile : '<unknown>'}`,
+    `Gateway base URL: ${typeof payload.gatewayBaseUrl === 'string' ? payload.gatewayBaseUrl : '<unset>'}`,
+    `Pinned base URL: ${typeof payload.baseUrl === 'string' ? payload.baseUrl : '<unset>'}`,
+    `Recommended base URL: ${typeof payload.recommendedBaseUrl === 'string' ? payload.recommendedBaseUrl : '<unavailable>'}`,
+    `Auth: ${auth?.present === true ? `present${typeof auth.zelid === 'string' ? ` (zelid: ${auth.zelid})` : ''}` : 'not set'}`,
+  ].join('\n');
+}
+
+function normalizeNodeUseBaseUrlPayload(
+  requestedBaseUrl: string,
+  state: PersistedProfileState,
+  activeProfile: string
+): Record<string, unknown> {
+  return {
+    ok: true,
+    status: 'ok',
+    activeProfile,
+    requestedBaseUrl,
+    baseUrl: state.baseUrl,
+    auth: summarizePersistedAuth(state.zelidauth),
+    enterpriseKey: { present: Boolean(state.enterpriseKey) },
+  };
+}
+
+function renderNodeUseBaseUrlPretty(payload: Record<string, unknown>): string {
+  const auth = asRecord(payload.auth);
+  return [
+    `Active profile: ${typeof payload.activeProfile === 'string' ? payload.activeProfile : '<unknown>'}`,
+    `Requested base URL: ${typeof payload.requestedBaseUrl === 'string' ? payload.requestedBaseUrl : '<unset>'}`,
+    `Normalized base URL: ${typeof payload.baseUrl === 'string' ? payload.baseUrl : '<unset>'}`,
+    `Auth: ${auth?.present === true ? `present${typeof auth.zelid === 'string' ? ` (zelid: ${auth.zelid})` : ''}` : 'not set'}`,
+  ].join('\n');
+}
+
+async function handleNodeResolveGateway(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseNodeGatewayArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const gatewayBaseUrl = parsed.gatewayBaseUrl ?? snapshot.profile.baseUrl;
+  if (!gatewayBaseUrl) {
+    return emitFailure('validation', 'No gateway baseUrl available. Pass one explicitly or configure a base URL first.', io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_resolve_gateway_node', { gatewayBaseUrl }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(
+      normalized.failureKind ?? 'flux',
+      normalized.envelope.error ?? 'Could not resolve gateway base URL.',
+      io,
+      parsed.outputMode
+    );
+  }
+
+  const payload = normalizeNodeGatewayPayload(normalized.envelope.result, snapshot.activeProfile, gatewayBaseUrl);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderNodeResolveGatewayPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleNodeUseGateway(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseNodeGatewayArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const gatewayBaseUrl = parsed.gatewayBaseUrl ?? snapshot.profile.baseUrl;
+  if (!gatewayBaseUrl) {
+    return emitFailure('validation', 'No gateway baseUrl available. Pass one explicitly or configure a base URL first.', io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_set_base_url_from_gateway', { gatewayBaseUrl }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(
+      normalized.failureKind ?? 'flux',
+      normalized.envelope.error ?? 'Could not pin gateway base URL.',
+      io,
+      parsed.outputMode
+    );
+  }
+
+  const nextSnapshot = await loadPersistedStateSnapshot();
+  const payload = normalizeNodeUseGatewayPayload(normalized.envelope.result, nextSnapshot.activeProfile, nextSnapshot.profile);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderNodeUseGatewayPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleNodeUseBaseUrl(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseNodeBaseUrlArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux node use-base-url\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let snapshot;
+  try {
+    await updatePersistedProfileState((current) => switchPersistedProfileBaseUrl(current, parsed.baseUrl));
+    snapshot = await loadPersistedStateSnapshot();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const payload = normalizeNodeUseBaseUrlPayload(parsed.baseUrl, snapshot.profile, snapshot.activeProfile);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderNodeUseBaseUrlPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleNodeCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderNodeHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'resolve-gateway':
+      return handleNodeResolveGateway(rest, io, toolRuntime, mode);
+    case 'use-gateway':
+      return handleNodeUseGateway(rest, io, toolRuntime, mode);
+    case 'use-base-url':
+      return handleNodeUseBaseUrl(rest, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown node subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
 async function handleEnterpriseKeyClear(args: string[], io: CliIo): Promise<number> {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -2544,6 +2853,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         return await handleProfileCommand(argv.slice(1), io);
       case 'auth':
         return await handleAuthCommand(
+          argv.slice(1),
+          io,
+          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          effectivePersistedStateMode
+        );
+      case 'node':
+        return await handleNodeCommand(
           argv.slice(1),
           io,
           options.toolRuntime ?? (await getDefaultToolRuntime()),

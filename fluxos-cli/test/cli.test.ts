@@ -37,6 +37,7 @@ describe('fluxos-cli root command', () => {
     expect(exitCode).toBe(0);
     expect(capture.getStdout()).toContain('Usage:');
     expect(capture.getStdout()).toContain('flux [command]');
+    expect(capture.getStdout()).toContain('node resolve-gateway');
     expect(capture.getStderr()).toBe('');
   });
 

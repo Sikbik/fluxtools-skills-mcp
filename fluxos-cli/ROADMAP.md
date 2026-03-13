@@ -432,9 +432,9 @@ Done when:
 - CLI auth feels first-class instead of like a wrapped MCP response
 
 ### 4.3 Add direct-node helpers
-- [ ] `flux node resolve-gateway`
-- [ ] `flux node use-gateway`
-- [ ] `flux node use-base-url`
+- [x] `flux node resolve-gateway`
+- [x] `flux node use-gateway`
+- [x] `flux node use-base-url`
 
 Done when:
 

@@ -90,6 +90,28 @@ function createFakeAuthToolRuntime() {
   let enterpriseKey: string | null = null;
   let httpDefaults = { ...DEFAULT_HTTP_DEFAULTS };
   let fluxDriveMwsBaseUrl = DEFAULT_FLUXDRIVE_BASE_URL;
+  const zelidauthByBaseUrl = new Map<string, string>();
+  const enterpriseKeyByBaseUrl = new Map<string, string>();
+
+  const adoptCachedCredentials = () => {
+    if (zelidauthByBaseUrl.has(baseUrl)) {
+      zelidauth = zelidauthByBaseUrl.get(baseUrl) ?? null;
+    }
+
+    if (enterpriseKeyByBaseUrl.has(baseUrl)) {
+      enterpriseKey = enterpriseKeyByBaseUrl.get(baseUrl) ?? null;
+    }
+  };
+
+  const cacheCurrentCredentials = () => {
+    if (zelidauth) {
+      zelidauthByBaseUrl.set(baseUrl, zelidauth);
+    }
+
+    if (enterpriseKey) {
+      enterpriseKeyByBaseUrl.set(baseUrl, enterpriseKey);
+    }
+  };
 
   const jsonResult = (payload: Record<string, unknown>, isError = false) => ({
     isError,
@@ -107,16 +129,65 @@ function createFakeAuthToolRuntime() {
 
       switch (name) {
         case 'flux_clear_zelidauth':
+          if (baseUrl) {
+            zelidauthByBaseUrl.delete(baseUrl);
+          }
           zelidauth = null;
           return jsonResult({ ok: true, zelidauth: summarizeZelidauth(zelidauth) });
 
         case 'flux_clear_enterprise_key':
+          if (baseUrl) {
+            enterpriseKeyByBaseUrl.delete(baseUrl);
+          }
           enterpriseKey = null;
           return jsonResult({ ok: true, enterpriseKey: { present: false } });
 
         case 'flux_set_base_url':
           baseUrl = normalizeBaseUrl(String(args.baseUrl));
+          adoptCachedCredentials();
           return jsonResult({ ok: true, baseUrl });
+
+        case 'flux_set_base_url_from_gateway': {
+          const gatewayBaseUrl = typeof args.gatewayBaseUrl === 'string' ? normalizeBaseUrl(String(args.gatewayBaseUrl)) : null;
+          if (gatewayBaseUrl === 'https://broken.gateway.example') {
+            return jsonResult({ ok: false, error: 'Could not resolve node IP from /flux/info response' }, true);
+          }
+
+          const recommendedBaseUrl = gatewayBaseUrl === 'https://api.runonflux.io'
+            ? 'http://10.0.0.2:16127'
+            : 'http://10.0.0.3:16127';
+
+          baseUrl = recommendedBaseUrl;
+          adoptCachedCredentials();
+
+          return jsonResult({
+            ok: true,
+            gatewayBaseUrl,
+            fluxnode: recommendedBaseUrl.replace('http://', '').replace(':16127', ''),
+            ip: recommendedBaseUrl.replace('http://', '').replace(':16127', ''),
+            recommendedBaseUrl,
+            baseUrl,
+          });
+        }
+
+        case 'flux_resolve_gateway_node': {
+          const gatewayBaseUrl = typeof args.gatewayBaseUrl === 'string' ? normalizeBaseUrl(String(args.gatewayBaseUrl)) : null;
+          if (gatewayBaseUrl === 'https://broken.gateway.example') {
+            return jsonResult({ ok: false, error: 'Could not resolve node IP from /flux/info response' }, true);
+          }
+
+          const recommendedBaseUrl = gatewayBaseUrl === 'https://api.runonflux.io'
+            ? 'http://10.0.0.2:16127'
+            : 'http://10.0.0.3:16127';
+
+          return jsonResult({
+            ok: true,
+            gatewayBaseUrl,
+            fluxnode: recommendedBaseUrl.replace('http://', '').replace(':16127', ''),
+            ip: recommendedBaseUrl.replace('http://', '').replace(':16127', ''),
+            recommendedBaseUrl,
+          });
+        }
 
         case 'flux_set_http_defaults':
           httpDefaults = {
@@ -140,6 +211,8 @@ function createFakeAuthToolRuntime() {
             return jsonResult({ ok: false, error: 'zelidauth must be a non-empty string or object' }, true);
           }
 
+          cacheCurrentCredentials();
+
           return jsonResult({ ok: true, zelidauth: summarizeZelidauth(zelidauth) });
         }
 
@@ -150,6 +223,7 @@ function createFakeAuthToolRuntime() {
           }
 
           enterpriseKey = value;
+          cacheCurrentCredentials();
           return jsonResult({ ok: true, enterpriseKey: { present: true } });
         }
 
@@ -208,9 +282,11 @@ function createFakeAuthToolRuntime() {
 
           if (pinnedBaseUrl) {
             baseUrl = pinnedBaseUrl;
+            adoptCachedCredentials();
           }
 
           zelidauth = JSON.stringify({ zelid, signature, loginPhrase });
+          cacheCurrentCredentials();
           return jsonResult({
             ok: true,
             baseUrl,

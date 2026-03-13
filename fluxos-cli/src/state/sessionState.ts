@@ -17,12 +17,16 @@ export type PersistedHttpDefaults = {
   retryBackoffMs: number;
 };
 
+type PersistedCredentialCache = Record<string, string>;
+
 export type PersistedProfileState = {
   baseUrl: string | null;
   zelidauth: string | null;
   enterpriseKey: string | null;
   fluxDriveMwsBaseUrl: string;
   httpDefaults: PersistedHttpDefaults;
+  zelidauthByBaseUrl: PersistedCredentialCache;
+  enterpriseKeyByBaseUrl: PersistedCredentialCache;
 };
 
 type StateFileProfileState = {
@@ -31,6 +35,8 @@ type StateFileProfileState = {
   enterpriseKey?: unknown;
   fluxDriveMwsBaseUrl?: unknown;
   httpDefaults?: unknown;
+  zelidauthByBaseUrl?: unknown;
+  enterpriseKeyByBaseUrl?: unknown;
 };
 
 type StateFileShape = {
@@ -102,6 +108,8 @@ function defaultProfileState(): PersistedProfileState {
     enterpriseKey: null,
     fluxDriveMwsBaseUrl: DEFAULT_FLUXDRIVE_BASE_URL,
     httpDefaults: { ...DEFAULT_HTTP_DEFAULTS },
+    zelidauthByBaseUrl: {},
+    enterpriseKeyByBaseUrl: {},
   };
 }
 
@@ -127,6 +135,8 @@ function initialEffectiveProfileState(): PersistedProfileState {
         ? Number(process.env.FLUX_HTTP_RETRY_BACKOFF_MS)
         : DEFAULT_HTTP_DEFAULTS.retryBackoffMs,
     },
+    zelidauthByBaseUrl: {},
+    enterpriseKeyByBaseUrl: {},
   };
 }
 
@@ -168,6 +178,24 @@ function asPersistedHttpDefaults(value: unknown): PersistedHttpDefaults {
   };
 }
 
+function asPersistedCredentialCache(value: unknown): PersistedCredentialCache {
+  const record = asRecord(value);
+  const cache: PersistedCredentialCache = {};
+
+  for (const [baseUrl, credential] of Object.entries(record)) {
+    const normalizedCredential = asNonEmptyString(credential);
+    if (!normalizedCredential) continue;
+
+    try {
+      cache[normalizeBaseUrl(baseUrl)] = normalizedCredential;
+    } catch {
+      // Ignore invalid cache keys from older or hand-edited state files.
+    }
+  }
+
+  return cache;
+}
+
 function asPersistedProfileState(value: unknown): PersistedProfileState {
   const defaults = defaultProfileState();
   const record = asRecord(value);
@@ -175,6 +203,8 @@ function asPersistedProfileState(value: unknown): PersistedProfileState {
   const zelidauth = asNonEmptyString(record.zelidauth);
   const enterpriseKey = asNonEmptyString(record.enterpriseKey);
   const fluxDriveMwsBaseUrl = asNonEmptyString(record.fluxDriveMwsBaseUrl);
+  const zelidauthByBaseUrl = asPersistedCredentialCache(record.zelidauthByBaseUrl);
+  const enterpriseKeyByBaseUrl = asPersistedCredentialCache(record.enterpriseKeyByBaseUrl);
 
   return {
     baseUrl: baseUrl ? normalizeBaseUrl(baseUrl) : defaults.baseUrl,
@@ -182,6 +212,34 @@ function asPersistedProfileState(value: unknown): PersistedProfileState {
     enterpriseKey,
     fluxDriveMwsBaseUrl: fluxDriveMwsBaseUrl ? normalizeBaseUrl(fluxDriveMwsBaseUrl) : defaults.fluxDriveMwsBaseUrl,
     httpDefaults: asPersistedHttpDefaults(record.httpDefaults),
+    zelidauthByBaseUrl,
+    enterpriseKeyByBaseUrl,
+  };
+}
+
+function serializePersistedProfileState(value: unknown): StateFileProfileState {
+  const profile = asPersistedProfileState(value);
+
+  return {
+    baseUrl: profile.baseUrl,
+    zelidauth: profile.zelidauth,
+    enterpriseKey: profile.enterpriseKey,
+    fluxDriveMwsBaseUrl: profile.fluxDriveMwsBaseUrl,
+    httpDefaults: { ...profile.httpDefaults },
+    ...(Object.keys(profile.zelidauthByBaseUrl).length > 0 ? { zelidauthByBaseUrl: { ...profile.zelidauthByBaseUrl } } : {}),
+    ...(Object.keys(profile.enterpriseKeyByBaseUrl).length > 0
+      ? { enterpriseKeyByBaseUrl: { ...profile.enterpriseKeyByBaseUrl } }
+      : {}),
+  };
+}
+
+function serializeStateFile(store: StateFileShape): StateFileShape {
+  return {
+    version: STATE_FILE_VERSION,
+    activeProfile: store.activeProfile,
+    profiles: Object.fromEntries(
+      Object.entries(store.profiles).map(([profileName, profileState]) => [profileName, serializePersistedProfileState(profileState)])
+    ),
   };
 }
 
@@ -236,8 +294,65 @@ async function saveStateFile(store: StateFileShape): Promise<void> {
   const stateFilePath = resolveCliStateStorePath();
 
   await ensureDir(stateDir);
-  await writeFile(stateFilePath, JSON.stringify(store, null, 2), { encoding: 'utf8', mode: 0o600 });
+  await writeFile(stateFilePath, JSON.stringify(serializeStateFile(store), null, 2), { encoding: 'utf8', mode: 0o600 });
   await chmod(stateFilePath, 0o600).catch(() => undefined);
+}
+
+function setCachedCredential(
+  cache: PersistedCredentialCache,
+  baseUrl: string | null,
+  value: string | null
+): PersistedCredentialCache {
+  if (!baseUrl) return { ...cache };
+
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const next = { ...cache };
+
+  if (value) next[normalizedBaseUrl] = value;
+  else delete next[normalizedBaseUrl];
+
+  return next;
+}
+
+export function switchPersistedProfileBaseUrl(current: PersistedProfileState, nextBaseUrl: string): PersistedProfileState {
+  const normalizedNextBaseUrl = normalizeBaseUrl(nextBaseUrl);
+  const nextZelidauthByBaseUrl = setCachedCredential(current.zelidauthByBaseUrl, current.baseUrl, current.zelidauth);
+  const nextEnterpriseKeyByBaseUrl = setCachedCredential(
+    current.enterpriseKeyByBaseUrl,
+    current.baseUrl,
+    current.enterpriseKey
+  );
+
+  return {
+    ...current,
+    baseUrl: normalizedNextBaseUrl,
+    zelidauth: nextZelidauthByBaseUrl[normalizedNextBaseUrl] ?? current.zelidauth,
+    enterpriseKey: nextEnterpriseKeyByBaseUrl[normalizedNextBaseUrl] ?? current.enterpriseKey,
+    zelidauthByBaseUrl: nextZelidauthByBaseUrl,
+    enterpriseKeyByBaseUrl: nextEnterpriseKeyByBaseUrl,
+  };
+}
+
+export function setPersistedProfileZelidauth(
+  current: PersistedProfileState,
+  zelidauth: string | null
+): PersistedProfileState {
+  return {
+    ...current,
+    zelidauth,
+    zelidauthByBaseUrl: setCachedCredential(current.zelidauthByBaseUrl, current.baseUrl, zelidauth),
+  };
+}
+
+export function setPersistedProfileEnterpriseKey(
+  current: PersistedProfileState,
+  enterpriseKey: string | null
+): PersistedProfileState {
+  return {
+    ...current,
+    enterpriseKey,
+    enterpriseKeyByBaseUrl: setCachedCredential(current.enterpriseKeyByBaseUrl, current.baseUrl, enterpriseKey),
+  };
 }
 
 function getProfileState(store: StateFileShape, profileName = store.activeProfile): PersistedProfileState {
@@ -405,17 +520,11 @@ export async function clearPersistedProfileState(): Promise<PersistedStateSnapsh
 }
 
 export async function clearPersistedAuthState(): Promise<PersistedStateSnapshot> {
-  return updatePersistedProfileState((current) => ({
-    ...current,
-    zelidauth: null,
-  }));
+  return updatePersistedProfileState((current) => setPersistedProfileZelidauth(current, null));
 }
 
 export async function clearPersistedEnterpriseKeyState(): Promise<PersistedStateSnapshot> {
-  return updatePersistedProfileState((current) => ({
-    ...current,
-    enterpriseKey: null,
-  }));
+  return updatePersistedProfileState((current) => setPersistedProfileEnterpriseKey(current, null));
 }
 
 export async function getStateVisibilitySummary(): Promise<StateVisibilitySummary> {
