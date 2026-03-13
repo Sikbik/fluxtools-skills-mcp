@@ -23,7 +23,7 @@ Use this skill for features that add or extend first-class command families such
 
 ## Work Procedure
 
-1. Read `mission.md`, mission `AGENTS.md`, `.factory/library/architecture.md`, `.factory/library/shared-runtime.md`, and `.factory/library/user-testing.md`.
+1. Read `mission.md`, mission `AGENTS.md`, `.factory/library/architecture.md`, `.factory/library/environment.md`, `.factory/library/shared-runtime.md`, and `.factory/library/user-testing.md`.
 2. Identify the existing MCP tool behavior for the command family and the JSON/safety contract the CLI must preserve.
 3. Write failing tests first for command parsing, JSON output, confirmation/auth gates, and representative happy-path behavior.
 4. Implement a thin first-class CLI adapter on top of the shared or extracted behavior. Do not fork Flux business rules into CLI-only code.
