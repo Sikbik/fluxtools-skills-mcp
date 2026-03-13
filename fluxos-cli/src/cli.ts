@@ -132,8 +132,12 @@ Commands:
                                  Delete a persisted CLI profile
   auth login --zelid <zelid> [--signature <sig>] [--login-phrase <phrase>]
                                  Run phrase-first auth or verify and persist auth
+  auth phrase [--use-emergency-phrase] [--zelid <zelid>]
+                                 Fetch a login phrase without mutating persisted auth state
   auth status [--json|--pretty]
                                  Show current auth/base-url session status
+  auth diagnose [--json|--pretty]
+                                 Run non-mutating auth checks and next-step guidance
   auth logout [--json|--pretty]
                                  Remove persisted auth material for the active profile
   auth clear [--json|--pretty]
@@ -205,13 +209,18 @@ Usage:
   flux auth login --zelid <zelid> [--signature <sig>] [--login-phrase <phrase>]
                   [--gateway-base-url <url>] [--force] [--use-emergency-phrase]
                   [--json|--pretty|--raw]
+  flux auth phrase [--use-emergency-phrase] [--zelid <zelid>]
+                    [--gateway-base-url <url>] [--json|--pretty|--raw]
   flux auth status [--json|--pretty|--raw]
+  flux auth diagnose [--json|--pretty|--raw]
   flux auth logout [--json|--pretty]
   flux auth clear [--json|--pretty]
 
 Notes:
   - \`login\` preserves the shared phrase-first auth semantics from flux-mcp.
+  - \`phrase\` fetches a fresh normal or emergency login phrase without persisting auth state.
   - \`status\` is read-only and reports the hydrated session summary for the active profile.
+  - \`diagnose\` reports concrete checks and next steps without mutating persisted state.
   - \`logout\` and \`clear\` clear only persisted auth material for the active profile.
   - Base URL, enterprise key, HTTP defaults, and FluxDrive settings stay unchanged.
 `;
@@ -1392,6 +1401,14 @@ type AuthLoginParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type AuthPhraseParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function readFlagValue(
   args: string[],
   index: number,
@@ -1527,6 +1544,294 @@ function parseAuthLoginArgs(args: string[]): AuthLoginParseResult {
     },
     positional,
   };
+}
+
+function parseAuthPhraseArgs(args: string[]): AuthPhraseParseResult {
+  const requested = { json: false, pretty: false, raw: false };
+  const positional: string[] = [];
+  const rawArgs: Record<string, unknown> = {
+    force: true,
+    autoPinGateway: true,
+    verify: false,
+    setZelidauth: false,
+    checkPrivilege: false,
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === '--json') {
+      requested.json = true;
+      continue;
+    }
+
+    if (arg === '--pretty') {
+      requested.pretty = true;
+      continue;
+    }
+
+    if (arg === '--raw') {
+      requested.raw = true;
+      continue;
+    }
+
+    if (arg === '--use-emergency-phrase') {
+      rawArgs.useEmergencyPhrase = true;
+      continue;
+    }
+
+    if (arg === '--zelid' || arg.startsWith('--zelid=')) {
+      const value = readFlagValue(args, index, arg, '--zelid');
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs.zelid = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    if (arg === '--gateway-base-url' || arg.startsWith('--gateway-base-url=')) {
+      const value = readFlagValue(args, index, arg, '--gateway-base-url');
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs.gatewayBaseUrl = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    positional.push(arg);
+  }
+
+  const outputMode = resolveOutputModePreference(requested);
+  const selectedOutputModes = Number(requested.json) + Number(requested.pretty) + Number(requested.raw);
+  if (selectedOutputModes > 1) {
+    return { outputMode, error: 'Choose only one output mode: --json, --pretty, or --raw.' };
+  }
+
+  return {
+    outputMode,
+    rawArgs: {
+      ...rawArgs,
+      ...(typeof rawArgs.zelid === 'string' ? { zelid: rawArgs.zelid.trim() } : {}),
+      ...(typeof rawArgs.gatewayBaseUrl === 'string' ? { gatewayBaseUrl: rawArgs.gatewayBaseUrl.trim() } : {}),
+    },
+    positional,
+  };
+}
+
+function unwrapFluxStringValue(result: unknown): string | null {
+  if (typeof result === 'string' && result.trim()) return result;
+
+  if (looksLikeFluxRequestResult(result)) {
+    const envelope = asRecord(result.data);
+    const value = envelope?.data;
+    return typeof value === 'string' && value.trim() ? value : null;
+  }
+
+  const record = asRecord(result);
+  if (!record) return null;
+
+  const dataValue = record.data;
+  if (typeof dataValue === 'string' && dataValue.trim()) return dataValue;
+
+  return null;
+}
+
+function redactAuthPhraseHumanGuidance(payload: Record<string, unknown>): Record<string, unknown> {
+  const nextPayload = { ...payload };
+
+  delete nextPayload.signLauncherHttpUrl;
+  delete nextPayload.zelcoreLauncherHttpUrl;
+  delete nextPayload.zelcoreSignLink;
+  delete nextPayload.zelcoreClickableLink;
+  delete nextPayload.zelcoreBracketedLink;
+  delete nextPayload.zelcoreWarning;
+
+  return nextPayload;
+}
+
+function buildAuthPhrasePlaceholderNextActions(zelid: string, loginPhrase: string): Array<Record<string, unknown>> {
+  return [
+    {
+      command: 'flux auth login',
+      arguments: {
+        zelid,
+        loginPhrase,
+        signature: '<SIGNATURE>',
+      },
+    },
+  ];
+}
+
+function normalizeAuthPhrasePayload(options: {
+  activeProfile: string;
+  baseUrl: string | null;
+  phrasePath: 'normal' | 'emergency';
+  loginPhrase: string;
+  result?: Record<string, unknown>;
+  resourceUri?: string;
+  nextActions?: unknown[];
+}): Record<string, unknown> {
+  const result = options.result ?? {};
+  const loginPhraseResourceUri = typeof result.loginPhraseResourceUri === 'string' ? result.loginPhraseResourceUri : undefined;
+  const gatewayBaseUrl = typeof result.gatewayBaseUrl === 'string' ? result.gatewayBaseUrl : undefined;
+  const pinnedBaseUrl = typeof result.pinnedBaseUrl === 'string' ? result.pinnedBaseUrl : undefined;
+  const zelid = typeof result.zelid === 'string' && result.zelid.trim() ? result.zelid.trim() : '<ZELID>';
+  const nextActions = Array.isArray(options.nextActions) && options.nextActions.length > 0
+    ? options.nextActions
+    : buildAuthPhrasePlaceholderNextActions(zelid, options.loginPhrase);
+
+  return redactAuthPhraseHumanGuidance({
+    ...result,
+    ok: true,
+    status: 'ok',
+    activeProfile: options.activeProfile,
+    baseUrl: pinnedBaseUrl || options.baseUrl,
+    phrasePath: options.phrasePath,
+    needSignature: true,
+    loginPhrase: options.loginPhrase,
+    ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}),
+    ...(pinnedBaseUrl ? { pinnedBaseUrl } : {}),
+    ...(loginPhraseResourceUri ? { loginPhraseResourceUri } : {}),
+    ...(options.resourceUri ? { resourceUri: options.resourceUri } : {}),
+    nextActions,
+  });
+}
+
+function renderAuthPhrasePretty(payload: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const zelid = typeof payload.zelid === 'string' && payload.zelid.trim() ? payload.zelid : '<provide --zelid to prefill auth login>';
+
+  lines.push(`Login phrase ready for ${zelid}.`);
+
+  if (typeof payload.activeProfile === 'string') {
+    lines.push(`Active profile: ${payload.activeProfile}`);
+  }
+
+  if (typeof payload.baseUrl === 'string' && payload.baseUrl) {
+    lines.push(`Base URL: ${payload.baseUrl}`);
+  }
+
+  lines.push(`Phrase path: ${payload.phrasePath === 'emergency' ? 'emergency' : 'normal'}`);
+
+  if (typeof payload.gatewayBaseUrl === 'string' && payload.gatewayBaseUrl) {
+    lines.push(`Gateway base URL: ${payload.gatewayBaseUrl}`);
+  }
+
+  if (typeof payload.pinnedBaseUrl === 'string' && payload.pinnedBaseUrl) {
+    lines.push(`Pinned base URL: ${payload.pinnedBaseUrl}`);
+  }
+
+  if (typeof payload.loginPhrase === 'string' && payload.loginPhrase) {
+    lines.push('Login phrase:');
+    lines.push(payload.loginPhrase);
+  }
+
+  if (typeof payload.signLauncherHttpUrl === 'string' && payload.signLauncherHttpUrl) {
+    lines.push(`Sign launcher (SSP Wallet or Zelcore): ${payload.signLauncherHttpUrl}`);
+  } else {
+    lines.push('Wallet helper: rerun with --zelid to get a local sign launcher that supports SSP Wallet or Zelcore.');
+  }
+
+  if (typeof payload.zelcoreLauncherHttpUrl === 'string' && payload.zelcoreLauncherHttpUrl) {
+    lines.push(`Zelcore launcher: ${payload.zelcoreLauncherHttpUrl}`);
+  }
+
+  if (typeof payload.zelcoreSignLink === 'string' && payload.zelcoreSignLink) {
+    lines.push(`Zelcore sign link: ${payload.zelcoreSignLink}`);
+  }
+
+  if (typeof payload.zelcoreWarning === 'string' && payload.zelcoreWarning) {
+    lines.push(`Warning: ${payload.zelcoreWarning}`);
+  }
+
+  return lines.join('\n');
+}
+
+function extractAuthDiagnoseBaseUrl(result: Record<string, unknown>, fallbackBaseUrl: string | null): string | null {
+  if (typeof result.baseUrl === 'string' && result.baseUrl.trim()) {
+    return result.baseUrl;
+  }
+
+  const checks = Array.isArray(result.checks) ? result.checks : [];
+  for (const check of checks) {
+    const checkRecord = asRecord(check);
+    if (!checkRecord || checkRecord.name !== 'baseUrl') continue;
+
+    if (typeof checkRecord.detail === 'string' && checkRecord.detail.trim()) {
+      return checkRecord.detail;
+    }
+  }
+
+  return fallbackBaseUrl;
+}
+
+function normalizeAuthDiagnosePayload(
+  normalized: ToolCallNormalization,
+  activeProfile: string,
+  fallbackBaseUrl: string | null
+): Record<string, unknown> {
+  const result = asRecord(normalized.envelope.result) ?? {};
+
+  return {
+    ...result,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    activeProfile,
+    baseUrl: extractAuthDiagnoseBaseUrl(result, fallbackBaseUrl),
+    checks: Array.isArray(result.checks) ? result.checks : [],
+    nextSteps: Array.isArray(result.nextSteps) ? result.nextSteps : [],
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+  };
+}
+
+function renderCheckDetail(detail: unknown): string | null {
+  if (detail === undefined) return null;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (typeof detail === 'number' || typeof detail === 'boolean' || typeof detail === 'bigint') return String(detail);
+
+  if (!detail || typeof detail !== 'object') return null;
+
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return null;
+  }
+}
+
+function renderAuthDiagnosePretty(payload: Record<string, unknown>): string {
+  const lines = [
+    `Auth diagnose status: ${typeof payload.status === 'string' || typeof payload.status === 'number' ? String(payload.status) : 'unknown'}`,
+    `Active profile: ${typeof payload.activeProfile === 'string' ? payload.activeProfile : '<unknown>'}`,
+    `Base URL: ${typeof payload.baseUrl === 'string' ? payload.baseUrl : '<unset>'}`,
+    'Checks:',
+  ];
+
+  const checks = Array.isArray(payload.checks) ? payload.checks : [];
+  for (const check of checks) {
+    const checkRecord = asRecord(check);
+    if (!checkRecord) continue;
+
+    const name = typeof checkRecord.name === 'string' ? checkRecord.name : '<unknown>';
+    const status = checkRecord.ok === true ? 'OK' : 'FAIL';
+    const detail = renderCheckDetail(checkRecord.detail);
+    lines.push(`- ${status} ${name}${detail ? `: ${detail}` : ''}`);
+  }
+
+  const nextSteps = Array.isArray(payload.nextSteps) ? payload.nextSteps : [];
+  if (nextSteps.length > 0) {
+    lines.push('Next steps:');
+    for (const step of nextSteps) {
+      if (typeof step === 'string' && step.trim()) {
+        lines.push(`- ${step}`);
+      }
+    }
+  }
+
+  return lines.join('\n');
 }
 
 function mergeAuthLoginPayload(normalized: ToolCallNormalization, activeProfile: string): Record<string, unknown> {
@@ -1693,6 +1998,145 @@ async function handleAuthStatus(
   return EXIT_CODE_SUCCESS;
 }
 
+async function handleAuthPhrase(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAuthPhraseArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux auth phrase\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const phrasePath = parsed.rawArgs.useEmergencyPhrase === true ? 'emergency' : 'normal';
+  const useAuthLogin = typeof parsed.rawArgs.zelid === 'string' && parsed.rawArgs.zelid.trim().length > 0;
+
+  let payload: Record<string, unknown>;
+
+  try {
+    if (useAuthLogin) {
+      const normalized = await executeToolCall('flux_auth_login', parsed.rawArgs, toolRuntime, mode);
+      if (!normalized.envelope.ok) {
+        return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not fetch auth phrase.', io, parsed.outputMode);
+      }
+
+      const result = asRecord(normalized.envelope.result) ?? {};
+      const loginPhrase = typeof result.loginPhrase === 'string' ? result.loginPhrase : null;
+      if (!loginPhrase) {
+        return emitFailure('flux', 'Could not read login phrase from flux_auth_login.', io, parsed.outputMode);
+      }
+
+      payload = normalizeAuthPhrasePayload({
+        activeProfile: snapshot.activeProfile,
+        baseUrl: snapshot.profile.baseUrl,
+        phrasePath,
+        loginPhrase,
+        result,
+        resourceUri: normalized.envelope.resourceUri,
+        nextActions: normalized.envelope.nextActions,
+      });
+
+      if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+        renderJson(io.stdout, payload);
+      } else {
+        writeLine(io.stdout, renderAuthPhrasePretty({ ...result, ...payload }));
+      }
+
+      return EXIT_CODE_SUCCESS;
+    }
+
+    const normalizedPhrase = await executeToolCall(
+      phrasePath === 'emergency' ? 'flux_get_emergency_phrase' : 'flux_get_login_phrase',
+      {},
+      toolRuntime,
+      mode
+    );
+
+    if (!normalizedPhrase.envelope.ok) {
+      return emitFailure(
+        normalizedPhrase.failureKind ?? 'flux',
+        normalizedPhrase.envelope.error ?? 'Could not fetch auth phrase.',
+        io,
+        parsed.outputMode
+      );
+    }
+
+    const loginPhrase = unwrapFluxStringValue(normalizedPhrase.envelope.result);
+    if (!loginPhrase) {
+      return emitFailure('flux', 'Could not read login phrase from Flux response.', io, parsed.outputMode);
+    }
+
+    payload = normalizeAuthPhrasePayload({
+      activeProfile: snapshot.activeProfile,
+      baseUrl: snapshot.profile.baseUrl,
+      phrasePath,
+      loginPhrase,
+      nextActions: buildAuthPhrasePlaceholderNextActions('<ZELID>', loginPhrase),
+    });
+
+    if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+      renderJson(io.stdout, payload);
+      return EXIT_CODE_SUCCESS;
+    }
+
+    const signLink = await executeToolCall('flux_build_zelcore_sign_link', { message: loginPhrase }, toolRuntime, mode);
+    const signLinkResult = asRecord(signLink.envelope.result) ?? {};
+    writeLine(
+      io.stdout,
+      renderAuthPhrasePretty({
+        ...payload,
+        ...signLinkResult,
+      })
+    );
+
+    return EXIT_CODE_SUCCESS;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+}
+
+async function handleAuthDiagnose(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux auth diagnose\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_auth_diagnose', {}, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const payload = normalizeAuthDiagnosePayload(normalized, snapshot.activeProfile, snapshot.profile.baseUrl);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAuthDiagnosePretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
 async function handleAuthSessionClear(
   args: string[],
   io: CliIo,
@@ -1767,8 +2211,12 @@ async function handleAuthCommand(
   switch (subcommand) {
     case 'login':
       return handleAuthLogin(rest, io, toolRuntime, mode);
+    case 'phrase':
+      return handleAuthPhrase(rest, io, toolRuntime, mode);
     case 'status':
       return handleAuthStatus(rest, io, toolRuntime, mode);
+    case 'diagnose':
+      return handleAuthDiagnose(rest, io, toolRuntime, mode);
     case 'logout':
       return handleAuthSessionClear(rest, io, toolRuntime, mode, 'logout');
     case 'clear':

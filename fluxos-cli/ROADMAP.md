@@ -413,19 +413,19 @@ Once `flux tool` works, the next step is to make the highest-value workflows erg
 ### 4.1 Add `flux auth`
 - [x] `flux auth login --zelid ...`
 - [x] `flux auth status`
-- [ ] `flux auth diagnose`
+- [x] `flux auth diagnose`
 - [x] `flux auth logout`
-- [ ] `flux auth phrase`
+- [x] `flux auth phrase`
 
 Done when:
 
 - users no longer need the generic tool runner for common auth work
 
 ### 4.2 Preserve signing UX
-- [ ] expose returned sign launcher URLs clearly
-- [ ] support both Zelcore and SSP Wallet messaging in CLI output
+- [x] expose returned sign launcher URLs clearly
+- [x] support both Zelcore and SSP Wallet messaging in CLI output
 - [ ] add flags for browser-launcher convenience if later desired
-- [ ] keep `--json` output exact and automation-safe
+- [x] keep `--json` output exact and automation-safe
 
 Done when:
 
