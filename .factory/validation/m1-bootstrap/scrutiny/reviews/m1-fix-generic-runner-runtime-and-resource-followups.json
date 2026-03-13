@@ -1,0 +1,18 @@
+{
+  "featureId": "m1-fix-generic-runner-runtime-and-resource-followups",
+  "reviewedAt": "2026-03-13T06:04:45Z",
+  "commitId": "f459b72daf582e35569797300d93e32ec91fdf2d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The fix removes the hard-coded repo-relative `flux-mcp/dist` import by switching `fluxos-cli` to a declared `flux-mcp` package dependency, adds the missing regression coverage for one first-class wrapper (`flux_resource_prune`) and one generic-only tool (`flux_maintenance_checklist`), routes generic `flux_resource_read` and `flux_resource_prune` through the persisted CLI resource store when appropriate, prunes expired entries before list/read operations, and corrects the roadmap wording that previously overstated shared-runtime extraction progress.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": [
+    "/home/stache/projects/flux-skills/.factory/validation/m1-bootstrap/scrutiny/reviews/m1-tool-runner-list-and-call.json",
+    "/home/stache/projects/flux-skills/.factory/validation/m1-bootstrap/scrutiny/reviews/m1-cli-resource-store-and-commands.json"
+  ],
+  "summary": "Pass. The reviewed commit addresses both prior scrutiny failures: the generic runner no longer uses a repo-relative `flux-mcp/dist` path, the new tests cover both first-class and generic-only tool paths, persisted resource follow-up actions survive fresh CLI invocations, expired resources are pruned from list/read flows, and I found no remaining blocking or non-blocking issues within this scoped fix."
+}

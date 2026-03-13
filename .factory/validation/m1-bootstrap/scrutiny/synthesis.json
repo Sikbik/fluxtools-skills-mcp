@@ -1,7 +1,7 @@
 {
   "milestone": "m1-bootstrap",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,88 +20,14 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
+    "total": 2,
     "passed": 2,
-    "failed": 3,
-    "failedFeatures": [
-      "m1-tool-runner-list-and-call",
-      "m1-tool-args-output-and-exit-contracts",
-      "m1-cli-resource-store-and-commands"
-    ]
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m1-tool-runner-list-and-call",
-      "severity": "blocking",
-      "description": "fluxos-cli/src/runtime/toolRuntime.ts:26 hard-codes a runtime import of ../../../flux-mcp/dist/index.js, so the generic runner only works when the sibling MCP package has already been built in that repo-relative location instead of preserving a standalone/shared-runtime boundary."
-    },
-    {
-      "featureId": "m1-tool-runner-list-and-call",
-      "severity": "blocking",
-      "description": "fluxos-cli/test/tool-runner.test.ts:63 does not actually cover a tool with an existing first-class CLI wrapper, so the assigned coverage requirement for tools with and without first-class surfaces remains unmet."
-    },
-    {
-      "featureId": "m1-tool-args-output-and-exit-contracts",
-      "severity": "blocking",
-      "description": "fluxos-cli/src/cli.ts:599 ignores structuredContent.ok === false unless isError is also set, so real MCP tools such as flux_auth_diagnose can be normalized as ok/exit 0 even when they intentionally return a negative result envelope."
-    },
-    {
-      "featureId": "m1-tool-args-output-and-exit-contracts",
-      "severity": "blocking",
-      "description": "fluxos-cli/src/cli.ts:443 uses auth-failure phrase matching that is too narrow, so real auth-required MCP failures such as enterprise spec decryption prerequisites fall through to Flux exit code 6 instead of the required auth exit code 3."
-    },
-    {
-      "featureId": "m1-cli-resource-store-and-commands",
-      "severity": "blocking",
-      "description": "fluxos-cli/src/cli.ts:597 forwards MCP nextActions unchanged, but machine-followed resource reads still hit the MCP in-memory store through flux_resource_read rather than the persisted CLI resource store, so suggested follow-up actions break across fresh CLI invocations."
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated .factory/library/environment.md to record that jq is not installed here and JSON mission artifacts should be inspected with Python or the Read tool instead of jq-only workflows.",
-      "sourceFeature": "multiple"
-    },
-    {
-      "target": "library",
-      "description": "Updated .factory/library/environment.md to note that .factory/init.sh must be run with bash/shebang in this environment and that the current M1 CLI resource store persists under FLUXOS_CLI_STATE_DIR / XDG_STATE_HOME / ~/.local/state/fluxos-cli as the current behavior.",
-      "sourceFeature": "m1-cli-resource-store-and-commands"
-    },
-    {
-      "target": "library",
-      "description": "Updated .factory/library/shared-runtime.md to record that there is not yet a shared helper/source of truth for CLI failure classification, so current exit-code mapping work still has to inspect real MCP envelopes and message strings.",
-      "sourceFeature": "m1-tool-args-output-and-exit-contracts"
-    }
-  ],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "scrutiny-validator and scrutiny-feature-reviewer skills",
-      "suggestion": "Add an explicit Python/Read fallback anywhere the procedures currently recommend jq for JSON mission-artifact inspection.",
-      "evidence": "Reviews for m1-extract-shared-runtime-foundations and m1-tool-runner-list-and-call both flagged missing jq, and this scrutiny run itself had to replace the skill's jq example with a Python reader before it could enumerate milestone features.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Decide and document one canonical Linux persistence policy for future CLI state work (XDG config vs XDG state) so later state/profile slices do not build on conflicting guidance.",
-      "evidence": "The resource-store review found that mission guidance still describes XDG config/home fallback, while the shipped M1 resource store already persists under FLUXOS_CLI_STATE_DIR / XDG_STATE_HOME / ~/.local/state/fluxos-cli.",
-      "isSystemic": true
-    },
-    {
-      "target": "cli-platform-worker skill",
-      "suggestion": "Add a small procedure branch for slices that already contain in-progress implementation work on the mission branch: audit the existing diff first, add focused regression tests, and record any deviation from the test-first happy path explicitly.",
-      "evidence": "The m1-cli-resource-store-and-commands handoff recorded a justified deviation because the branch already contained substantial resource-store implementation before the worker started, but the current skill only describes the clean-slate test-first flow.",
-      "isSystemic": false
-    }
-  ],
-  "rejectedObservations": [
-    {
-      "observation": "Mission guidance omitted that the pre-rename roadmap and AGENTS files started as local/untracked planning files before the rename slice landed.",
-      "reason": "time-bound to the already-completed pre-rename state and no longer useful as ongoing shared state after the fluxos-cli rename landed"
-    },
-    {
-      "observation": "jq is not installed in this environment.",
-      "reason": "duplicate of the environment note applied directly to .factory/library/environment.md"
-    }
-  ],
-  "previousRound": null
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m1-bootstrap/scrutiny/synthesis.round1.json"
 }
