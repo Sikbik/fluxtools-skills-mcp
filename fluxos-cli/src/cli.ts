@@ -1,5 +1,16 @@
 import { readFile } from 'node:fs/promises';
 
+import {
+  clearCliResources,
+  listCliResources,
+  persistCliResource,
+  pruneCliResources,
+  readCliResource,
+  type ResourceClearResult,
+  type ResourceDescriptor as CliResourceDescriptor,
+  type ResourcePruneResult,
+} from './state/resourceStore.js';
+
 export type TextWriter = {
   write(chunk: string): void;
 };
@@ -44,6 +55,8 @@ type ToolCallResult = {
 export type ToolRuntime = {
   listTools(): Promise<ToolDefinition[]>;
   callTool(name: string, rawArgs: unknown): Promise<ToolCallResult>;
+  readResource?(uri: string): Promise<{ uri: string; mimeType?: string; text: string } | null>;
+  hydrateResource?(resource: { uri: string; name: string; description?: string; mimeType?: string; text: string }): Promise<void>;
 };
 
 export type RunCliOptions = {
@@ -85,6 +98,12 @@ Commands:
   tool call <tool-name> [--json|--pretty|--raw] [--arg key=value ...]
                                  [--args-json '{...}'] [--args-file path.json]
                                  Execute a Flux tool through the shared runtime
+  resource list [--json|--pretty]
+                                 List persisted CLI resources
+  resource read <uri> [--json|--pretty|--raw]
+                                 Read a persisted CLI resource payload
+  resource prune [--json|--pretty] [--clear-all]
+                                 Prune expired/overflow resources or clear all
 
 Options:
   -h, --help  Show this help output
@@ -107,6 +126,19 @@ Notes:
     and --raw prints the raw tool payload without CLI wrapping.
 `;
 
+const RESOURCE_HELP_TEXT = `FluxOS CLI - resource
+
+Usage:
+  flux resource list [--json|--pretty]
+  flux resource read <uri> [--json|--pretty|--raw]
+  flux resource prune [--json|--pretty] [--clear-all]
+
+Notes:
+  - Resources are persisted on disk for reuse across fresh CLI invocations.
+  - JSON resources are re-read as structured values in --json mode.
+  - --clear-all removes all persisted CLI resources explicitly.
+`;
+
 function writeLine(writer: TextWriter, text: string) {
   writer.write(text.endsWith('\n') ? text : `${text}\n`);
 }
@@ -117,6 +149,10 @@ export function renderHelp(): string {
 
 function renderToolHelp(): string {
   return TOOL_HELP_TEXT;
+}
+
+function renderResourceHelp(): string {
+  return RESOURCE_HELP_TEXT;
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -138,6 +174,12 @@ function parseJsonText(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+function isJsonMimeType(mimeType: string | undefined): boolean {
+  if (!mimeType) return false;
+  const normalized = mimeType.toLowerCase();
+  return normalized === 'application/json' || normalized.endsWith('+json') || normalized.includes('/json');
 }
 
 function parseLooseValue(text: string): unknown {
@@ -336,6 +378,16 @@ async function parseToolArgs(
 
 function renderJson(writer: TextWriter, value: unknown) {
   writeLine(writer, JSON.stringify(value, null, 2));
+}
+
+function isResourceLinkContent(item: ToolContentItem): item is ToolContentItem & {
+  type: 'resource_link';
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+} {
+  return item.type === 'resource_link' && typeof item.uri === 'string' && item.uri.length > 0;
 }
 
 function looksLikeFluxRequestResult(value: unknown): value is Record<string, unknown> & { ok: boolean; status: number | string; data: unknown } {
@@ -606,6 +658,48 @@ async function getDefaultToolRuntime(): Promise<ToolRuntime> {
   return module.defaultToolRuntime;
 }
 
+async function hydratePersistedResourceArguments(rawArgs: Record<string, unknown>, toolRuntime: ToolRuntime): Promise<void> {
+  if (typeof toolRuntime.hydrateResource !== 'function') return;
+
+  const hydratedUris = new Set<string>();
+
+  for (const [key, value] of Object.entries(rawArgs)) {
+    if (!key.toLowerCase().endsWith('resourceuri') || typeof value !== 'string' || hydratedUris.has(value)) continue;
+
+    const persisted = await readCliResource(value);
+    if (!persisted) continue;
+
+    hydratedUris.add(value);
+    await toolRuntime.hydrateResource({
+      uri: persisted.uri,
+      name: persisted.name,
+      description: persisted.description,
+      mimeType: persisted.mimeType,
+      text: persisted.text,
+    });
+  }
+}
+
+async function persistToolResources(rawResult: ToolCallResult, toolRuntime: ToolRuntime): Promise<void> {
+  if (typeof toolRuntime.readResource !== 'function') return;
+
+  const resourceLinks = rawResult.content.filter(isResourceLinkContent);
+  for (const link of resourceLinks) {
+    const contents = await toolRuntime.readResource(link.uri);
+    if (!contents) continue;
+
+    await persistCliResource({
+      descriptor: {
+        uri: link.uri,
+        name: link.name ?? link.uri,
+        description: link.description,
+        mimeType: link.mimeType,
+      },
+      contents,
+    });
+  }
+}
+
 async function handleToolList(args: string[], io: CliIo, toolRuntime: ToolRuntime): Promise<number> {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -658,7 +752,10 @@ async function handleToolCall(args: string[], io: CliIo, toolRuntime: ToolRuntim
 
   let normalized: ToolCallNormalization;
   try {
-    normalized = normalizeToolCall(toolName, await toolRuntime.callTool(toolName, parsed.rawArgs));
+    await hydratePersistedResourceArguments(parsed.rawArgs, toolRuntime);
+    const rawResult = await toolRuntime.callTool(toolName, parsed.rawArgs);
+    await persistToolResources(rawResult, toolRuntime);
+    normalized = normalizeToolCall(toolName, rawResult);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode, toolName);
@@ -679,6 +776,185 @@ async function handleToolCall(args: string[], io: CliIo, toolRuntime: ToolRuntim
   const writer = normalized.envelope.ok ? io.stdout : io.stderr;
   writeLine(writer, renderToolCallPretty(normalized.envelope));
   return exitCode;
+}
+
+function renderResourceListPretty(resources: Array<CliResourceDescriptor & { createdAtMs: number; expiresAtMs: number; sizeBytes: number }>): string {
+  if (resources.length === 0) return 'No persisted CLI resources.';
+
+  return [
+    `Persisted CLI resources (${resources.length})`,
+    ...resources.map((resource) => {
+      const extras = [resource.mimeType ?? 'text/plain', `${resource.sizeBytes} bytes`].join(' · ');
+      return `- ${resource.uri} — ${resource.name} (${extras})`;
+    }),
+  ].join('\n');
+}
+
+function parseStoredResourceValue(text: string, mimeType?: string): unknown {
+  if (!isJsonMimeType(mimeType)) return text;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+async function handleResourceList(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux resource list\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const resources = await listCliResources();
+  const payload = {
+    ok: true,
+    status: 'ok',
+    count: resources.length,
+    resources: resources.map((resource) => ({
+      ...resource,
+      persistent: true,
+    })),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderResourceListPretty(resources));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleResourceRead(args: string[], io: CliIo): Promise<number> {
+  const [uri, ...rest] = args;
+  if (!uri || uri.startsWith('-')) {
+    const parsed = parseOutputMode(args);
+    return emitFailure('validation', 'Usage: flux resource read <uri> [--json|--pretty|--raw]', io, parsed.outputMode);
+  }
+
+  const parsed = parseOutputMode(rest);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux resource read\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const resource = await readCliResource(uri);
+  if (!resource) {
+    return emitFailure('validation', `Resource not found: ${uri}`, io, parsed.outputMode);
+  }
+
+  const value = parseStoredResourceValue(resource.text, resource.mimeType);
+  const payload = {
+    ok: true,
+    status: 'ok',
+    resource: {
+      uri: resource.uri,
+      name: resource.name,
+      description: resource.description,
+      mimeType: resource.mimeType ?? 'text/plain',
+      createdAtMs: resource.createdAtMs,
+      expiresAtMs: resource.expiresAtMs,
+      sizeBytes: resource.sizeBytes,
+      persistent: true,
+    },
+    contents: {
+      text: resource.text,
+      ...(isJsonMimeType(resource.mimeType) ? { value } : {}),
+    },
+  };
+
+  if (parsed.outputMode === 'json') {
+    renderJson(io.stdout, payload);
+    return EXIT_CODE_SUCCESS;
+  }
+
+  if (parsed.outputMode === 'raw') {
+    io.stdout.write(resource.text);
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const prettyLines = [
+    `Resource: ${resource.uri}`,
+    `Name: ${resource.name}`,
+    `MIME type: ${resource.mimeType ?? 'text/plain'}`,
+    'Contents:',
+    resource.text,
+  ];
+  writeLine(io.stdout, prettyLines.join('\n'));
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleResourcePrune(args: string[], io: CliIo): Promise<number> {
+  let clearAll = false;
+  const filteredArgs: string[] = [];
+
+  for (const arg of args) {
+    if (arg === '--clear-all') {
+      clearAll = true;
+      continue;
+    }
+
+    filteredArgs.push(arg);
+  }
+
+  const parsed = parseOutputMode(filteredArgs);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux resource prune\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const payload:
+    | ({ ok: true; status: 'ok'; action: 'clearAll' } & ResourceClearResult)
+    | ({ ok: true; status: 'ok'; action: 'prune' } & ResourcePruneResult) = clearAll
+    ? { ok: true, status: 'ok', action: 'clearAll', ...(await clearCliResources()) }
+    : { ok: true, status: 'ok', action: 'prune', ...(await pruneCliResources()) };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    if (payload.action === 'clearAll') {
+      writeLine(io.stdout, `Cleared ${payload.before} persisted CLI resources.`);
+    } else {
+      writeLine(
+        io.stdout,
+        `Pruned persisted CLI resources: before=${payload.before}, after=${payload.after}, expired=${payload.removedExpired}, overflow=${payload.removedOverflow}`
+      );
+    }
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleResourceCommand(args: string[], io: CliIo): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderResourceHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+  switch (subcommand) {
+    case 'list':
+      return handleResourceList(rest, io);
+    case 'read':
+      return handleResourceRead(rest, io);
+    case 'prune':
+      return handleResourcePrune(rest, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown resource subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
 }
 
 async function handleToolCommand(args: string[], io: CliIo, toolRuntime: ToolRuntime): Promise<number> {
@@ -717,6 +993,8 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         const toolRuntime = options.toolRuntime ?? (await getDefaultToolRuntime());
         return await handleToolCommand(argv.slice(1), io, toolRuntime);
       }
+      case 'resource':
+        return await handleResourceCommand(argv.slice(1), io);
       default:
         writeLine(io.stderr, `Unknown command: ${command}`);
         writeLine(io.stderr, '');

@@ -19,6 +19,7 @@ type ToolResult = {
 type FluxMcpModule = {
   tools: FluxMcpTool[];
   callTool(name: string, rawArgs: unknown): Promise<ToolResult>;
+  hydrateResource(resource: { uri: string; name: string; description?: string; mimeType?: string; text: string }): Promise<void>;
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,5 +55,26 @@ export const defaultToolRuntime: ToolRuntime = {
   async callTool(name, rawArgs) {
     const { callTool } = await loadFluxMcpModule();
     return cloneToolResult(await callTool(name, rawArgs));
+  },
+
+  async readResource(uri) {
+    const { callTool } = await loadFluxMcpModule();
+    const result = await callTool('flux_resource_read', { uri });
+    if (result.isError) return null;
+
+    const textItem = result.content.find((item) => item.type === 'text' && typeof item.text === 'string');
+    const structured = result.structuredContent;
+    const mimeType =
+      structured && typeof structured === 'object' && !Array.isArray(structured) && typeof structured.mimeType === 'string'
+        ? structured.mimeType
+        : undefined;
+
+    if (!textItem || typeof textItem.text !== 'string') return null;
+    return { uri, mimeType, text: textItem.text };
+  },
+
+  async hydrateResource(resource) {
+    const module = await loadFluxMcpModule();
+    await module.hydrateResource(resource);
   },
 };

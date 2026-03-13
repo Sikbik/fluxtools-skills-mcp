@@ -1,3 +1,5 @@
+import { sanitizeForResource } from '../../shared-runtime/src/resources.js';
+
 type StoredResource = {
   uri: string;
   name: string;
@@ -15,63 +17,18 @@ export type ResourceDescriptor = {
   mimeType?: string;
 };
 
+export type HydratedResource = ResourceDescriptor & {
+  text: string;
+  createdAtMs?: number;
+  expiresAtMs?: number;
+};
+
 function nowMs(): number {
   return Date.now();
 }
 
 function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-const redactedValue = '<REDACTED>';
-
-function isSensitiveKey(key: string): boolean {
-  const k = key.trim().toLowerCase();
-  if (!k) return false;
-
-  const exact = new Set([
-    'zelidauth',
-    'authorization',
-    'cookie',
-    'set-cookie',
-    'signature',
-    'loginphrase',
-    'privkey',
-    'privatekey',
-    'mnemonic',
-    'seed',
-    'passphrase',
-    'password',
-  ]);
-
-  return exact.has(k);
-}
-
-function sanitizeForResource(value: unknown, seen: WeakSet<object>): unknown {
-  if (value === null || value === undefined) return value;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
-
-  if (Array.isArray(value)) {
-    const out: unknown[] = [];
-    for (const item of value) out.push(sanitizeForResource(item, seen));
-    return out;
-  }
-
-  if (typeof value === 'object') {
-    if (seen.has(value)) return '[Circular]';
-    seen.add(value);
-
-    const obj = value as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-
-    for (const [k, v] of Object.entries(obj)) {
-      out[k] = isSensitiveKey(k) ? redactedValue : sanitizeForResource(v, seen);
-    }
-
-    return out;
-  }
-
-  return String(value);
 }
 
 export type ResourcePruneResult = {
@@ -137,6 +94,35 @@ export class ResourceStore {
     return { before, after: 0, removed: before };
   }
 
+  hydrate(resource: HydratedResource): ResourceDescriptor {
+    this.prune();
+
+    const createdAtMs = Number.isFinite(resource.createdAtMs) ? Number(resource.createdAtMs) : nowMs();
+    const fallbackExpiresAtMs = createdAtMs + this.ttlMs;
+    const expiresAtMs =
+      Number.isFinite(resource.expiresAtMs) && Number(resource.expiresAtMs) > createdAtMs
+        ? Number(resource.expiresAtMs)
+        : fallbackExpiresAtMs;
+
+    this.resources.set(resource.uri, {
+      uri: resource.uri,
+      name: resource.name,
+      description: resource.description,
+      mimeType: resource.mimeType,
+      text: resource.text,
+      createdAtMs,
+      expiresAtMs,
+    });
+
+    this.prune();
+    return {
+      uri: resource.uri,
+      name: resource.name,
+      description: resource.description,
+      mimeType: resource.mimeType,
+    };
+  }
+
   size(): number {
     return this.resources.size;
   }
@@ -177,7 +163,7 @@ export class ResourceStore {
     description?: string;
     ttlMs?: number;
   }): ResourceDescriptor {
-    const sanitized = sanitizeForResource(opts.value, new WeakSet());
+    const sanitized = sanitizeForResource(opts.value);
     return this.putText({
       kind: opts.kind,
       name: opts.name,

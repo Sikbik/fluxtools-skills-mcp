@@ -20,6 +20,7 @@ import { FluxClient } from './fluxClient.js';
 import type { FluxResponseType } from './fluxClient.js';
 
 import { ResourceStore } from './resources.js';
+import type { HydratedResource } from './resources.js';
 import {
   loadEndpointInventory,
   searchRoutes,
@@ -11239,6 +11240,10 @@ export async function callTool(name: string, rawArgs: unknown) {
 
     return errorResult(err, { tool: name, hint });
   }
+}
+
+export async function hydrateResource(resource: HydratedResource) {
+  return resourceStore.hydrate(resource);
 }
 
 const server = new Server(

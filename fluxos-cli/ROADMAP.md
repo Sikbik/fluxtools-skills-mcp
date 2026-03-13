@@ -342,15 +342,15 @@ Done when:
 - CI and scripts can branch on exit codes reliably
 
 ### 2.4 Replace MCP resource assumptions
-- [ ] Define how CLI exposes `resource_link`-style outputs
-- [ ] Add command:
-  - [ ] `flux resource read <uri>`
-  - [ ] `flux resource list`
-  - [ ] `flux resource prune`
-- [ ] Decide whether resource payloads are:
+- [x] Define how CLI exposes `resource_link`-style outputs
+- [x] Add command:
+  - [x] `flux resource read <uri>`
+  - [x] `flux resource list`
+  - [x] `flux resource prune`
+- [x] Decide whether resource payloads are:
   - [ ] in-memory for one process only
-  - [ ] persisted on disk
-  - [ ] both
+  - [x] persisted on disk
+  - [x] both
 
 Done when:
 
