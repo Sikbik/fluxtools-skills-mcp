@@ -1,0 +1,15 @@
+{
+  "featureId": "m3-auth-login-status-and-logout",
+  "reviewedAt": "2026-03-13T13:27:28Z",
+  "commitId": "41d58e9052e5fe08e2d8e5c915422b5d76d62f17",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The feature adds first-class `flux auth login`, `status`, and `logout` as thin CLI adapters over the existing Flux auth tools, preserves the phrase-first login contract for missing signature material, persists auth/base-url state only after successful verification, keeps `auth status` read-only, and clears only the active profile's auth state on logout. The added auth-focused tests cover VAL-AUTH-001, VAL-AUTH-002, and VAL-AUTH-005 directly, and I did not find blocking or non-blocking issues within this slice.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Pass. I reviewed the handoff, commit diff, transcript skeleton, skill, and relevant CLI/MCP auth code for `m3-auth-login-status-and-logout`. The implementation satisfies the scoped auth login/status/logout contract and the checked validation items VAL-AUTH-001, VAL-AUTH-002, and VAL-AUTH-005 without introducing reviewable issues in this feature slice."
+}

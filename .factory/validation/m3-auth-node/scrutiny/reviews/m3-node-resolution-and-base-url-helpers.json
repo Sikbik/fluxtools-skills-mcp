@@ -1,0 +1,28 @@
+{
+  "featureId": "m3-node-resolution-and-base-url-helpers",
+  "reviewedAt": "2026-03-13T14:21:50Z",
+  "commitId": "b2ad58da0ce533e71f7dfca15a7e5c2957658eeb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking issue. The feature correctly adds first-class `flux node resolve-gateway`, `use-gateway`, and `use-base-url`, preserves the read-only gateway-resolution path, keeps failed gateway pinning from clobbering the saved base URL, and carries gateway-auth pinning through later commands when a matching cached direct-node credential exists. However, the persisted base-URL switch helper keeps the previous node's auth and enterprise material when the target URL has no cached entry, so `use-base-url`/`use-gateway` can report and reuse stale credentials for a different node. That means the per-base-url credential-adoption contract is not fully met for VAL-NODE-003, even though VAL-NODE-001, VAL-NODE-002, and VAL-CROSS-003 are otherwise covered by the implementation and tests.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/state/sessionState.ts",
+        "line": 329,
+        "severity": "blocking",
+        "description": "`switchPersistedProfileBaseUrl` falls back to `current.zelidauth` / `current.enterpriseKey` when the target base URL has no cached entry. Because all base-URL-changing paths call this helper (`fluxos-cli/src/cli.ts:959`, `968`, `1013`, `2495`), switching to an uncached node can leave the previous node's auth and enterprise credentials marked active instead of clearing them. That breaks the per-base-url credential-adoption contract for `flux node use-base-url` in VAL-NODE-003 and can mislead later direct-node commands into thinking the new base URL already has matching cached credentials."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared mission docs do not record that CLI profile state now carries per-base-url auth and enterprise-key caches, even though this feature depends on those caches for gateway pinning and direct-node reuse.",
+      "evidence": "`fluxos-cli/src/state/sessionState.ts:20-25` and `317-355` add `zelidauthByBaseUrl` / `enterpriseKeyByBaseUrl` plus base-url-switch helpers, while `.factory/library/environment.md:15-20` documents state-directory and env-backed profile rules but not the new cache semantics. `issue3.md:30-44` also shows this was a recurring discovery area (`cache zelidauth per node`)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the feature spec, validation contract scope, handoff, transcript skeleton, commit diff, CLI skill guidance, and the relevant CLI/MCP node-auth state code for `m3-node-resolution-and-base-url-helpers`. The implementation satisfies the read-only resolve-gateway flow, safe gateway pinning, and gateway-auth reuse checks overall, but a stale-credential fallback in persisted base-url switching means VAL-NODE-003 is not fully satisfied when the target URL has no matching cached credentials."
+}
