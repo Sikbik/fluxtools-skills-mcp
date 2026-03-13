@@ -156,6 +156,15 @@ type AppsGetPublicKeyParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type AppsTroubleshootParseResult =
+  | {
+      outputMode: OutputMode;
+      appname: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -206,6 +215,8 @@ Commands:
                                  List global app specs with optional owner/app/hash filters
   apps global-status [--zelid <zelid>] [--appname <name>] [--include-expired] [--limit <n>] [--json|--pretty|--raw]
                                  Correlate global registry rows with propagation signals
+  apps troubleshoot <appname> [--deep] [--json|--pretty|--raw]
+                                 Correlate registry, deployment, and runtime evidence for one app
   apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                                  [--json|--pretty|--raw]
                                  List global apps for a ZelID with expiry metadata
@@ -342,6 +353,7 @@ Usage:
   flux apps list-all [--json|--pretty|--raw]
   flux apps list-global [--owner <zelid>] [--appname <name>] [--hash <hash>] [--json|--pretty|--raw]
   flux apps global-status [--zelid <zelid>] [--appname <name>] [--include-expired] [--limit <n>] [--json|--pretty|--raw]
+  flux apps troubleshoot <appname> [--deep] [--json|--pretty|--raw]
   flux apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                     [--json|--pretty|--raw]
   flux apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]
@@ -355,6 +367,7 @@ Usage:
 
 Notes:
   - Discovery commands preserve the shared MCP selectors and defaulting behavior.
+  - \`troubleshoot\` adds suspect classifications and suggested next actions on top of MCP summaries.
   - \`by-zelid\` defaults to persisted auth ZelID when no explicit ZelID is provided.
   - \`get-spec\` reads the base spec and points enterprise apps to \`get-spec-full\`.
   - \`get-spec-full\` keeps enterprise inspection explicit; returning secrets requires
@@ -1702,6 +1715,51 @@ function parseAppsGlobalStatusArgs(args: string[]): AppsDiscoveryParseResult {
   return parsed;
 }
 
+function parseAppsTroubleshootArgs(args: string[]): AppsTroubleshootParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [{ flag: '--appname', key: 'appname' }],
+    booleanFlags: [{ flag: '--deep', key: 'deep' }],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps troubleshoot\`: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const positionalAppname = parsed.positional[0]?.trim() || null;
+  const flagAppname = typeof parsed.rawArgs.appname === 'string' && parsed.rawArgs.appname.trim()
+    ? String(parsed.rawArgs.appname).trim()
+    : null;
+
+  if (positionalAppname && flagAppname && positionalAppname !== flagAppname) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide the app name either positionally or via --appname, not both with different values.',
+    };
+  }
+
+  const appname = positionalAppname ?? flagAppname;
+  if (!appname) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux apps troubleshoot <appname> [--deep] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    appname,
+    rawArgs: {
+      ...parsed.rawArgs,
+      appname,
+    },
+    positional: [],
+  };
+}
+
 function parseAppsByZelidArgs(args: string[]): AppsByZelidParseResult {
   const parsed = parseAppsFlagArgs(args, {
     stringFlags: [{ flag: '--zelid', key: 'zelid' }],
@@ -3041,7 +3099,154 @@ function normalizeGlobalStatusItems(value: unknown): Array<Record<string, unknow
     expired: entry.expired === true,
     hasTemporary: entry.hasTemporary === true,
     hasPermanent: entry.hasPermanent === true,
+    propagationState: derivePropagationState(entry.hasTemporary === true, entry.hasPermanent === true),
   }));
+}
+
+function derivePropagationState(hasTemporary: boolean, hasPermanent: boolean): string {
+  if (hasTemporary && hasPermanent) return 'temporary_and_permanent';
+  if (hasTemporary) return 'temporary_only';
+  if (hasPermanent) return 'permanent_only';
+  return 'not_seen';
+}
+
+function deriveGlobalStatusRuntimeState(options: {
+  hasMatch: boolean;
+  locationsCount: number | null;
+  localRunningCount: number | null;
+}): string {
+  if (!options.hasMatch) return 'not_found';
+  if (typeof options.localRunningCount === 'number' && options.localRunningCount > 0) return 'running_on_current_node';
+  if (typeof options.locationsCount === 'number' && options.locationsCount > 0) return 'not_running_on_current_node';
+  return 'no_reported_locations';
+}
+
+function deriveTroubleshootRuntimeState(options: {
+  globalExists: boolean;
+  locationsCount: number;
+  localRunningCount: number;
+}): string {
+  if (!options.globalExists) return 'not_in_global_registry';
+  if (options.localRunningCount > 0) return 'running_on_this_node';
+  if (options.locationsCount > 0) return 'not_running_on_this_node';
+  return 'not_reported_anywhere';
+}
+
+function normalizeNextActionItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => ({
+    ...entry,
+    ...(asRecord(entry.arguments) ? { arguments: asRecord(entry.arguments) } : {}),
+  }));
+}
+
+function classifyTroubleshootCategory(code: string | null): string {
+  switch (code) {
+    case 'global_registry_unreachable':
+    case 'not_in_global_registry':
+      return 'registry';
+    case 'install_errors':
+    case 'installing_in_progress':
+      return 'deployment';
+    case 'no_locations':
+      return 'propagation';
+    case 'not_running_on_node':
+      return 'runtime';
+    default:
+      return 'diagnostic';
+  }
+}
+
+function normalizeTroubleshootSuspects(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => {
+    const code = asOptionalStringValue(entry.code);
+    return {
+      code,
+      title: asOptionalStringValue(entry.title),
+      severity: asOptionalStringValue(entry.severity) ?? 'low',
+      category: classifyTroubleshootCategory(code),
+      evidence: asRecord(entry.evidence) ?? {},
+    };
+  });
+}
+
+function buildGlobalStatusCorrelation(
+  summary: Record<string, unknown>,
+  resourcePayload: Record<string, unknown>,
+  items: Array<Record<string, unknown>>,
+  filters: Record<string, unknown>
+): Record<string, unknown> {
+  const appname = asOptionalStringValue(filters.appname);
+  const firstItem = items[0];
+  const locationsCount = asOptionalNumberValue(summary.locationsCount)
+    ?? asOptionalNumberValue(asRecord(resourcePayload.location)?.count);
+  const localRunningCount = asOptionalNumberValue(summary.localRunningCount)
+    ?? asOptionalNumberValue(asRecord(resourcePayload.localRuntime)?.runningCount);
+
+  return {
+    appname,
+    zelid: asOptionalStringValue(filters.zelid),
+    currentHeight: asOptionalNumberValue(resourcePayload.currentHeight),
+    locationsCount,
+    localRunningCount,
+    propagationState: firstItem
+      ? asOptionalStringValue(firstItem.propagationState) ?? derivePropagationState(firstItem.hasTemporary === true, firstItem.hasPermanent === true)
+      : appname
+        ? 'not_found'
+        : null,
+    runtimeState: appname
+      ? deriveGlobalStatusRuntimeState({
+          hasMatch: Boolean(firstItem),
+          locationsCount,
+          localRunningCount,
+        })
+      : null,
+  };
+}
+
+function buildGlobalStatusNextActions(filters: Record<string, unknown>, items: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const actions: Array<Record<string, unknown>> = [];
+  const appname = asOptionalStringValue(filters.appname);
+
+  if (appname) {
+    actions.push({ tool: 'flux_apps_troubleshoot', arguments: { appname } });
+  }
+
+  const hash = asOptionalStringValue(items[0]?.hash);
+  if (hash) {
+    actions.push({ tool: 'flux_apps_get_messages', arguments: { hash, kind: 'both' } });
+  }
+
+  return actions;
+}
+
+function buildTroubleshootCorrelation(summary: Record<string, unknown>, derived: Record<string, unknown>): Record<string, unknown> {
+  const globalExists = summary.globalExists === true || derived.globalExists === true;
+  const locationsCount = asOptionalNumberValue(summary.locationsCount) ?? asOptionalNumberValue(derived.locationCount) ?? 0;
+  const installingCount = asOptionalNumberValue(summary.installingCount) ?? asOptionalNumberValue(derived.installingCount) ?? 0;
+  const errorsCount = asOptionalNumberValue(summary.errorsCount) ?? asOptionalNumberValue(derived.errorsCount) ?? 0;
+  const localRunningCount = asOptionalNumberValue(summary.localRunningCount) ?? asOptionalNumberValue(derived.localRunningCount) ?? 0;
+
+  return {
+    globalExists,
+    locationsCount,
+    installingCount,
+    errorsCount,
+    localRunningCount,
+    runtimeState: deriveTroubleshootRuntimeState({
+      globalExists,
+      locationsCount,
+      localRunningCount,
+    }),
+    deploymentState: errorsCount > 0
+      ? 'errors_reported'
+      : installingCount > 0
+        ? 'installing'
+        : locationsCount > 0
+          ? 'deployed'
+          : globalExists
+            ? 'registered_without_locations'
+            : 'not_registered',
+  };
 }
 
 function normalizeSpecValue(value: unknown): Record<string, unknown> | null {
@@ -3114,20 +3319,77 @@ function renderAppsByZelidPretty(payload: Record<string, unknown>): string {
 function renderAppsGlobalStatusPretty(payload: Record<string, unknown>): string {
   const items = Array.isArray(payload.items) ? (payload.items as Array<Record<string, unknown>>) : [];
   const propagation = asRecord(payload.propagation) ?? {};
+  const correlation = asRecord(payload.correlation) ?? {};
+  const nextActions = normalizeNextActionItems(payload.nextActions);
   const lines = [
     `Global status (${items.length})`,
     `Propagation: temp=${String(propagation.tempYes ?? 0)} · perm=${String(propagation.permYes ?? 0)} · both=${String(propagation.both ?? 0)} · neither=${String(propagation.neither ?? 0)}`,
   ];
 
+  if (asOptionalStringValue(correlation.appname)) {
+    lines.push(
+      `Correlation: app=${asOptionalStringValue(correlation.appname) ?? '<unknown>'} · propagation=${asOptionalStringValue(correlation.propagationState) ?? '-'} · runtime=${asOptionalStringValue(correlation.runtimeState) ?? '-'} · locations=${String(correlation.locationsCount ?? '-')} · localRunning=${String(correlation.localRunningCount ?? '-')}`
+    );
+  }
+
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    lines.push(`Error: ${payload.error}`);
+  }
+
   if (items.length === 0) {
     lines.push('No matching apps.');
+    if (nextActions.length > 0) {
+      lines.push('Next actions:');
+      for (const action of nextActions) lines.push(`- ${JSON.stringify(action)}`);
+    }
     return lines.join('\n');
   }
 
   for (const item of items) {
     lines.push(
-      `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · hash=${asOptionalStringValue(item.hash) ?? '-'} · temp=${item.hasTemporary === true ? 'yes' : 'no'} · perm=${item.hasPermanent === true ? 'yes' : 'no'}`
+      `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · hash=${asOptionalStringValue(item.hash) ?? '-'} · propagation=${asOptionalStringValue(item.propagationState) ?? '-'} · temp=${item.hasTemporary === true ? 'yes' : 'no'} · perm=${item.hasPermanent === true ? 'yes' : 'no'}`
     );
+  }
+
+  if (nextActions.length > 0) {
+    lines.push('Next actions:');
+    for (const action of nextActions) lines.push(`- ${JSON.stringify(action)}`);
+  }
+
+  return lines.join('\n');
+}
+
+function renderAppsTroubleshootPretty(payload: Record<string, unknown>): string {
+  const appname = asOptionalStringValue(payload.appname) ?? '<unknown>';
+  const correlation = asRecord(payload.correlation) ?? {};
+  const suspects = normalizeTroubleshootSuspects(payload.suspects);
+  const nextActions = normalizeNextActionItems(payload.nextActions);
+
+  const lines = [
+    `Troubleshoot ${appname}`,
+    `Status: ${typeof payload.status === 'string' || typeof payload.status === 'number' ? String(payload.status) : 'unknown'}`,
+    `Correlation: global=${correlation.globalExists === true ? 'yes' : 'no'} · locations=${String(correlation.locationsCount ?? 0)} · installing=${String(correlation.installingCount ?? 0)} · errors=${String(correlation.errorsCount ?? 0)} · localRunning=${String(correlation.localRunningCount ?? 0)} · runtime=${asOptionalStringValue(correlation.runtimeState) ?? '-'}`,
+  ];
+
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    lines.push(`Error: ${payload.error}`);
+  }
+
+  if (suspects.length === 0) {
+    lines.push('No suspects identified.');
+  } else {
+    lines.push(`Top suspect: ${asOptionalStringValue(suspects[0]?.code) ?? '<unknown>'}`);
+    lines.push('Suspects:');
+    for (const suspect of suspects) {
+      lines.push(
+        `- ${asOptionalStringValue(suspect.code) ?? '<unknown>'} · category=${asOptionalStringValue(suspect.category) ?? 'diagnostic'} · severity=${asOptionalStringValue(suspect.severity) ?? 'low'} · ${asOptionalStringValue(suspect.title) ?? 'No title provided'}`
+      );
+    }
+  }
+
+  if (nextActions.length > 0) {
+    lines.push('Next actions:');
+    for (const action of nextActions) lines.push(`- ${JSON.stringify(action)}`);
   }
 
   return lines.join('\n');
@@ -3342,23 +3604,30 @@ async function handleAppsGlobalStatus(
     return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
   }
 
-  if (!normalized.envelope.ok) {
-    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read global app status.', io, parsed.outputMode);
-  }
-
   const summary = asRecord(normalized.envelope.result) ?? {};
   const resourcePayload = asRecord(await readPersistedResourceValue(normalized.envelope.resourceUri)) ?? {};
   const computed = normalizeGlobalStatusItems(resourcePayload.computed ?? resourcePayload.apps);
+  const filters = {
+    zelid: asOptionalStringValue(summary.zelid),
+    appname: asOptionalStringValue(summary.appname),
+    includeExpired: parsed.rawArgs.includeExpired === true,
+    limit: typeof parsed.rawArgs.limit === 'number' ? parsed.rawArgs.limit : 50,
+  };
+  const correlation = buildGlobalStatusCorrelation(summary, resourcePayload, computed, filters);
+  const nextActions = buildGlobalStatusNextActions(filters, computed);
   const payload = {
     ...summary,
-    ok: true,
-    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
-    filters: {
-      zelid: asOptionalStringValue(summary.zelid),
-      appname: asOptionalStringValue(summary.appname),
-      includeExpired: parsed.rawArgs.includeExpired === true,
-      limit: typeof parsed.rawArgs.limit === 'number' ? parsed.rawArgs.limit : 50,
-    },
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok
+      ? typeof summary.status === 'string' || typeof summary.status === 'number'
+        ? summary.status
+        : 'ok'
+      : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    currentHeight: asOptionalNumberValue(resourcePayload.currentHeight),
+    filters,
+    correlation,
+    nextActions,
     items: computed,
   };
 
@@ -3368,7 +3637,62 @@ async function handleAppsGlobalStatus(
     writeLine(io.stdout, renderAppsGlobalStatusPretty(payload));
   }
 
-  return EXIT_CODE_SUCCESS;
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsTroubleshoot(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsTroubleshootArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_troubleshoot', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = asRecord(await readPersistedResourceValue(normalized.envelope.resourceUri)) ?? {};
+  const derived = asRecord(resourcePayload.derived) ?? {};
+  const suspects = normalizeTroubleshootSuspects(derived.suspects ?? summary.suspects);
+  const nextActions = normalizeNextActionItems(summary.nextActions ?? derived.nextActions ?? normalized.envelope.nextActions);
+  const correlation = buildTroubleshootCorrelation(summary, derived);
+  const health = asRecord(resourcePayload.health);
+
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok
+      ? typeof summary.status === 'string' || typeof summary.status === 'number'
+        ? summary.status
+        : 'ok'
+      : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: parsed.appname,
+    deep: parsed.rawArgs.deep === true,
+    correlation,
+    suspectCount: suspects.length,
+    ...(suspects[0] ? { topSuspect: suspects[0] } : {}),
+    suspects,
+    nextActions,
+    ...(health ? { health } : {}),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsTroubleshootPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
 }
 
 async function handleAppsByZelid(
@@ -3721,6 +4045,8 @@ async function handleAppsCommand(
       return handleAppsListGlobal(rest, io, toolRuntime, mode);
     case 'global-status':
       return handleAppsGlobalStatus(rest, io, toolRuntime, mode);
+    case 'troubleshoot':
+      return handleAppsTroubleshoot(rest, io, toolRuntime, mode);
     case 'by-zelid':
       return handleAppsByZelid(rest, io, toolRuntime, mode);
     case 'get-spec':

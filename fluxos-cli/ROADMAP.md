@@ -477,7 +477,7 @@ Done when:
 - lifecycle actions are shell-friendly and safe
 
 ### 5.3 Add app troubleshooting commands
-- [ ] `flux apps troubleshoot`
+- [x] `flux apps troubleshoot`
 - [ ] `flux apps health`
 - [ ] `flux apps logs`
 - [ ] `flux apps inspect`

@@ -294,6 +294,72 @@ function createFakeAppsToolRuntime(): ToolRuntime {
             '| App | Temp? | Perm? |\n| --- | --- | --- |\n| alpha | yes | no |'
           );
         }
+        case 'flux_apps_troubleshoot': {
+          const appname = String(args.appname);
+          const resourceUri = `flux://resource/apps/troubleshoot/${appname}`;
+          const suspects = [
+            {
+              code: 'install_errors',
+              title: 'Install errors reported by locations endpoint',
+              severity: 'high',
+              evidence: { errorsCount: 1 },
+            },
+            {
+              code: 'not_running_on_node',
+              title: 'App not running on this node (but has locations)',
+              severity: 'low',
+              evidence: { locationCount: 2 },
+            },
+          ];
+          const nextActions = [
+            { tool: 'flux_apps_get_spec', arguments: { appname } },
+            { tool: 'flux_apps_get_owner', arguments: { appname } },
+            { tool: 'flux_apps_troubleshoot', arguments: { appname, deep: true } },
+          ];
+
+          setJsonResource(resourceUri, {
+            appname,
+            global: createFluxRequestResult([{ name: appname }]),
+            location: createFluxRequestResult([{ ip: '10.0.0.2' }, { ip: '10.0.0.3' }]),
+            installing: createFluxRequestResult([{ ip: '10.0.0.4' }]),
+            errors: createFluxRequestResult([{ ip: '10.0.0.5', error: 'container failed' }]),
+            runningLocal: createFluxRequestResult([]),
+            health: args.deep === true ? { inspect: createFluxRequestResult({ status: 'missing' }) } : null,
+            derived: {
+              globalExists: true,
+              locationCount: 2,
+              installingCount: 1,
+              errorsCount: 1,
+              localRunningCount: 0,
+              suspects,
+              nextActions,
+            },
+          });
+
+          return jsonResultWithResource(
+            {
+              ok: true,
+              status: 'install_errors',
+              appname,
+              deep: args.deep === true,
+              globalOk: true,
+              globalExists: true,
+              locationOk: true,
+              locationsCount: 2,
+              installingOk: true,
+              installingCount: 1,
+              errorsOk: true,
+              errorsCount: 1,
+              localRunningCount: 0,
+              suspects,
+              nextActions,
+              resourceUri,
+            },
+            resourceUri,
+            false,
+            JSON.stringify({ appname, suspects, nextActions }, null, 2)
+          );
+        }
         case 'flux_apps_get_spec': {
           const appname = String(args.appname);
           const resourceUri = `flux://resource/apps/spec/${appname}`;
@@ -618,6 +684,94 @@ describe.sequential('apps discovery and spec readers', () => {
       propagation: { tempYes: 1, permYes: 0, both: 0, neither: 0 },
       items: [{ name: 'alpha', hash: 'hash-a', hasTemporary: true, hasPermanent: false }],
     });
+  });
+
+  it('correlates global-status and troubleshoot evidence into deterministic summaries', async () => {
+    const toolRuntime = createFakeAppsToolRuntime();
+
+    const globalStatus = await invokeCli(['apps', 'global-status', '--appname', 'alpha', '--json'], {
+      toolRuntime,
+      persistedStateMode: 'on',
+    });
+
+    expect(globalStatus.exitCode).toBe(0);
+    const globalStatusPayload = JSON.parse(globalStatus.stdout) as Record<string, unknown>;
+    expect(globalStatusPayload).toMatchObject({
+      ok: true,
+      currentHeight: 105,
+      correlation: {
+        appname: 'alpha',
+        locationsCount: 2,
+        localRunningCount: 1,
+        propagationState: 'temporary_only',
+        runtimeState: 'running_on_current_node',
+      },
+      items: [{ name: 'alpha', propagationState: 'temporary_only' }],
+    });
+    expect(globalStatusPayload.nextActions).toEqual(
+      expect.arrayContaining([{ tool: 'flux_apps_troubleshoot', arguments: { appname: 'alpha' } }])
+    );
+
+    const troubleshoot = await invokeCli(['apps', 'troubleshoot', 'alpha', '--json'], {
+      toolRuntime,
+      persistedStateMode: 'on',
+    });
+
+    expect(troubleshoot.exitCode).toBe(0);
+    const troubleshootPayload = JSON.parse(troubleshoot.stdout) as Record<string, unknown>;
+    expect(troubleshootPayload).toMatchObject({
+      ok: true,
+      appname: 'alpha',
+      deep: false,
+      correlation: {
+        globalExists: true,
+        locationsCount: 2,
+        installingCount: 1,
+        errorsCount: 1,
+        localRunningCount: 0,
+        runtimeState: 'not_running_on_this_node',
+      },
+    });
+    expect(troubleshootPayload.suspects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'install_errors',
+          category: 'deployment',
+          severity: 'high',
+        }),
+      ])
+    );
+    expect(troubleshootPayload.nextActions).toEqual(
+      expect.arrayContaining([
+        { tool: 'flux_apps_get_spec', arguments: { appname: 'alpha' } },
+        { tool: 'flux_apps_get_owner', arguments: { appname: 'alpha' } },
+      ])
+    );
+  });
+
+  it('validates troubleshoot usage and renders pretty guidance', async () => {
+    const toolRuntime = createFakeAppsToolRuntime();
+
+    const invalid = await invokeCli(['apps', 'troubleshoot', '--json'], {
+      toolRuntime,
+      persistedStateMode: 'on',
+    });
+
+    expect(invalid.exitCode).toBe(2);
+    expect(JSON.parse(invalid.stdout)).toMatchObject({
+      ok: false,
+      status: 'validation_error',
+    });
+
+    const pretty = await invokeCli(['apps', 'troubleshoot', 'alpha', '--pretty'], {
+      toolRuntime,
+      persistedStateMode: 'on',
+    });
+
+    expect(pretty.exitCode).toBe(0);
+    expect(pretty.stdout).toContain('Troubleshoot alpha');
+    expect(pretty.stdout).toContain('Top suspect: install_errors');
+    expect(pretty.stdout).toContain('flux_apps_get_spec');
   });
 
   it('defaults by-zelid to persisted auth and normalizes supporting metadata surfaces', async () => {
