@@ -1,0 +1,53 @@
+{
+  "milestone": "m2-state",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix /home/stache/projects/flux-skills/flux-mcp test -- --maxWorkers=12 && npm --prefix /home/stache/projects/flux-skills/fluxos-cli test -- --maxWorkers=12",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix /home/stache/projects/flux-skills/flux-mcp run build && npm --prefix /home/stache/projects/flux-skills/fluxos-cli run build",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"No lint command is configured for this repo yet\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "m2-persistent-state-model-and-visibility",
+      "m2-profile-management-and-isolation"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m2-persistent-state-model-and-visibility",
+      "severity": "blocking",
+      "description": "fluxos-cli/src/state/sessionState.ts only seeds and reports persisted snapshot data, while env-backed FLUX_ZELIDAUTH, FLUX_ENTERPRISE_KEY, FLUXDRIVE_MWS_BASE_URL, and FLUX_HTTP_* values still affect the live runtime; as a result, flux state show and flux state clear do not reflect or reset the effective session in configured environments."
+    },
+    {
+      "featureId": "m2-profile-management-and-isolation",
+      "severity": "blocking",
+      "description": "fluxos-cli/src/cli.ts hydratePersistedSessionState only reapplies explicitly persisted values, so profile switching does not isolate env-backed auth, enterprise-key, FluxDrive, and HTTP-default state; fresh profiles can report one bundle in profile list/state show while flux_get_state still uses the shared env-backed bundle."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/environment.md to record that persisted fluxos-cli session state, profile state, and the CLI resource store all use the same FLUXOS_CLI_STATE_DIR / XDG_STATE_HOME / ~/.local/state/fluxos-cli policy.",
+      "sourceFeature": "m2-persistent-state-model-and-visibility"
+    }
+  ],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": null
+}
