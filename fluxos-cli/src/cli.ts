@@ -216,6 +216,29 @@ type AppsSpecInputParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type AppsSubmissionInputSource = AppsSpecInputSource | {
+  kind: 'plan';
+  value: string;
+};
+
+type AppsSubmissionParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      submissionSource: AppsSubmissionInputSource;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsHashParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      hash: string;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 type AppsPlanRenewParseResult =
   | {
       outputMode: OutputMode;
@@ -322,6 +345,29 @@ Commands:
   apps plan-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
                    [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
                                  Build update planning metadata, payment guidance, and signing artifacts
+  apps register (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                --signature <sig> [--timestamp <ms>] [--type-version <n>] [--verify-first|--no-verify-first]
+                [--json|--pretty|--raw]
+                                 Submit an app registration with explicit auth gating and status output
+  apps update (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+              --signature <sig> [--timestamp <ms>] [--type-version <n>] [--verify-first|--no-verify-first]
+              [--include-payment|--no-include-payment] [--json|--pretty|--raw]
+                                 Submit an app update with explicit auth gating and status output
+  apps register-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                           --signature <sig> [--timestamp <ms>] [--type-version <n>] [--attempts <n>]
+                           [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-first|--no-verify-first]
+                           [--verify-global|--no-verify-global] [--poll|--no-poll] [--confirm] [--json|--pretty|--raw]
+                                 Submit a registration and report explicit propagation/verification states
+  apps update-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                         --signature <sig> [--timestamp <ms>] [--type-version <n>] [--attempts <n>]
+                         [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-first|--no-verify-first]
+                         [--verify-global|--no-verify-global] [--poll|--no-poll]
+                         [--include-payment|--no-include-payment] [--confirm] [--json|--pretty|--raw]
+                                 Submit an update and report explicit propagation/verification states
+  apps wait-propagation <hash> [--attempts <n>] [--interval-ms <ms>] [--timeout-ms <ms>] [--json|--pretty|--raw]
+                                 Poll message propagation and report pending/temporary/permanent status
+  apps messages <hash> [--kind temporary|permanent|both] [--json|--pretty|--raw]
+                                 Read propagation messages and summarize pending/temporary/permanent state
   apps plan-renew <appname> [--owner <zelid>] [--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>]
                   [--weeks <n>] [--blocks-to-add <n>] [--mode <from_now|add_to_remaining>]
                   [--blocks-per-week <n>] [--seconds-per-block <n>] [--timestamp <ms>] [--type-version <n>]
@@ -492,6 +538,23 @@ Usage:
                               [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
   flux apps plan-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
                         [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
+  flux apps register (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                     --signature <sig> [--timestamp <ms>] [--type-version <n>] [--verify-first|--no-verify-first]
+                     [--json|--pretty|--raw]
+  flux apps update (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                   --signature <sig> [--timestamp <ms>] [--type-version <n>] [--verify-first|--no-verify-first]
+                   [--include-payment|--no-include-payment] [--json|--pretty|--raw]
+  flux apps register-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                                --signature <sig> [--timestamp <ms>] [--type-version <n>] [--attempts <n>]
+                                [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-first|--no-verify-first]
+                                [--verify-global|--no-verify-global] [--poll|--no-poll] [--confirm] [--json|--pretty|--raw]
+  flux apps update-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                              --signature <sig> [--timestamp <ms>] [--type-version <n>] [--attempts <n>]
+                              [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-first|--no-verify-first]
+                              [--verify-global|--no-verify-global] [--poll|--no-poll]
+                              [--include-payment|--no-include-payment] [--confirm] [--json|--pretty|--raw]
+  flux apps wait-propagation <hash> [--attempts <n>] [--interval-ms <ms>] [--timeout-ms <ms>] [--json|--pretty|--raw]
+  flux apps messages <hash> [--kind temporary|permanent|both] [--json|--pretty|--raw]
   flux apps plan-renew <appname> [--owner <zelid>] [--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>]
                        [--weeks <n>] [--blocks-to-add <n>] [--mode <from_now|add_to_remaining>]
                        [--blocks-per-week <n>] [--seconds-per-block <n>] [--timestamp <ms>] [--type-version <n>]
@@ -507,6 +570,12 @@ Usage:
   flux apps registration-information [--json|--pretty|--raw]
   flux apps deployment-information [--json|--pretty|--raw]
   flux apps test-install <hash> [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]
+  flux apps register (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+  flux apps update (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+  flux apps register-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+  flux apps update-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+  flux apps wait-propagation <hash> [--attempts <n>] [--interval-ms <ms>] [--timeout-ms <ms>] [--json|--pretty|--raw]
+  flux apps messages <hash> [--kind temporary|permanent|both] [--json|--pretty|--raw]
 
 Notes:
   - Discovery commands preserve the shared MCP selectors and defaulting behavior.
@@ -517,6 +586,8 @@ Notes:
   - \`exec\` and \`test-install\` preserve explicit status fields instead of relying on HTTP status alone.
   - Deployment planning commands accept spec JSON, files, or prior CLI resource artifacts.
   - \`generate-spec\`, verification, pricing, and planning commands return stable metadata plus reusable artifacts.
+  - Submission commands can reuse plan artifacts via \`--plan-resource-uri\` and keep auth/confirm gating explicit.
+  - \`register-and-verify\`, \`update-and-verify\`, \`wait-propagation\`, and \`messages\` expose explicit workflow statuses.
   - \`plan-renew\` surfaces expiry calculations and enterprise caveats explicitly when a full renewable spec is unavailable.
   - \`by-zelid\` defaults to persisted auth ZelID when no explicit ZelID is provided.
   - \`get-spec\` reads the base spec and points enterprise apps to \`get-spec-full\`.
@@ -2435,6 +2506,251 @@ function parseAppsPlanUpdateArgs(args: string[]): AppsSpecInputParseResult {
   return parsed;
 }
 
+function resolveAppsSubmissionInputSource(
+  rawArgs: Record<string, unknown>,
+  outputMode: OutputMode,
+  usage: string
+): AppsSubmissionInputSource | { outputMode: OutputMode; error: string } {
+  const plan = typeof rawArgs.planResourceUri === 'string' && rawArgs.planResourceUri.trim()
+    ? ({ kind: 'plan', value: rawArgs.planResourceUri.trim() } satisfies AppsSubmissionInputSource)
+    : null;
+  const specSource = resolveAppsSpecInputSource(rawArgs, outputMode, usage, { optional: true });
+  if ('error' in specSource) return specSource;
+
+  const provided = [
+    plan,
+    specSource.value ? specSource : null,
+  ].filter((entry): entry is AppsSubmissionInputSource => entry !== null);
+
+  if (provided.length > 1) {
+    return {
+      outputMode,
+      error: 'Provide exactly one of --plan-resource-uri, --spec-file, --spec-json, or --spec-resource-uri.',
+    };
+  }
+
+  if (provided.length === 0) {
+    return {
+      outputMode,
+      error: usage,
+    };
+  }
+
+  return provided[0];
+}
+
+function parseAppsSubmissionArgs(
+  args: string[],
+  options: {
+    command: string;
+    usage: string;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): AppsSubmissionParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--plan-resource-uri', key: 'planResourceUri' },
+      { flag: '--spec-file', key: 'specFile' },
+      { flag: '--spec-json', key: 'specJson' },
+      { flag: '--spec-resource-uri', key: 'specResourceUri' },
+      { flag: '--signature', key: 'signature' },
+    ],
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps ${options.command}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  const submissionSource = resolveAppsSubmissionInputSource(parsed.rawArgs, parsed.outputMode, options.usage);
+  if ('error' in submissionSource) return submissionSource;
+
+  const signature = typeof parsed.rawArgs.signature === 'string' ? parsed.rawArgs.signature.trim() : '';
+  if (!signature) {
+    return {
+      outputMode: parsed.outputMode,
+      error: options.usage,
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      signature,
+    },
+    submissionSource,
+    positional: [],
+  };
+}
+
+function parseAppsRegisterArgs(args: string[]): AppsSubmissionParseResult {
+  const usage =
+    'Usage: flux apps register (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) --signature <sig> [--timestamp <ms>] [--type-version <n>] [--verify-first|--no-verify-first] [--json|--pretty|--raw]';
+  return parseAppsSubmissionArgs(args, {
+    command: 'register',
+    usage,
+    integerFlags: [
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+    ],
+    booleanFlags: [
+      { flag: '--verify-first', key: 'verifyFirst', value: true },
+      { flag: '--no-verify-first', key: 'verifyFirst', value: false },
+    ],
+  });
+}
+
+function parseAppsUpdateArgs(args: string[]): AppsSubmissionParseResult {
+  const usage =
+    'Usage: flux apps update (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) --signature <sig> [--timestamp <ms>] [--type-version <n>] [--verify-first|--no-verify-first] [--include-payment|--no-include-payment] [--json|--pretty|--raw]';
+  return parseAppsSubmissionArgs(args, {
+    command: 'update',
+    usage,
+    integerFlags: [
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+    ],
+    booleanFlags: [
+      { flag: '--verify-first', key: 'verifyFirst', value: true },
+      { flag: '--no-verify-first', key: 'verifyFirst', value: false },
+      { flag: '--include-payment', key: 'includePayment', value: true },
+      { flag: '--no-include-payment', key: 'includePayment', value: false },
+    ],
+  });
+}
+
+function parseAppsRegisterAndVerifyArgs(args: string[]): AppsSubmissionParseResult {
+  const usage =
+    'Usage: flux apps register-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) --signature <sig> [--timestamp <ms>] [--type-version <n>] [--attempts <n>] [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-first|--no-verify-first] [--verify-global|--no-verify-global] [--poll|--no-poll] [--confirm] [--json|--pretty|--raw]';
+  return parseAppsSubmissionArgs(args, {
+    command: 'register-and-verify',
+    usage,
+    integerFlags: [
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+      { flag: '--attempts', key: 'attempts', min: 1 },
+      { flag: '--interval-ms', key: 'intervalMs', min: 0 },
+      { flag: '--poll-timeout-ms', key: 'pollTimeoutMs', min: 1 },
+    ],
+    booleanFlags: [
+      { flag: '--verify-first', key: 'verifyFirst', value: true },
+      { flag: '--no-verify-first', key: 'verifyFirst', value: false },
+      { flag: '--verify-global', key: 'verifyGlobal', value: true },
+      { flag: '--no-verify-global', key: 'verifyGlobal', value: false },
+      { flag: '--poll', key: 'poll', value: true },
+      { flag: '--no-poll', key: 'poll', value: false },
+      { flag: '--confirm', key: 'confirm', value: true },
+    ],
+  });
+}
+
+function parseAppsUpdateAndVerifyArgs(args: string[]): AppsSubmissionParseResult {
+  const usage =
+    'Usage: flux apps update-and-verify (--plan-resource-uri <uri> | --spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) --signature <sig> [--timestamp <ms>] [--type-version <n>] [--attempts <n>] [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-first|--no-verify-first] [--verify-global|--no-verify-global] [--poll|--no-poll] [--include-payment|--no-include-payment] [--confirm] [--json|--pretty|--raw]';
+  return parseAppsSubmissionArgs(args, {
+    command: 'update-and-verify',
+    usage,
+    integerFlags: [
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+      { flag: '--attempts', key: 'attempts', min: 1 },
+      { flag: '--interval-ms', key: 'intervalMs', min: 0 },
+      { flag: '--poll-timeout-ms', key: 'pollTimeoutMs', min: 1 },
+    ],
+    booleanFlags: [
+      { flag: '--verify-first', key: 'verifyFirst', value: true },
+      { flag: '--no-verify-first', key: 'verifyFirst', value: false },
+      { flag: '--verify-global', key: 'verifyGlobal', value: true },
+      { flag: '--no-verify-global', key: 'verifyGlobal', value: false },
+      { flag: '--poll', key: 'poll', value: true },
+      { flag: '--no-poll', key: 'poll', value: false },
+      { flag: '--include-payment', key: 'includePayment', value: true },
+      { flag: '--no-include-payment', key: 'includePayment', value: false },
+      { flag: '--confirm', key: 'confirm', value: true },
+    ],
+  });
+}
+
+function parseAppsHashArgs(
+  args: string[],
+  options: {
+    command: string;
+    usage: string;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    stringFlags?: Array<{ flag: string; key: string; repeatable?: boolean }>;
+  }
+): AppsHashParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [{ flag: '--hash', key: 'hash' }, ...(options.stringFlags ?? [])],
+    integerFlags: options.integerFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps ${options.command}\`: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const positionalHash = parsed.positional[0]?.trim() || null;
+  const flagHash = typeof parsed.rawArgs.hash === 'string' && parsed.rawArgs.hash.trim()
+    ? String(parsed.rawArgs.hash).trim()
+    : null;
+
+  if (positionalHash && flagHash && positionalHash !== flagHash) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide the message hash either positionally or via --hash, not both with different values.',
+    };
+  }
+
+  const hash = positionalHash ?? flagHash;
+  if (!hash) {
+    return {
+      outputMode: parsed.outputMode,
+      error: options.usage,
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      hash,
+    },
+    hash,
+    positional: [],
+  };
+}
+
+function parseAppsWaitPropagationArgs(args: string[]): AppsHashParseResult {
+  return parseAppsHashArgs(args, {
+    command: 'wait-propagation',
+    usage: 'Usage: flux apps wait-propagation <hash> [--attempts <n>] [--interval-ms <ms>] [--timeout-ms <ms>] [--json|--pretty|--raw]',
+    integerFlags: [
+      { flag: '--attempts', key: 'attempts', min: 1 },
+      { flag: '--interval-ms', key: 'intervalMs', min: 0 },
+      { flag: '--timeout-ms', key: 'timeoutMs', min: 1 },
+    ],
+  });
+}
+
+function parseAppsMessagesArgs(args: string[]): AppsHashParseResult {
+  return parseAppsHashArgs(args, {
+    command: 'messages',
+    usage: 'Usage: flux apps messages <hash> [--kind temporary|permanent|both] [--json|--pretty|--raw]',
+    stringFlags: [{ flag: '--kind', key: 'kind' }],
+  });
+}
+
 function parseAppsPlanRenewArgs(args: string[]): AppsPlanRenewParseResult {
   const parsed = parseAppsFlagArgs(args, {
     stringFlags: [
@@ -3824,11 +4140,87 @@ async function loadSpecFromSource(specSource: AppsSpecInputSource): Promise<Reco
   return spec;
 }
 
+async function loadSubmissionMaterial(
+  source: AppsSubmissionInputSource
+): Promise<{
+  spec: Record<string, unknown>;
+  timestamp: number | null;
+  typeVersion: number | null;
+  requiresAuth: boolean | null;
+  messageToSignResourceUri: string | null;
+  payment: Record<string, unknown> | null;
+  verifiedSpec: Record<string, unknown> | null;
+  source: 'plan' | 'spec';
+  planResourceUri: string | null;
+}> {
+  if (source.kind !== 'plan') {
+    return {
+      spec: await loadSpecFromSource(source),
+      timestamp: null,
+      typeVersion: null,
+      requiresAuth: null,
+      messageToSignResourceUri: null,
+      payment: null,
+      verifiedSpec: null,
+      source: 'spec',
+      planResourceUri: null,
+    };
+  }
+
+  const resourceValue = await readPersistedResourceValue(source.value);
+  if (resourceValue === null) {
+    throw new Error(`Resource not found: ${source.value}`);
+  }
+
+  const resourceRecord = normalizePlanningResourceRecord(resourceValue);
+  const verifiedSpec = unwrapSpecCandidate(resourceRecord.verified);
+  const payloadSpec = asRecord(unwrapFluxPayloadFromValue(resourceRecord.payload))?.appSpecification;
+  const spec = verifiedSpec
+    ?? normalizeSpecValue(payloadSpec)
+    ?? unwrapSpecCandidate(resourceRecord);
+
+  if (!spec) {
+    throw new Error(`Plan resource ${source.value} did not contain a reusable app spec.`);
+  }
+
+  return {
+    spec,
+    timestamp: asOptionalIntegerValue(resourceRecord.timestamp),
+    typeVersion: asOptionalIntegerValue(resourceRecord.typeVersion),
+    requiresAuth: asOptionalBooleanValue(resourceRecord.requiresAuth),
+    messageToSignResourceUri: asOptionalStringValue(resourceRecord.messageToSignResourceUri),
+    payment: normalizeSpecValue(resourceRecord.payment),
+    verifiedSpec,
+    source: 'plan',
+    planResourceUri: source.value,
+  };
+}
+
 function extractAppIdentityFromSpec(spec: Record<string, unknown>): { appname: string | null; owner: string | null } {
   return {
     appname: asOptionalStringValue(spec.name),
     owner: asOptionalStringValue(spec.owner),
   };
+}
+
+function hasNonEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function normalizePropagationState(temporaryPresent: boolean, permanentPresent: boolean): 'pending' | 'temporary' | 'permanent' {
+  if (permanentPresent) return 'permanent';
+  if (temporaryPresent) return 'temporary';
+  return 'pending';
+}
+
+function countFluxPayloadItems(value: unknown): number {
+  const payload = unwrapFluxPayloadFromValue(value);
+  if (Array.isArray(payload)) return payload.length;
+  return hasNonEmptyValue(payload) ? 1 : 0;
 }
 
 function extractFluxAmountFromValue(value: unknown): number | null {
@@ -4714,6 +5106,30 @@ function renderAppsPlanPretty(payload: Record<string, unknown>): string {
     `Requires auth: ${payload.requiresAuth === true ? 'yes' : 'no'}`,
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
     `Message resource: ${asOptionalStringValue(payload.messageToSignResourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsSubmissionPretty(payload: Record<string, unknown>): string {
+  return [
+    `${formatOperationLabel(asOptionalStringValue(payload.operation))} ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Owner: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`,
+    `Hash: ${asOptionalStringValue(payload.hash) ?? '<none>'}`,
+    `Source: ${asOptionalStringValue(payload.source) ?? '-'}`,
+    `Plan resource: ${asOptionalStringValue(payload.planResourceUri) ?? '<none>'}`,
+    `Message resource: ${asOptionalStringValue(payload.messageToSignResourceUri) ?? '<none>'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsPropagationPretty(payload: Record<string, unknown>): string {
+  return [
+    `${asOptionalStringValue(payload.operation) === 'messages' ? 'Messages' : 'Wait propagation'} ${asOptionalStringValue(payload.hash) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Kind: ${asOptionalStringValue(payload.kind) ?? 'both'}`,
+    `Temporary present: ${String(payload.temporaryPresent === true)}`,
+    `Permanent present: ${String(payload.permanentPresent === true)}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
   ].join('\n');
 }
 
@@ -6207,6 +6623,352 @@ async function handleAppsPlanUpdate(
   });
 }
 
+async function handleAppsSubmissionCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    operation: 'register' | 'update';
+    toolName: 'flux_apps_register' | 'flux_apps_update';
+    parse: (args: string[]) => AppsSubmissionParseResult;
+  }
+): Promise<number> {
+  const parsed = options.parse(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let submission;
+  try {
+    submission = await loadSubmissionMaterial(parsed.submissionSource);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const timestamp = typeof parsed.rawArgs.timestamp === 'number' ? parsed.rawArgs.timestamp : submission.timestamp;
+  if (!timestamp) {
+    return emitFailure('validation', 'A timestamp is required; provide one directly or use a plan resource that includes it.', io, parsed.outputMode);
+  }
+
+  const typeVersion = typeof parsed.rawArgs.typeVersion === 'number' ? parsed.rawArgs.typeVersion : submission.typeVersion ?? 1;
+  const verifyFirst = typeof parsed.rawArgs.verifyFirst === 'boolean'
+    ? parsed.rawArgs.verifyFirst
+    : submission.source === 'plan'
+      ? false
+      : true;
+  const includePayment = options.operation === 'update'
+    ? typeof parsed.rawArgs.includePayment === 'boolean'
+      ? parsed.rawArgs.includePayment
+      : true
+    : undefined;
+
+  const toolArgs: Record<string, unknown> = {
+    spec: submission.spec,
+    signature: parsed.rawArgs.signature,
+    timestamp,
+    typeVersion,
+    verifyFirst,
+    ...(options.operation === 'update' && includePayment !== undefined ? { includePayment } : {}),
+  };
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, toolArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const identity = extractAppIdentityFromSpec(submission.spec);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: asOptionalStringValue(summary.status)
+      ?? (normalized.envelope.ok ? 'submitted' : failureStatus(normalized.failureKind ?? 'flux')),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: options.operation,
+    appname: asOptionalStringValue(summary.appname) ?? identity.appname,
+    owner: asOptionalStringValue(summary.owner) ?? identity.owner,
+    hash: asOptionalStringValue(summary.hash),
+    timestamp,
+    typeVersion,
+    verifyFirst,
+    ...(options.operation === 'update' ? { includePayment: includePayment === true } : {}),
+    requiresAuth: submission.requiresAuth,
+    source: submission.source,
+    planResourceUri: submission.planResourceUri,
+    messageToSignResourceUri: asOptionalStringValue(summary.messageToSignResourceUri) ?? submission.messageToSignResourceUri,
+    payment: normalizeSpecValue(summary.payment) ?? submission.payment,
+    verifiedSpec: submission.verifiedSpec,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsSubmissionPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsRegister(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsSubmissionCommand(args, io, toolRuntime, mode, {
+    operation: 'register',
+    toolName: 'flux_apps_register',
+    parse: parseAppsRegisterArgs,
+  });
+}
+
+async function handleAppsUpdate(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsSubmissionCommand(args, io, toolRuntime, mode, {
+    operation: 'update',
+    toolName: 'flux_apps_update',
+    parse: parseAppsUpdateArgs,
+  });
+}
+
+async function handleAppsVerifyFlowCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    operation: 'register-and-verify' | 'update-and-verify';
+    toolName: 'flux_apps_register_and_verify' | 'flux_apps_update_and_verify';
+    parse: (args: string[]) => AppsSubmissionParseResult;
+  }
+): Promise<number> {
+  const parsed = options.parse(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let submission;
+  try {
+    submission = await loadSubmissionMaterial(parsed.submissionSource);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const timestamp = typeof parsed.rawArgs.timestamp === 'number' ? parsed.rawArgs.timestamp : submission.timestamp;
+  if (!timestamp) {
+    return emitFailure('validation', 'A timestamp is required; provide one directly or use a plan resource that includes it.', io, parsed.outputMode);
+  }
+
+  const typeVersion = typeof parsed.rawArgs.typeVersion === 'number' ? parsed.rawArgs.typeVersion : submission.typeVersion ?? 1;
+  const verifyFirst = typeof parsed.rawArgs.verifyFirst === 'boolean'
+    ? parsed.rawArgs.verifyFirst
+    : submission.source === 'plan'
+      ? false
+      : true;
+
+  const toolArgs: Record<string, unknown> = {
+    spec: submission.spec,
+    signature: parsed.rawArgs.signature,
+    timestamp,
+    typeVersion,
+    verifyFirst,
+    ...(typeof parsed.rawArgs.attempts === 'number' ? { attempts: parsed.rawArgs.attempts } : {}),
+    ...(typeof parsed.rawArgs.intervalMs === 'number' ? { intervalMs: parsed.rawArgs.intervalMs } : {}),
+    ...(typeof parsed.rawArgs.pollTimeoutMs === 'number' ? { pollTimeoutMs: parsed.rawArgs.pollTimeoutMs } : {}),
+    ...(typeof parsed.rawArgs.verifyGlobal === 'boolean' ? { verifyGlobal: parsed.rawArgs.verifyGlobal } : {}),
+    ...(typeof parsed.rawArgs.poll === 'boolean' ? { poll: parsed.rawArgs.poll } : {}),
+    ...(parsed.rawArgs.confirm === true ? { confirm: true } : {}),
+    ...(options.operation === 'update-and-verify' && typeof parsed.rawArgs.includePayment === 'boolean'
+      ? { includePayment: parsed.rawArgs.includePayment }
+      : {}),
+  };
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, toolArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const identity = extractAppIdentityFromSpec(submission.spec);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: asOptionalStringValue(summary.status)
+      ?? (normalized.envelope.ok ? 'submitted' : failureStatus(normalized.failureKind ?? 'flux')),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: options.operation,
+    appname: asOptionalStringValue(summary.appname) ?? identity.appname,
+    owner: asOptionalStringValue(summary.owner) ?? identity.owner,
+    timestamp,
+    typeVersion,
+    verifyFirst,
+    requiresAuth: submission.requiresAuth,
+    source: submission.source,
+    planResourceUri: submission.planResourceUri,
+    messageToSignResourceUri: asOptionalStringValue(summary.messageToSignResourceUri) ?? submission.messageToSignResourceUri,
+    payment: normalizeSpecValue(summary.payment) ?? submission.payment,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsSubmissionPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsRegisterAndVerify(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsVerifyFlowCommand(args, io, toolRuntime, mode, {
+    operation: 'register-and-verify',
+    toolName: 'flux_apps_register_and_verify',
+    parse: parseAppsRegisterAndVerifyArgs,
+  });
+}
+
+async function handleAppsUpdateAndVerify(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsVerifyFlowCommand(args, io, toolRuntime, mode, {
+    operation: 'update-and-verify',
+    toolName: 'flux_apps_update_and_verify',
+    parse: parseAppsUpdateAndVerifyArgs,
+  });
+}
+
+async function handleAppsWaitPropagation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsWaitPropagationArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_wait_for_propagation', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const temporaryPresent = summary.temporaryPresent === true;
+  const permanentPresent = summary.permanentPresent === true;
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok
+      ? normalizePropagationState(temporaryPresent, permanentPresent)
+      : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: 'wait-propagation',
+    hash: parsed.hash,
+    attempts: typeof parsed.rawArgs.attempts === 'number' ? parsed.rawArgs.attempts : 10,
+    intervalMs: typeof parsed.rawArgs.intervalMs === 'number' ? parsed.rawArgs.intervalMs : 3000,
+    timeoutMs: typeof parsed.rawArgs.timeoutMs === 'number' ? parsed.rawArgs.timeoutMs : null,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsPropagationPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsMessages(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsMessagesArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const kind = typeof parsed.rawArgs.kind === 'string' && parsed.rawArgs.kind.trim()
+    ? parsed.rawArgs.kind.trim()
+    : 'both';
+  if (!['temporary', 'permanent', 'both'].includes(kind)) {
+    return emitFailure('validation', '--kind must be one of temporary, permanent, or both.', io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_get_messages', { hash: parsed.hash, kind }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const resourceRecord = asRecord(resourceValue) ?? {};
+  const temporaryValue = kind === 'permanent' ? null : resourceRecord.temporary ?? resourceValue;
+  const permanentValue = kind === 'temporary' ? null : resourceRecord.permanent ?? resourceValue;
+  const temporaryCount = kind === 'permanent' ? 0 : countFluxPayloadItems(temporaryValue);
+  const permanentCount = kind === 'temporary' ? 0 : countFluxPayloadItems(permanentValue);
+  const temporaryPresent = temporaryCount > 0;
+  const permanentPresent = permanentCount > 0;
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok
+      ? normalizePropagationState(temporaryPresent, permanentPresent)
+      : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: 'messages',
+    hash: parsed.hash,
+    kind,
+    temporaryPresent,
+    permanentPresent,
+    temporaryCount,
+    permanentCount,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsPropagationPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
 async function handleAppsPlanRenew(
   args: string[],
   io: CliIo,
@@ -6350,6 +7112,18 @@ async function handleAppsCommand(
       return handleAppsPlanRegistration(rest, io, toolRuntime, mode);
     case 'plan-update':
       return handleAppsPlanUpdate(rest, io, toolRuntime, mode);
+    case 'register':
+      return handleAppsRegister(rest, io, toolRuntime, mode);
+    case 'update':
+      return handleAppsUpdate(rest, io, toolRuntime, mode);
+    case 'register-and-verify':
+      return handleAppsRegisterAndVerify(rest, io, toolRuntime, mode);
+    case 'update-and-verify':
+      return handleAppsUpdateAndVerify(rest, io, toolRuntime, mode);
+    case 'wait-propagation':
+      return handleAppsWaitPropagation(rest, io, toolRuntime, mode);
+    case 'messages':
+      return handleAppsMessages(rest, io, toolRuntime, mode);
     case 'plan-renew':
       return handleAppsPlanRenew(rest, io, toolRuntime, mode);
     case 'by-zelid':

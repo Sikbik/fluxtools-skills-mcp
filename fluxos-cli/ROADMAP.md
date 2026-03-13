@@ -496,14 +496,14 @@ Done when:
 - [x] `flux apps verify-update`
 - [x] `flux apps calculate-price`
 - [x] `flux apps plan-registration`
-- [ ] `flux apps register`
+- [x] `flux apps register`
 - [x] `flux apps plan-update`
 - [x] `flux apps plan-renew`
-- [ ] `flux apps update`
-- [ ] `flux apps register-and-verify`
-- [ ] `flux apps update-and-verify`
-- [ ] `flux apps wait-propagation`
-- [ ] `flux apps messages`
+- [x] `flux apps update`
+- [x] `flux apps register-and-verify`
+- [x] `flux apps update-and-verify`
+- [x] `flux apps wait-propagation`
+- [x] `flux apps messages`
 - [x] `flux apps test-install`
 
 Done when:
