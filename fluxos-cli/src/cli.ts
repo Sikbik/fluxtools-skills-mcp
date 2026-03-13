@@ -413,6 +413,74 @@ function extractFluxEnvelopeError(value: unknown): string | undefined {
   return typeof record.status === 'string' ? record.status : undefined;
 }
 
+function stringifyFailureValue(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  if (!value || typeof value !== 'object') return undefined;
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractFailedCheckMessage(record: Record<string, unknown>): string | undefined {
+  const checks = record.checks;
+  if (!Array.isArray(checks)) return undefined;
+
+  for (const check of checks) {
+    const checkRecord = asRecord(check);
+    if (checkRecord?.ok !== false) continue;
+
+    const checkName = typeof checkRecord.name === 'string' ? checkRecord.name.trim().toLowerCase() : '';
+    const detailRecord = asRecord(checkRecord.detail);
+    if (checkName === 'zelidauth' && detailRecord?.present === false) {
+      return 'Authentication required (zelidauth not set).';
+    }
+  }
+
+  for (const check of checks) {
+    const checkRecord = asRecord(check);
+    if (checkRecord?.ok !== false) continue;
+
+    const detailEnvelopeError = extractFluxEnvelopeError(checkRecord.detail);
+    if (detailEnvelopeError) return detailEnvelopeError;
+
+    const detail = stringifyFailureValue(checkRecord.detail);
+    if (detail) return detail;
+
+    if (typeof checkRecord.name === 'string' && checkRecord.name.trim()) {
+      return `${checkRecord.name} check failed.`;
+    }
+  }
+
+  return undefined;
+}
+
+function extractNestedFailureMessage(record: Record<string, unknown>): string | undefined {
+  const failures = record.failures;
+  if (!Array.isArray(failures)) return undefined;
+
+  for (const failure of failures) {
+    const failureRecord = asRecord(failure);
+    if (!failureRecord) continue;
+
+    const message = stringifyFailureValue(failureRecord.error) ?? stringifyFailureValue(failureRecord.message);
+    if (message) return message;
+  }
+
+  return undefined;
+}
+
+function hasNegativeEnvelopeFailure(value: unknown): boolean {
+  const record = asRecord(value);
+  return record?.ok === false;
+}
+
 function extractErrorMessage(value: unknown): string | undefined {
   if (typeof value === 'string' && value.trim()) return value;
 
@@ -426,7 +494,17 @@ function extractErrorMessage(value: unknown): string | undefined {
     return extractFluxEnvelopeError(record.data) ?? (record.ok === false ? `Flux request failed with status ${String(record.status)}.` : undefined);
   }
 
-  return extractFluxEnvelopeError(value);
+  const detail = stringifyFailureValue(record.detail) ?? extractFailedCheckMessage(record) ?? extractNestedFailureMessage(record);
+  if (detail) return detail;
+
+  const envelopeError = extractFluxEnvelopeError(value);
+  if (envelopeError) return envelopeError;
+
+  if (record.ok === false) {
+    return 'Flux tool execution failed.';
+  }
+
+  return undefined;
 }
 
 function hasFluxFailure(value: unknown): boolean {
@@ -443,6 +521,10 @@ function classifyFailureKind(message: string): FailureKind {
     lower.includes('authentication required') ||
     lower.includes('not authenticated') ||
     lower.includes('zelidauth not set') ||
+    lower.includes('zelidauth is required') ||
+    lower.includes('zelidauth required') ||
+    lower.includes('requires zelidauth') ||
+    lower.includes('requires authentication') ||
     lower.includes('auth required') ||
     lower.includes('unauthorized')
   ) {
@@ -596,7 +678,7 @@ function deriveSuccessStatus(result: unknown): string | number {
 
 function normalizeToolCall(toolName: string, toolResult: ToolCallResult): ToolCallNormalization {
   const result = toolResult.structuredContent ?? readFirstTextContent(toolResult.content) ?? null;
-  const explicitFailure = toolResult.isError === true || hasFluxFailure(result);
+  const explicitFailure = toolResult.isError === true || hasNegativeEnvelopeFailure(result) || hasFluxFailure(result);
   const error = explicitFailure ? extractErrorMessage(result) ?? 'Flux tool execution failed.' : undefined;
   const failureKind = explicitFailure && error ? classifyFailureKind(error) : undefined;
   const ok = failureKind === undefined;

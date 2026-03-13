@@ -172,6 +172,89 @@ describe('tool args output exit-codes', () => {
     expect(JSON.parse(rawCapture.getStdout())).toEqual(rawResult);
   });
 
+  it('treats structured ok=false envelopes as failures even when isError is false', async () => {
+    const capture = createCapture();
+
+    const exitCode = await runCli(['tool', 'call', 'flux_auth_diagnose', '--json'], {
+      io: capture.io,
+      toolRuntime: {
+        listTools: async () => [],
+        callTool: async () => ({
+          isError: false,
+          structuredContent: {
+            ok: false,
+            checks: [{ name: 'baseUrl', ok: false, detail: 'Base URL not set' }],
+            nextSteps: ["Run flux_set_base_url with baseUrl='http://<node-ip>:16127'"],
+          },
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: false,
+                checks: [{ name: 'baseUrl', ok: false, detail: 'Base URL not set' }],
+                nextSteps: ["Run flux_set_base_url with baseUrl='http://<node-ip>:16127'"],
+              }),
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(exitCode).toBe(2);
+    expect(capture.getStderr()).toBe('');
+
+    const payload = JSON.parse(capture.getStdout()) as Record<string, unknown>;
+    expect(payload.ok).toBe(false);
+    expect(payload.status).toBe('validation_error');
+    expect(payload.error).toBe('Base URL not set');
+
+    const result = payload.result as Record<string, unknown>;
+    expect(result.ok).toBe(false);
+  });
+
+  it('maps auth-diagnose style negative envelopes to auth-required exit code', async () => {
+    const capture = createCapture();
+
+    const exitCode = await runCli(['tool', 'call', 'flux_auth_diagnose', '--json'], {
+      io: capture.io,
+      toolRuntime: {
+        listTools: async () => [],
+        callTool: async () => ({
+          isError: false,
+          structuredContent: {
+            ok: false,
+            checks: [
+              { name: 'baseUrl', ok: true, detail: 'https://api.runonflux.io' },
+              { name: 'zelidauth', ok: false, detail: { present: false } },
+            ],
+            nextSteps: ['Run flux_auth_flow to get the exact login steps.'],
+          },
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: false,
+                checks: [
+                  { name: 'baseUrl', ok: true, detail: 'https://api.runonflux.io' },
+                  { name: 'zelidauth', ok: false, detail: { present: false } },
+                ],
+                nextSteps: ['Run flux_auth_flow to get the exact login steps.'],
+              }),
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(exitCode).toBe(3);
+    expect(capture.getStderr()).toBe('');
+
+    const payload = JSON.parse(capture.getStdout()) as Record<string, unknown>;
+    expect(payload.ok).toBe(false);
+    expect(payload.status).toBe('auth_required');
+    expect(payload.error).toBe('Authentication required (zelidauth not set).');
+  });
+
   it.each([
     {
       name: 'validation failures',
@@ -189,6 +272,37 @@ describe('tool args output exit-codes', () => {
         isError: true,
         structuredContent: { ok: false, error: 'Authentication required (zelidauth not set).' },
         content: [{ type: 'text', text: '{"ok":false,"error":"Authentication required (zelidauth not set)."}' }],
+      },
+    },
+    {
+      name: 'auth prerequisite failures',
+      expectedExitCode: 3,
+      toolResult: {
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: 'zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth).',
+        },
+        content: [
+          {
+            type: 'text',
+            text: '{"ok":false,"error":"zelidauth is required for enterprise spec decryption (use flux_auth_flow + flux_set_zelidauth)."}',
+          },
+        ],
+      },
+    },
+    {
+      name: 'authenticated enterprise prerequisite failures',
+      expectedExitCode: 3,
+      toolResult: {
+        isError: true,
+        structuredContent: { ok: false, error: 'Unable to fetch enterprise public key (Arcane node + zelidauth required).' },
+        content: [
+          {
+            type: 'text',
+            text: '{"ok":false,"error":"Unable to fetch enterprise public key (Arcane node + zelidauth required)."}',
+          },
+        ],
       },
     },
     {
