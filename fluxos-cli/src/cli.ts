@@ -11,14 +11,19 @@ import {
   type ResourcePruneResult,
 } from './state/resourceStore.js';
 import {
+  createPersistedProfile,
   clearPersistedAuthState,
   clearPersistedEnterpriseKeyState,
   clearPersistedProfileState,
+  deletePersistedProfile,
   defaultPersistedProfileState,
   getStateVisibilitySummary,
+  listPersistedProfiles,
   loadPersistedStateSnapshot,
   type PersistedProfileState,
+  type PersistedProfilesSummary,
   updatePersistedProfileState,
+  usePersistedProfile,
 } from './state/sessionState.js';
 
 export type TextWriter = {
@@ -119,6 +124,14 @@ Commands:
                                  Show persisted CLI session state for the active profile
   state clear [--json|--pretty]
                                  Reset persisted CLI session state for the active profile
+  profile list [--json|--pretty]
+                                 List persisted CLI profiles and show which one is active
+  profile create <name> [--json|--pretty]
+                                 Create a persisted CLI profile
+  profile use <name> [--json|--pretty]
+                                 Switch to a persisted CLI profile
+  profile delete <name> [--json|--pretty]
+                                 Delete a persisted CLI profile
   auth clear [--json|--pretty]
                                  Remove persisted auth material for the active profile
   enterprise-key clear [--json|--pretty]
@@ -169,6 +182,19 @@ Notes:
   - JSON mode shows redacted auth and enterprise-key summaries only.
 `;
 
+const PROFILE_HELP_TEXT = `FluxOS CLI - profile
+
+Usage:
+  flux profile list [--json|--pretty]
+  flux profile create <name> [--json|--pretty]
+  flux profile use <name> [--json|--pretty]
+  flux profile delete <name> [--json|--pretty]
+
+Notes:
+  - Profiles isolate saved base URL, auth, enterprise key, FluxDrive URL, and HTTP defaults.
+  - The default profile always exists and cannot be deleted.
+`;
+
 const AUTH_HELP_TEXT = `FluxOS CLI - auth
 
 Usage:
@@ -207,6 +233,10 @@ function renderResourceHelp(): string {
 
 function renderStateHelp(): string {
   return STATE_HELP_TEXT;
+}
+
+function renderProfileHelp(): string {
+  return PROFILE_HELP_TEXT;
 }
 
 function renderAuthHelp(): string {
@@ -1436,6 +1466,200 @@ async function handleStateCommand(args: string[], io: CliIo): Promise<number> {
   }
 }
 
+function renderProfileListPretty(summary: PersistedProfilesSummary): string {
+  return [
+    `Persisted CLI profiles (${summary.profiles.length})`,
+    `Active profile: ${summary.activeProfile}`,
+    ...summary.profiles.map((profile) => {
+      const parts = [
+        `${profile.active ? '*' : '-'} ${profile.name}`,
+        `baseUrl=${profile.baseUrl ?? '<unset>'}`,
+        `auth=${profile.auth.present ? 'present' : 'not set'}`,
+        `enterpriseKey=${profile.enterpriseKey.present ? 'present' : 'not set'}`,
+        `fluxDrive=${profile.fluxDriveMwsBaseUrl}`,
+        `httpDefaults=${profile.httpDefaults.timeoutMs}/${profile.httpDefaults.retryCount}/${profile.httpDefaults.retryBackoffMs}`,
+      ];
+
+      return parts.join(' · ');
+    }),
+  ].join('\n');
+}
+
+async function handleProfileList(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux profile list\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const summary = await listPersistedProfiles();
+  const payload = {
+    ok: true,
+    status: 'ok',
+    count: summary.profiles.length,
+    activeProfile: summary.activeProfile,
+    profiles: summary.profiles,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderProfileListPretty(summary));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleProfileCreate(args: string[], io: CliIo): Promise<number> {
+  const [profileName, ...rest] = args;
+  if (!profileName || profileName.startsWith('-')) {
+    const parsed = parseOutputMode(args);
+    return emitFailure('validation', 'Usage: flux profile create <name> [--json|--pretty]', io, parsed.outputMode);
+  }
+
+  const parsed = parseOutputMode(rest);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux profile create\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  try {
+    const result = await createPersistedProfile(profileName);
+    const payload = {
+      ok: true,
+      status: 'ok',
+      action: 'create',
+      activeProfile: result.activeProfile,
+      profile: result.profile,
+    };
+
+    if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+      renderJson(io.stdout, payload);
+    } else {
+      writeLine(io.stdout, `Created profile ${result.profile.name}. Active profile remains ${result.activeProfile}.`);
+    }
+
+    return EXIT_CODE_SUCCESS;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure('validation', message, io, parsed.outputMode);
+  }
+}
+
+async function handleProfileUse(args: string[], io: CliIo): Promise<number> {
+  const [profileName, ...rest] = args;
+  if (!profileName || profileName.startsWith('-')) {
+    const parsed = parseOutputMode(args);
+    return emitFailure('validation', 'Usage: flux profile use <name> [--json|--pretty]', io, parsed.outputMode);
+  }
+
+  const parsed = parseOutputMode(rest);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux profile use\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  try {
+    const result = await usePersistedProfile(profileName);
+    const payload = {
+      ok: true,
+      status: 'ok',
+      action: 'use',
+      activeProfile: result.activeProfile,
+      profile: result.profile,
+    };
+
+    if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+      renderJson(io.stdout, payload);
+    } else {
+      writeLine(io.stdout, `Switched active profile to ${result.activeProfile}.`);
+    }
+
+    return EXIT_CODE_SUCCESS;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure('validation', message, io, parsed.outputMode);
+  }
+}
+
+async function handleProfileDelete(args: string[], io: CliIo): Promise<number> {
+  const [profileName, ...rest] = args;
+  if (!profileName || profileName.startsWith('-')) {
+    const parsed = parseOutputMode(args);
+    return emitFailure('validation', 'Usage: flux profile delete <name> [--json|--pretty]', io, parsed.outputMode);
+  }
+
+  const parsed = parseOutputMode(rest);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux profile delete\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  try {
+    const result = await deletePersistedProfile(profileName);
+    const payload = {
+      ok: true,
+      status: 'ok',
+      action: 'delete',
+      deletedProfile: result.deletedProfile,
+      deletedWasActive: result.deletedWasActive,
+      activeProfile: result.activeProfile,
+    };
+
+    if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+      renderJson(io.stdout, payload);
+    } else {
+      writeLine(
+        io.stdout,
+        result.deletedWasActive
+          ? `Deleted active profile ${result.deletedProfile}; switched to ${result.activeProfile}.`
+          : `Deleted profile ${result.deletedProfile}. Active profile remains ${result.activeProfile}.`
+      );
+    }
+
+    return EXIT_CODE_SUCCESS;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure('validation', message, io, parsed.outputMode);
+  }
+}
+
+async function handleProfileCommand(args: string[], io: CliIo): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderProfileHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'list':
+      return handleProfileList(rest, io);
+    case 'create':
+      return handleProfileCreate(rest, io);
+    case 'use':
+      return handleProfileUse(rest, io);
+    case 'delete':
+      return handleProfileDelete(rest, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown profile subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
 async function handleToolCommand(
   args: string[],
   io: CliIo,
@@ -1482,6 +1706,8 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         return await handleResourceCommand(argv.slice(1), io);
       case 'state':
         return await handleStateCommand(argv.slice(1), io);
+      case 'profile':
+        return await handleProfileCommand(argv.slice(1), io);
       case 'auth':
         return await handleAuthCommand(argv.slice(1), io);
       case 'enterprise-key':

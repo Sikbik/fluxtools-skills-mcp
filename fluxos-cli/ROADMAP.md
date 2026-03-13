@@ -380,14 +380,14 @@ Done when:
 - a user can authenticate once and reuse the session across CLI invocations
 
 ### 3.2 Add profile support
-- [ ] `flux profile list`
-- [ ] `flux profile use <name>`
-- [ ] `flux profile create <name>`
-- [ ] `flux profile delete <name>`
+- [x] `flux profile list`
+- [x] `flux profile use <name>`
+- [x] `flux profile create <name>`
+- [x] `flux profile delete <name>`
 - [ ] profile-scoped state:
-  - [ ] base URL
-  - [ ] auth
-  - [ ] enterprise key
+  - [x] base URL
+  - [x] auth
+  - [x] enterprise key
   - [ ] optional labels
 
 Done when:
@@ -745,7 +745,7 @@ Recommended implementation order:
 ### Milestone M2 - Persistent operator session
 - [x] saved base URL
 - [x] saved auth
-- [ ] profiles
+- [x] profiles
 - [x] state visibility commands
 
 ### Milestone M3 - App operations CLI

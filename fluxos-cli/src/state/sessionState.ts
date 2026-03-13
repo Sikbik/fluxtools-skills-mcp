@@ -44,6 +44,21 @@ export type PersistedStateSnapshot = {
   profile: PersistedProfileState;
 };
 
+export type PersistedProfileSummary = {
+  name: string;
+  active: boolean;
+  baseUrl: string | null;
+  auth: AuthSummary;
+  enterpriseKey: EnterpriseKeySummary;
+  fluxDriveMwsBaseUrl: string;
+  httpDefaults: PersistedHttpDefaults;
+};
+
+export type PersistedProfilesSummary = {
+  activeProfile: string;
+  profiles: PersistedProfileSummary[];
+};
+
 export type StateVisibilitySummary = {
   activeProfile: string;
   baseUrl: string | null;
@@ -88,6 +103,15 @@ function defaultProfileState(): PersistedProfileState {
     fluxDriveMwsBaseUrl: DEFAULT_FLUXDRIVE_BASE_URL,
     httpDefaults: { ...DEFAULT_HTTP_DEFAULTS },
   };
+}
+
+function normalizeProfileName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error('Profile name must not be empty.');
+  }
+
+  return trimmed;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -195,6 +219,31 @@ function getProfileState(store: StateFileShape, profileName = store.activeProfil
   return asPersistedProfileState(store.profiles[profileName]);
 }
 
+function collectProfileNames(store: StateFileShape): string[] {
+  return Array.from(new Set([DEFAULT_ACTIVE_PROFILE, store.activeProfile, ...Object.keys(store.profiles)]))
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function hasProfile(store: StateFileShape, profileName: string): boolean {
+  return collectProfileNames(store).includes(profileName);
+}
+
+function summarizeProfile(store: StateFileShape, profileName: string): PersistedProfileSummary {
+  const profile = getProfileState(store, profileName);
+
+  return {
+    name: profileName,
+    active: store.activeProfile === profileName,
+    baseUrl: profile.baseUrl,
+    auth: summarizeAuth(profile.zelidauth),
+    enterpriseKey: { present: Boolean(profile.enterpriseKey) },
+    fluxDriveMwsBaseUrl: profile.fluxDriveMwsBaseUrl,
+    httpDefaults: { ...profile.httpDefaults },
+  };
+}
+
 function summarizeAuth(zelidauth: string | null): AuthSummary {
   if (!zelidauth) return { present: false };
 
@@ -220,6 +269,83 @@ export async function loadPersistedStateSnapshot(): Promise<PersistedStateSnapsh
   return {
     activeProfile: store.activeProfile,
     profile: getProfileState(store),
+  };
+}
+
+export async function listPersistedProfiles(): Promise<PersistedProfilesSummary> {
+  const store = await loadStateFile();
+
+  return {
+    activeProfile: store.activeProfile,
+    profiles: collectProfileNames(store).map((profileName) => summarizeProfile(store, profileName)),
+  };
+}
+
+export async function createPersistedProfile(profileName: string): Promise<{ activeProfile: string; profile: PersistedProfileSummary }> {
+  const normalizedName = normalizeProfileName(profileName);
+  const store = await loadStateFile();
+
+  if (hasProfile(store, normalizedName)) {
+    throw new Error(`Profile already exists: ${normalizedName}`);
+  }
+
+  store.profiles[normalizedName] = defaultProfileState();
+  await saveStateFile(store);
+
+  return {
+    activeProfile: store.activeProfile,
+    profile: summarizeProfile(store, normalizedName),
+  };
+}
+
+export async function usePersistedProfile(profileName: string): Promise<{ activeProfile: string; profile: PersistedProfileSummary }> {
+  const normalizedName = normalizeProfileName(profileName);
+  const store = await loadStateFile();
+
+  if (!hasProfile(store, normalizedName)) {
+    throw new Error(`Profile not found: ${normalizedName}`);
+  }
+
+  store.activeProfile = normalizedName;
+  if (normalizedName !== DEFAULT_ACTIVE_PROFILE && !(normalizedName in store.profiles)) {
+    store.profiles[normalizedName] = defaultProfileState();
+  }
+
+  await saveStateFile(store);
+
+  return {
+    activeProfile: store.activeProfile,
+    profile: summarizeProfile(store, normalizedName),
+  };
+}
+
+export async function deletePersistedProfile(
+  profileName: string
+): Promise<{ activeProfile: string; deletedProfile: string; deletedWasActive: boolean }> {
+  const normalizedName = normalizeProfileName(profileName);
+  const store = await loadStateFile();
+
+  if (normalizedName === DEFAULT_ACTIVE_PROFILE) {
+    throw new Error('Cannot delete the default profile.');
+  }
+
+  if (!hasProfile(store, normalizedName)) {
+    throw new Error(`Profile not found: ${normalizedName}`);
+  }
+
+  const deletedWasActive = store.activeProfile === normalizedName;
+  delete store.profiles[normalizedName];
+
+  if (deletedWasActive) {
+    store.activeProfile = DEFAULT_ACTIVE_PROFILE;
+  }
+
+  await saveStateFile(store);
+
+  return {
+    activeProfile: store.activeProfile,
+    deletedProfile: normalizedName,
+    deletedWasActive,
   };
 }
 
