@@ -447,13 +447,13 @@ Done when:
 This is where the CLI becomes genuinely powerful for day-to-day Flux work.
 
 ### 5.1 Add app discovery commands
-- [ ] `flux apps list-running`
-- [ ] `flux apps list-all`
-- [ ] `flux apps list-global`
-- [ ] `flux apps global-status`
-- [ ] `flux apps by-zelid`
-- [ ] `flux apps get-spec`
-- [ ] `flux apps get-spec-full`
+- [x] `flux apps list-running`
+- [x] `flux apps list-all`
+- [x] `flux apps list-global`
+- [x] `flux apps global-status`
+- [x] `flux apps by-zelid`
+- [x] `flux apps get-spec`
+- [x] `flux apps get-spec-full`
 
 Done when:
 
@@ -749,8 +749,8 @@ Recommended implementation order:
 - [x] state visibility commands
 
 ### Milestone M3 - App operations CLI
-- [ ] list apps
-- [ ] get spec
+- [x] list apps
+- [x] get spec
 - [ ] logs and health
 - [ ] lifecycle controls
 - [ ] plan registration/update

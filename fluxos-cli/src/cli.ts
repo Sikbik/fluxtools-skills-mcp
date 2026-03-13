@@ -104,6 +104,58 @@ type ToolCallNormalization = {
   rawResult: ToolCallResult;
 };
 
+type AppsDiscoveryParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsByZelidParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      zelid: string | null;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsGetSpecParseResult =
+  | {
+      outputMode: OutputMode;
+      appname: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsGetSpecFullParseResult =
+  | {
+      outputMode: OutputMode;
+      appname: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsGetOwnerParseResult =
+  | {
+      outputMode: OutputMode;
+      appname: string;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsGetPublicKeyParseResult =
+  | {
+      outputMode: OutputMode;
+      owner: string;
+      name: string;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -146,6 +198,31 @@ Commands:
                                  Remove persisted auth material for the active profile
   auth clear [--json|--pretty]
                                  Remove persisted auth material for the active profile
+  apps list-running [--json|--pretty|--raw]
+                                 List running apps on the active node
+  apps list-all [--json|--pretty|--raw]
+                                 List all apps known to the active node
+  apps list-global [--owner <zelid>] [--appname <name>] [--hash <hash>] [--json|--pretty|--raw]
+                                 List global app specs with optional owner/app/hash filters
+  apps global-status [--zelid <zelid>] [--appname <name>] [--include-expired] [--limit <n>] [--json|--pretty|--raw]
+                                 Correlate global registry rows with propagation signals
+  apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
+                                 [--json|--pretty|--raw]
+                                 List global apps for a ZelID with expiry metadata
+  apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]
+                                 Read a base app spec and enterprise hints
+  apps get-spec-full <appname> [--owner <zelid>] [--base-url <url> ...] [--timeout-ms <ms>]
+                                 [--set-base-url-on-success|--no-set-base-url-on-success]
+                                 [--include-secrets] [--confirm] [--json|--pretty|--raw]
+                                 Read a full spec with enterprise safeguards
+  apps get-owner <appname> [--json|--pretty|--raw]
+                                 Read the owner for an app name
+  apps get-public-key --owner <zelid> --name <appname> [--json|--pretty|--raw]
+                                 Read the enterprise public key for an owner/app pair
+  apps registration-information [--json|--pretty|--raw]
+                                 Read app registration metadata
+  apps deployment-information [--json|--pretty|--raw]
+                                 Read app deployment metadata
   node resolve-gateway [<gateway-base-url>] [--json|--pretty|--raw]
                                  Resolve a gateway to its recommended direct-node target
   node use-gateway [<gateway-base-url>] [--json|--pretty|--raw]
@@ -258,6 +335,32 @@ Notes:
   - Base URL, auth, HTTP defaults, and FluxDrive settings stay unchanged.
 `;
 
+const APPS_HELP_TEXT = `FluxOS CLI - apps
+
+Usage:
+  flux apps list-running [--json|--pretty|--raw]
+  flux apps list-all [--json|--pretty|--raw]
+  flux apps list-global [--owner <zelid>] [--appname <name>] [--hash <hash>] [--json|--pretty|--raw]
+  flux apps global-status [--zelid <zelid>] [--appname <name>] [--include-expired] [--limit <n>] [--json|--pretty|--raw]
+  flux apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
+                    [--json|--pretty|--raw]
+  flux apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]
+  flux apps get-spec-full <appname> [--owner <zelid>] [--base-url <url> ...] [--timeout-ms <ms>]
+                          [--set-base-url-on-success|--no-set-base-url-on-success]
+                          [--include-secrets] [--confirm] [--json|--pretty|--raw]
+  flux apps get-owner <appname> [--json|--pretty|--raw]
+  flux apps get-public-key --owner <zelid> --name <appname> [--json|--pretty|--raw]
+  flux apps registration-information [--json|--pretty|--raw]
+  flux apps deployment-information [--json|--pretty|--raw]
+
+Notes:
+  - Discovery commands preserve the shared MCP selectors and defaulting behavior.
+  - \`by-zelid\` defaults to persisted auth ZelID when no explicit ZelID is provided.
+  - \`get-spec\` reads the base spec and points enterprise apps to \`get-spec-full\`.
+  - \`get-spec-full\` keeps enterprise inspection explicit; returning secrets requires
+    \`--include-secrets --confirm\`.
+`;
+
 function writeLine(writer: TextWriter, text: string) {
   writer.write(text.endsWith('\n') ? text : `${text}\n`);
 }
@@ -292,6 +395,10 @@ function renderNodeHelp(): string {
 
 function renderEnterpriseKeyHelp(): string {
   return ENTERPRISE_KEY_HELP_TEXT;
+}
+
+function renderAppsHelp(): string {
+  return APPS_HELP_TEXT;
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -1454,6 +1561,302 @@ function readFlagValue(
   return { value, nextIndex: index };
 }
 
+function readIntegerFlagValue(
+  args: string[],
+  index: number,
+  arg: string,
+  flagName: string,
+  opts?: { min?: number }
+): { value: number; nextIndex: number } | { error: string } {
+  const raw = readFlagValue(args, index, arg, flagName);
+  if ('error' in raw) return raw;
+
+  const value = Number(raw.value);
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    return { error: `${flagName} must be an integer.` };
+  }
+
+  if (typeof opts?.min === 'number' && value < opts.min) {
+    return { error: `${flagName} must be >= ${opts.min}.` };
+  }
+
+  return { value, nextIndex: raw.nextIndex };
+}
+
+function parseAppsFlagArgs(
+  args: string[],
+  config: {
+    stringFlags?: Array<{ flag: string; key: string; repeatable?: boolean }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): { outputMode: OutputMode; rawArgs: Record<string, unknown>; positional: string[] } | { outputMode: OutputMode; error: string } {
+  const requested = { json: false, pretty: false, raw: false };
+  const positional: string[] = [];
+  const rawArgs: Record<string, unknown> = {};
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === '--json') {
+      requested.json = true;
+      continue;
+    }
+
+    if (arg === '--pretty') {
+      requested.pretty = true;
+      continue;
+    }
+
+    if (arg === '--raw') {
+      requested.raw = true;
+      continue;
+    }
+
+    const booleanFlag = config.booleanFlags?.find((flag) => arg === flag.flag);
+    if (booleanFlag) {
+      rawArgs[booleanFlag.key] = booleanFlag.value ?? true;
+      continue;
+    }
+
+    const stringFlag = config.stringFlags?.find((flag) => arg === flag.flag || arg.startsWith(`${flag.flag}=`));
+    if (stringFlag) {
+      const value = readFlagValue(args, index, arg, stringFlag.flag);
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      if (stringFlag.repeatable) {
+        const current = Array.isArray(rawArgs[stringFlag.key]) ? (rawArgs[stringFlag.key] as string[]) : [];
+        rawArgs[stringFlag.key] = [...current, value.value.trim()];
+      } else {
+        rawArgs[stringFlag.key] = value.value.trim();
+      }
+
+      index = value.nextIndex;
+      continue;
+    }
+
+    const integerFlag = config.integerFlags?.find((flag) => arg === flag.flag || arg.startsWith(`${flag.flag}=`));
+    if (integerFlag) {
+      const value = readIntegerFlagValue(args, index, arg, integerFlag.flag, { min: integerFlag.min });
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs[integerFlag.key] = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    positional.push(arg);
+  }
+
+  const outputMode = resolveOutputModePreference(requested);
+  const selectedOutputModes = Number(requested.json) + Number(requested.pretty) + Number(requested.raw);
+  if (selectedOutputModes > 1) {
+    return { outputMode, error: 'Choose only one output mode: --json, --pretty, or --raw.' };
+  }
+
+  return { outputMode, rawArgs, positional };
+}
+
+function parseAppsListGlobalArgs(args: string[]): AppsDiscoveryParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--owner', key: 'owner' },
+      { flag: '--appname', key: 'appname' },
+      { flag: '--hash', key: 'hash' },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps list-global\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsGlobalStatusArgs(args: string[]): AppsDiscoveryParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--zelid', key: 'zelid' },
+      { flag: '--appname', key: 'appname' },
+    ],
+    integerFlags: [{ flag: '--limit', key: 'limit', min: 1 }],
+    booleanFlags: [{ flag: '--include-expired', key: 'includeExpired' }],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps global-status\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsByZelidArgs(args: string[]): AppsByZelidParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [{ flag: '--zelid', key: 'zelid' }],
+    integerFlags: [
+      { flag: '--seconds-per-block', key: 'secondsPerBlock', min: 1 },
+      { flag: '--limit', key: 'limit', min: 1 },
+    ],
+    booleanFlags: [
+      { flag: '--include-expired', key: 'includeExpired' },
+      { flag: '--estimate-time-remaining', key: 'estimateTimeRemaining' },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps by-zelid\`: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const positionalZelid = parsed.positional[0]?.trim() || null;
+  const flagZelid = typeof parsed.rawArgs.zelid === 'string' && parsed.rawArgs.zelid.trim() ? String(parsed.rawArgs.zelid).trim() : null;
+
+  if (positionalZelid && flagZelid && positionalZelid !== flagZelid) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide ZelID either positionally or via --zelid, not both with different values.',
+    };
+  }
+
+  const zelid = positionalZelid ?? flagZelid;
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      ...(zelid ? { zelid } : {}),
+    },
+    zelid,
+    positional: [],
+  };
+}
+
+function parseAppsGetSpecArgs(args: string[]): AppsGetSpecParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    booleanFlags: [{ flag: '--decrypt', key: 'decrypt' }],
+  });
+
+  if ('error' in parsed) return parsed;
+
+  const [appname, ...rest] = parsed.positional;
+  if (!appname || appname.startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    appname,
+    rawArgs: {
+      appname,
+      ...(parsed.rawArgs.decrypt === true ? { decrypt: true } : {}),
+    },
+    positional: rest,
+  };
+}
+
+function parseAppsGetSpecFullArgs(args: string[]): AppsGetSpecFullParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--owner', key: 'owner' },
+      { flag: '--base-url', key: 'baseUrls', repeatable: true },
+    ],
+    integerFlags: [{ flag: '--timeout-ms', key: 'timeoutMs', min: 1 }],
+    booleanFlags: [
+      { flag: '--set-base-url-on-success', key: 'setBaseUrlOnSuccess', value: true },
+      { flag: '--no-set-base-url-on-success', key: 'setBaseUrlOnSuccess', value: false },
+      { flag: '--include-secrets', key: 'includeSecrets' },
+      { flag: '--confirm', key: 'confirm' },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+
+  const [appname, ...rest] = parsed.positional;
+  if (!appname || appname.startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux apps get-spec-full <appname> [--owner <zelid>] [--base-url <url> ...] [--timeout-ms <ms>] [--set-base-url-on-success|--no-set-base-url-on-success] [--include-secrets] [--confirm] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    appname,
+    rawArgs: {
+      appname,
+      ...parsed.rawArgs,
+    },
+    positional: rest,
+  };
+}
+
+function parseAppsGetOwnerArgs(args: string[]): AppsGetOwnerParseResult {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) return parsed;
+
+  const [appname, ...rest] = parsed.positional;
+  if (!appname || appname.startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux apps get-owner <appname> [--json|--pretty|--raw]',
+    };
+  }
+
+  return { outputMode: parsed.outputMode, appname, positional: rest };
+}
+
+function parseAppsGetPublicKeyArgs(args: string[]): AppsGetPublicKeyParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--owner', key: 'owner' },
+      { flag: '--name', key: 'name' },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps get-public-key\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  const owner = typeof parsed.rawArgs.owner === 'string' ? parsed.rawArgs.owner : '';
+  const name = typeof parsed.rawArgs.name === 'string' ? parsed.rawArgs.name : '';
+
+  if (!owner || !name) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux apps get-public-key --owner <zelid> --name <appname> [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    owner,
+    name,
+    positional: [],
+  };
+}
+
 function parseAuthLoginArgs(args: string[]): AuthLoginParseResult {
   const requested = { json: false, pretty: false, raw: false };
   const positional: string[] = [];
@@ -2537,6 +2940,808 @@ async function handleNodeCommand(
   }
 }
 
+async function readPersistedResourceValue(uri: string | null | undefined): Promise<unknown | null> {
+  if (!uri) return null;
+
+  const resource = await readCliResource(uri);
+  if (!resource) return null;
+
+  return parseStoredResourceValue(resource.text, resource.mimeType);
+}
+
+function unwrapFluxPayloadFromValue(value: unknown): unknown {
+  if (looksLikeFluxRequestResult(value)) {
+    const requestRecord = value as Record<string, unknown>;
+    const nested = asRecord(requestRecord.data);
+    return nested && 'data' in nested ? nested.data : requestRecord.data;
+  }
+
+  const record = asRecord(value);
+  if (record && typeof record.status === 'string' && 'data' in record) {
+    return record.data;
+  }
+
+  return value;
+}
+
+function asObjectArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object' && !Array.isArray(entry))
+    : [];
+}
+
+function asOptionalNumberValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+
+  return null;
+}
+
+function asOptionalStringValue(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeRunningAppItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => ({
+    app: asOptionalStringValue(entry.app) ?? asOptionalStringValue(entry.name) ?? null,
+    component: asOptionalStringValue(entry.component),
+    status: asOptionalStringValue(entry.status),
+    ip: asOptionalStringValue(entry.ip),
+    port: asOptionalNumberValue(entry.port) ?? asOptionalStringValue(entry.port),
+  }));
+}
+
+function normalizeAllAppItems(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((name) => ({ name }));
+}
+
+function normalizeGlobalSpecItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => ({
+    name: asOptionalStringValue(entry.name),
+    owner: asOptionalStringValue(entry.owner),
+    instances: asOptionalNumberValue(entry.instances) ?? asOptionalStringValue(entry.instances),
+    height: asOptionalNumberValue(entry.height) ?? asOptionalStringValue(entry.height),
+    expire: asOptionalNumberValue(entry.expire) ?? asOptionalStringValue(entry.expire),
+    hash: asOptionalStringValue(entry.hash),
+  }));
+}
+
+function normalizeByZelidItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => ({
+    name: asOptionalStringValue(entry.name),
+    owner: asOptionalStringValue(entry.owner),
+    height: asOptionalNumberValue(entry.height),
+    expire: asOptionalNumberValue(entry.expire),
+    expireIn: asOptionalNumberValue(entry.expireIn),
+    expirationHeight: asOptionalNumberValue(entry.expirationHeight),
+    currentHeight: asOptionalNumberValue(entry.currentHeight),
+    blocksRemaining: asOptionalNumberValue(entry.blocksRemaining),
+    expired: entry.expired === true,
+  }));
+}
+
+function normalizeGlobalStatusItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => ({
+    name: asOptionalStringValue(entry.name),
+    owner: asOptionalStringValue(entry.owner),
+    hash: asOptionalStringValue(entry.hash),
+    instances: asOptionalNumberValue(entry.instances),
+    height: asOptionalNumberValue(entry.height),
+    expirationHeight: asOptionalNumberValue(entry.expirationHeight),
+    blocksRemaining: asOptionalNumberValue(entry.blocksRemaining),
+    expired: entry.expired === true,
+    hasTemporary: entry.hasTemporary === true,
+    hasPermanent: entry.hasPermanent === true,
+  }));
+}
+
+function normalizeSpecValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function renderAppsCollectionPretty(title: string, items: Array<Record<string, unknown>>, formatter: (item: Record<string, unknown>) => string): string {
+  if (items.length === 0) return `${title} (0)\nNo matching apps.`;
+  return [`${title} (${items.length})`, ...items.map(formatter)].join('\n');
+}
+
+function renderAppsListRunningPretty(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload.items) ? (payload.items as Array<Record<string, unknown>>) : [];
+  return renderAppsCollectionPretty('Running apps', items, (item) => {
+    const app = asOptionalStringValue(item.app) ?? '<unknown>';
+    const component = asOptionalStringValue(item.component) ?? '-';
+    const status = asOptionalStringValue(item.status) ?? '-';
+    const ip = asOptionalStringValue(item.ip) ?? '-';
+    const port = item.port ?? '-';
+    return `- ${app} · component=${component} · status=${status} · ${ip}:${String(port)}`;
+  });
+}
+
+function renderAppsListAllPretty(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload.items) ? (payload.items as Array<Record<string, unknown>>) : [];
+  return renderAppsCollectionPretty('All apps', items, (item) => `- ${asOptionalStringValue(item.name) ?? '<unknown>'}`);
+}
+
+function renderAppsListGlobalPretty(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload.items) ? (payload.items as Array<Record<string, unknown>>) : [];
+  const filters = asRecord(payload.filters) ?? {};
+  const lines = [
+    `Global app specs (${items.length})`,
+    `Filters: owner=${asOptionalStringValue(filters.owner) ?? '-'} · appname=${asOptionalStringValue(filters.appname) ?? '-'} · hash=${asOptionalStringValue(filters.hash) ?? '-'}`,
+  ];
+
+  if (items.length === 0) {
+    lines.push('No matching apps.');
+    return lines.join('\n');
+  }
+
+  for (const item of items) {
+    lines.push(
+      `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · owner=${asOptionalStringValue(item.owner) ?? '-'} · instances=${String(item.instances ?? '-')} · hash=${asOptionalStringValue(item.hash) ?? '-'}`
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function renderAppsByZelidPretty(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload.items) ? (payload.items as Array<Record<string, unknown>>) : [];
+  const zelid = asOptionalStringValue(payload.zelid) ?? '<unknown>';
+  const lines = [`Apps for ${zelid} (${items.length})`];
+
+  if (items.length === 0) {
+    lines.push('No matching apps.');
+    return lines.join('\n');
+  }
+
+  for (const item of items) {
+    lines.push(
+      `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · blocksLeft=${String(item.blocksRemaining ?? '-')} · expired=${item.expired === true ? 'yes' : 'no'}`
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function renderAppsGlobalStatusPretty(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload.items) ? (payload.items as Array<Record<string, unknown>>) : [];
+  const propagation = asRecord(payload.propagation) ?? {};
+  const lines = [
+    `Global status (${items.length})`,
+    `Propagation: temp=${String(propagation.tempYes ?? 0)} · perm=${String(propagation.permYes ?? 0)} · both=${String(propagation.both ?? 0)} · neither=${String(propagation.neither ?? 0)}`,
+  ];
+
+  if (items.length === 0) {
+    lines.push('No matching apps.');
+    return lines.join('\n');
+  }
+
+  for (const item of items) {
+    lines.push(
+      `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · hash=${asOptionalStringValue(item.hash) ?? '-'} · temp=${item.hasTemporary === true ? 'yes' : 'no'} · perm=${item.hasPermanent === true ? 'yes' : 'no'}`
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function renderAppsGetSpecPretty(payload: Record<string, unknown>): string {
+  const spec = normalizeSpecValue(payload.spec);
+  return [
+    `Spec for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Enterprise detected: ${payload.enterpriseDetected === true ? 'yes' : 'no'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+    `Version: ${String(spec?.version ?? '-')}`,
+  ].join('\n');
+}
+
+function renderAppsGetSpecFullPretty(payload: Record<string, unknown>): string {
+  const lines = [
+    `Full spec for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Enterprise: ${payload.enterprise === true ? 'yes' : 'no'}`,
+  ];
+
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    lines.push(`Error: ${payload.error}`);
+  }
+
+  const resources = asRecord(payload.resources) ?? {};
+  if (asOptionalStringValue(resources.mergedSpec)) {
+    lines.push(`Merged spec resource: ${resources.mergedSpec}`);
+  } else if (asOptionalStringValue(payload.resourceUri)) {
+    lines.push(`Spec resource: ${payload.resourceUri}`);
+  }
+
+  if (typeof payload.warning === 'string' && payload.warning.trim()) {
+    lines.push(`Warning: ${payload.warning}`);
+  }
+
+  return lines.join('\n');
+}
+
+function renderAppsGetOwnerPretty(payload: Record<string, unknown>): string {
+  return `Owner for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`;
+}
+
+function renderAppsGetPublicKeyPretty(payload: Record<string, unknown>): string {
+  return [
+    `Public key for ${asOptionalStringValue(payload.name) ?? '<unknown>'}`,
+    `Owner: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`,
+    `Public key: ${asOptionalStringValue(payload.publicKey) ?? '<unavailable>'}`,
+  ].join('\n');
+}
+
+function renderAppsMetadataPretty(title: string, value: Record<string, unknown> | null): string {
+  if (!value) return `${title}\nNo metadata returned.`;
+  return [title, ...Object.entries(value).map(([key, entryValue]) => `- ${key}: ${typeof entryValue === 'object' ? JSON.stringify(entryValue) : String(entryValue)}`)].join('\n');
+}
+
+async function handleAppsListRunning(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps list-running\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_list_running', {}, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not list running apps.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const items = normalizeRunningAppItems(resourceValue);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    items,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsListRunningPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsListAll(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps list-all\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_list_all', {}, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not list apps.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const items = normalizeAllAppItems(resourceValue);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    items,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsListAllPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsListGlobal(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsListGlobalArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_list_global_specs', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not list global app specs.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const items = normalizeGlobalSpecItems(resourceValue);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    filters: {
+      owner: asOptionalStringValue(summary.owner),
+      appname: asOptionalStringValue(summary.appname),
+      hash: asOptionalStringValue(summary.hash),
+    },
+    items,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsListGlobalPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsGlobalStatus(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsGlobalStatusArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_global_status', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read global app status.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = asRecord(await readPersistedResourceValue(normalized.envelope.resourceUri)) ?? {};
+  const computed = normalizeGlobalStatusItems(resourcePayload.computed ?? resourcePayload.apps);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    filters: {
+      zelid: asOptionalStringValue(summary.zelid),
+      appname: asOptionalStringValue(summary.appname),
+      includeExpired: parsed.rawArgs.includeExpired === true,
+      limit: typeof parsed.rawArgs.limit === 'number' ? parsed.rawArgs.limit : 50,
+    },
+    items: computed,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGlobalStatusPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsByZelid(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsByZelidArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_list_by_zelid_with_expiry', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not list apps by ZelID.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = asRecord(await readPersistedResourceValue(normalized.envelope.resourceUri)) ?? {};
+  const items = normalizeByZelidItems(resourcePayload.filtered ?? resourcePayload.apps);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    zelid: asOptionalStringValue(summary.zelid) ?? parsed.zelid,
+    items,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsByZelidPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsGetSpec(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsGetSpecArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps get-spec\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_get_spec', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read app spec.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const spec = normalizeSpecValue(resourceValue);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    spec,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGetSpecPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsGetSpecFull(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsGetSpecFullArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps get-spec-full\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_get_spec_full', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resources = asRecord(summary.resources) ?? {};
+
+  const mergedSpecValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(asOptionalStringValue(resources.mergedSpec)));
+  const baseSpecResourceUri = asOptionalStringValue(resources.baseSpec) ?? asOptionalStringValue(normalized.envelope.resourceUri);
+  const baseSpecValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(baseSpecResourceUri));
+  const enterprisePayloadValue = await readPersistedResourceValue(asOptionalStringValue(resources.enterpriseDecrypted));
+
+  const mergedSpec = normalizeSpecValue(mergedSpecValue);
+  const baseSpec = normalizeSpecValue(baseSpecValue);
+  const spec = normalized.envelope.ok
+    ? baseSpec && mergedSpec
+      ? { ...baseSpec, ...mergedSpec }
+      : mergedSpec ?? baseSpec
+    : null;
+  const enterprisePayload = normalized.envelope.ok ? normalizeSpecValue(enterprisePayloadValue) : null;
+
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok
+      ? typeof summary.status === 'string' || typeof summary.status === 'number'
+        ? summary.status
+        : 'ok'
+      : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    ...(spec ? { spec } : {}),
+    ...(enterprisePayload ? { enterprisePayload } : {}),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGetSpecFullPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsGetOwner(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsGetOwnerArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps get-owner\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_get_owner', { appname: parsed.appname }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read app owner.', io, parsed.outputMode);
+  }
+
+  const owner = asOptionalStringValue(unwrapFluxPayloadFromValue(normalized.envelope.result));
+  const payload = {
+    ok: true,
+    status: 'ok',
+    appname: parsed.appname,
+    owner,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGetOwnerPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsGetPublicKey(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsGetPublicKeyArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_get_public_key', { owner: parsed.owner, name: parsed.name }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read app public key.', io, parsed.outputMode);
+  }
+
+  const publicKey = asOptionalStringValue(unwrapFluxPayloadFromValue(normalized.envelope.result));
+  const payload = {
+    ok: true,
+    status: 'ok',
+    owner: parsed.owner,
+    name: parsed.name,
+    publicKey,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGetPublicKeyPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsRegistrationInformation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps registration-information\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_registration_information', {}, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read registration information.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const registrationInformation = normalizeSpecValue(resourceValue);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    registrationInformation,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsMetadataPretty('Registration information', registrationInformation));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsDeploymentInformation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux apps deployment-information\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_deployment_information', {}, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read deployment information.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const deploymentInformation = normalizeSpecValue(resourceValue);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: typeof summary.status === 'string' || typeof summary.status === 'number' ? summary.status : 'ok',
+    deploymentInformation,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsMetadataPretty('Deployment information', deploymentInformation));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderAppsHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'list-running':
+      return handleAppsListRunning(rest, io, toolRuntime, mode);
+    case 'list-all':
+      return handleAppsListAll(rest, io, toolRuntime, mode);
+    case 'list-global':
+      return handleAppsListGlobal(rest, io, toolRuntime, mode);
+    case 'global-status':
+      return handleAppsGlobalStatus(rest, io, toolRuntime, mode);
+    case 'by-zelid':
+      return handleAppsByZelid(rest, io, toolRuntime, mode);
+    case 'get-spec':
+      return handleAppsGetSpec(rest, io, toolRuntime, mode);
+    case 'get-spec-full':
+      return handleAppsGetSpecFull(rest, io, toolRuntime, mode);
+    case 'get-owner':
+      return handleAppsGetOwner(rest, io, toolRuntime, mode);
+    case 'get-public-key':
+      return handleAppsGetPublicKey(rest, io, toolRuntime, mode);
+    case 'registration-information':
+      return handleAppsRegistrationInformation(rest, io, toolRuntime, mode);
+    case 'deployment-information':
+      return handleAppsDeploymentInformation(rest, io, toolRuntime, mode);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown apps subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
 async function handleEnterpriseKeyClear(args: string[], io: CliIo): Promise<number> {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -2853,6 +4058,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         return await handleProfileCommand(argv.slice(1), io);
       case 'auth':
         return await handleAuthCommand(
+          argv.slice(1),
+          io,
+          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          effectivePersistedStateMode
+        );
+      case 'apps':
+        return await handleAppsCommand(
           argv.slice(1),
           io,
           options.toolRuntime ?? (await getDefaultToolRuntime()),
