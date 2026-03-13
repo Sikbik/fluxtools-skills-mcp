@@ -460,17 +460,17 @@ Done when:
 - common read paths no longer require `flux tool call`
 
 ### 5.2 Add app lifecycle commands
-- [ ] `flux apps start`
-- [ ] `flux apps stop`
-- [ ] `flux apps restart`
-- [ ] `flux apps redeploy`
-- [ ] `flux apps redeploy-component`
+- [x] `flux apps start`
+- [x] `flux apps stop`
+- [x] `flux apps restart`
+- [x] `flux apps redeploy`
+- [x] `flux apps redeploy-component`
 
 Requirements:
 
-- [ ] preserve confirmation semantics
-- [ ] support `--confirm`
-- [ ] never hide mutations behind implicit behavior
+- [x] preserve confirmation semantics
+- [x] support `--confirm`
+- [x] never hide mutations behind implicit behavior
 
 Done when:
 
@@ -752,7 +752,7 @@ Recommended implementation order:
 - [x] list apps
 - [x] get spec
 - [ ] logs and health
-- [ ] lifecycle controls
+- [x] lifecycle controls
 - [ ] plan registration/update
 
 ### Milestone M4 - Full operational surface

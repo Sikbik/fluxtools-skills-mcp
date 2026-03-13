@@ -174,6 +174,25 @@ type AppsTestInstallParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type AppsLifecycleParseResult =
+  | {
+      outputMode: OutputMode;
+      appname: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsRedeployComponentParseResult =
+  | {
+      outputMode: OutputMode;
+      appname: string;
+      component: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -241,6 +260,17 @@ Commands:
   apps exec [<appname>] [--appname <name>] --cmd <segment> [--cmd <segment> ...] [--env KEY=VALUE ...]
             [--confirm] [--json|--pretty|--raw]
                                  Execute a command inside an app container with explicit status output
+  apps start [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]
+                                 Start an app with explicit confirmation
+  apps stop [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]
+                                 Stop an app with explicit confirmation
+  apps restart [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]
+                                 Restart an app with explicit confirmation
+  apps redeploy [<appname>] [--appname <name>] [--force] [--global] [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]
+                                 Redeploy an app and summarize parsed progress events
+  apps redeploy-component [<appname>] [<component>] [--appname <name>] [--component <name>] [--force] [--timeout-ms <ms>]
+                          [--confirm] [--json|--pretty|--raw]
+                                 Redeploy one component and summarize parsed progress events
   apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                                  [--json|--pretty|--raw]
                                  List global apps for a ZelID with expiry metadata
@@ -388,6 +418,12 @@ Usage:
   flux apps monitor [<appname>] [--appname <name>] [--range <ms>] [--json|--pretty|--raw]
   flux apps exec [<appname>] [--appname <name>] --cmd <segment> [--cmd <segment> ...] [--env KEY=VALUE ...]
                  [--confirm] [--json|--pretty|--raw]
+  flux apps start [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]
+  flux apps stop [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]
+  flux apps restart [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]
+  flux apps redeploy [<appname>] [--appname <name>] [--force] [--global] [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]
+  flux apps redeploy-component [<appname>] [<component>] [--appname <name>] [--component <name>] [--force] [--timeout-ms <ms>]
+                              [--confirm] [--json|--pretty|--raw]
   flux apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                     [--json|--pretty|--raw]
   flux apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]
@@ -404,6 +440,8 @@ Notes:
   - Discovery commands preserve the shared MCP selectors and defaulting behavior.
   - \`troubleshoot\` adds suspect classifications and suggested next actions on top of MCP summaries.
   - Runtime debug commands keep large payloads in resources and expose machine-friendly summaries.
+  - Lifecycle mutations keep \`--confirm\` explicit and preserve relevant lifecycle flags.
+  - \`redeploy\` and \`redeploy-component\` parse persisted progress output into semantic status summaries.
   - \`exec\` and \`test-install\` preserve explicit status fields instead of relying on HTTP status alone.
   - \`by-zelid\` defaults to persisted auth ZelID when no explicit ZelID is provided.
   - \`get-spec\` reads the base spec and points enterprise apps to \`get-spec-full\`.
@@ -1923,6 +1961,128 @@ function parseAppsExecArgs(args: string[]): AppsTroubleshootParseResult {
   }
 
   return parsed;
+}
+
+function parseAppsStartArgs(args: string[]): AppsLifecycleParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'start',
+    usage: 'Usage: flux apps start [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]',
+    booleanFlags: [
+      { flag: '--global', key: 'global' },
+      { flag: '--confirm', key: 'confirm' },
+    ],
+  });
+}
+
+function parseAppsStopArgs(args: string[]): AppsLifecycleParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'stop',
+    usage: 'Usage: flux apps stop [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]',
+    booleanFlags: [
+      { flag: '--global', key: 'global' },
+      { flag: '--confirm', key: 'confirm' },
+    ],
+  });
+}
+
+function parseAppsRestartArgs(args: string[]): AppsLifecycleParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'restart',
+    usage: 'Usage: flux apps restart [<appname>] [--appname <name>] [--global] [--confirm] [--json|--pretty|--raw]',
+    booleanFlags: [
+      { flag: '--global', key: 'global' },
+      { flag: '--confirm', key: 'confirm' },
+    ],
+  });
+}
+
+function parseAppsRedeployArgs(args: string[]): AppsLifecycleParseResult {
+  return parseAppsRuntimeTargetArgs(args, {
+    command: 'redeploy',
+    usage:
+      'Usage: flux apps redeploy [<appname>] [--appname <name>] [--force] [--global] [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]',
+    integerFlags: [{ flag: '--timeout-ms', key: 'timeoutMs', min: 1 }],
+    booleanFlags: [
+      { flag: '--force', key: 'force' },
+      { flag: '--global', key: 'global' },
+      { flag: '--confirm', key: 'confirm' },
+    ],
+  });
+}
+
+function parseAppsRedeployComponentArgs(args: string[]): AppsRedeployComponentParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--appname', key: 'appname' },
+      { flag: '--component', key: 'component' },
+    ],
+    integerFlags: [{ flag: '--timeout-ms', key: 'timeoutMs', min: 1 }],
+    booleanFlags: [
+      { flag: '--force', key: 'force' },
+      { flag: '--confirm', key: 'confirm' },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 2) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps redeploy-component\`: ${parsed.positional.slice(2).join(' ')}`,
+    };
+  }
+
+  const positionalAppname = parsed.positional[0]?.trim() || null;
+  const positionalComponent = parsed.positional[1]?.trim() || null;
+  const flagAppname = typeof parsed.rawArgs.appname === 'string' && parsed.rawArgs.appname.trim()
+    ? String(parsed.rawArgs.appname).trim()
+    : null;
+  const flagComponent = typeof parsed.rawArgs.component === 'string' && parsed.rawArgs.component.trim()
+    ? String(parsed.rawArgs.component).trim()
+    : null;
+
+  if (positionalAppname && flagAppname && positionalAppname !== flagAppname) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide the app name either positionally or via --appname, not both with different values.',
+    };
+  }
+
+  if (positionalComponent && flagComponent && positionalComponent !== flagComponent) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Provide the component either positionally or via --component, not both with different values.',
+    };
+  }
+
+  const appname = positionalAppname ?? flagAppname;
+  if (!appname) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux apps redeploy-component [<appname>] [<component>] [--appname <name>] [--component <name>] [--force] [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]',
+    };
+  }
+
+  const component = positionalComponent ?? flagComponent;
+  if (!component) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux apps redeploy-component [<appname>] [<component>] [--appname <name>] [--component <name>] [--force] [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    appname,
+    component,
+    rawArgs: {
+      ...parsed.rawArgs,
+      appname,
+      component,
+    },
+    positional: [],
+  };
 }
 
 function parseAppsTestInstallArgs(args: string[]): AppsTestInstallParseResult {
@@ -3620,15 +3780,7 @@ function normalizeExecOutputSummary(value: unknown): Record<string, unknown> {
   };
 }
 
-function normalizeRuntimeCommandStatus(normalized: ToolCallNormalization, successStatus = 'available'): string {
-  if (normalized.envelope.ok) return successStatus;
-  if (normalized.failureKind && normalized.failureKind !== 'flux') {
-    return failureStatus(normalized.failureKind);
-  }
-  return 'error';
-}
-
-function deriveTestInstallSemantic(resourcePayload: unknown): {
+function deriveProgressSemantic(resourcePayload: unknown): {
   ok: boolean | null;
   source: 'json' | 'events' | 'tool';
   status: string;
@@ -3708,6 +3860,34 @@ function deriveTestInstallSemantic(resourcePayload: unknown): {
     eventCount: events.length,
     events,
   };
+}
+
+function normalizeRuntimeCommandStatus(normalized: ToolCallNormalization, successStatus = 'available'): string {
+  if (normalized.envelope.ok) return successStatus;
+  if (normalized.failureKind && normalized.failureKind !== 'flux') {
+    return failureStatus(normalized.failureKind);
+  }
+  return 'error';
+}
+
+function deriveTestInstallSemantic(resourcePayload: unknown): {
+  ok: boolean | null;
+  source: 'json' | 'events' | 'tool';
+  status: string;
+  message: string | null;
+  lastEvent: string | null;
+  eventCount: number;
+  events: string[];
+} {
+  return deriveProgressSemantic(resourcePayload);
+}
+
+function formatOperationLabel(value: string | null): string {
+  if (!value) return 'Operation';
+  return value
+    .split('-')
+    .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
+    .join(' ');
 }
 
 function renderAppsCollectionPretty(title: string, items: Array<Record<string, unknown>>, formatter: (item: Record<string, unknown>) => string): string {
@@ -3983,6 +4163,31 @@ function renderAppsExecPretty(payload: Record<string, unknown>): string {
     `Target: ${asOptionalStringValue(payload.target) ?? '<unknown>'}`,
     `Command: ${Array.isArray(payload.cmd) ? payload.cmd.join(' ') : '-'}`,
     `Stdout preview: ${asOptionalStringValue(outputSummary.stdoutPreview) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsLifecyclePretty(payload: Record<string, unknown>): string {
+  return [
+    `${formatOperationLabel(asOptionalStringValue(payload.operation))} ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Global: ${String(payload.global === true)}`,
+    `HTTP status: ${String(payload.httpStatus ?? '-')}`,
+    `Flux status: ${asOptionalStringValue(payload.fluxStatus) ?? '-'}`,
+    `Message: ${asOptionalStringValue(payload.message) ?? '-'}`,
+  ].join('\n');
+}
+
+function renderAppsRedeployPretty(payload: Record<string, unknown>): string {
+  return [
+    `${formatOperationLabel(asOptionalStringValue(payload.operation))} ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    ...(asOptionalStringValue(payload.component) ? [`Component: ${asOptionalStringValue(payload.component)}`] : []),
+    `Force: ${String(payload.force === true)}`,
+    ...(Object.prototype.hasOwnProperty.call(payload, 'global') ? [`Global: ${String(payload.global === true)}`] : []),
+    `Semantic source: ${asOptionalStringValue(payload.semanticSource) ?? '-'}`,
+    `Events: ${String(payload.eventCount ?? 0)}`,
+    `Last event: ${asOptionalStringValue(payload.lastEvent) ?? '-'}`,
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
   ].join('\n');
 }
@@ -4900,6 +5105,206 @@ async function handleAppsExec(
   return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
 }
 
+async function handleAppsLifecycleMutation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    operation: 'start' | 'stop' | 'restart';
+    toolName: 'flux_apps_start' | 'flux_apps_stop' | 'flux_apps_restart';
+    parse: (args: string[]) => AppsLifecycleParseResult;
+  }
+): Promise<number> {
+  const parsed = options.parse(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const result = asRecord(normalized.envelope.result) ?? {};
+  const nested = asRecord(result.data) ?? {};
+  const data = asRecord(nested.data);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'success' : normalizeRuntimeCommandStatus(normalized, 'success'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: options.operation,
+    appname: parsed.appname,
+    global: parsed.rawArgs.global === true,
+    httpStatus: asOptionalNumberValue(result.status),
+    fluxStatus: asOptionalStringValue(nested.status),
+    message:
+      asOptionalStringValue(data?.message)
+      ?? asOptionalStringValue(nested.data)
+      ?? asOptionalStringValue(result.message)
+      ?? null,
+    nextActions: normalizeNextActionItems(normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsLifecyclePretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsStart(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsLifecycleMutation(args, io, toolRuntime, mode, {
+    operation: 'start',
+    toolName: 'flux_apps_start',
+    parse: parseAppsStartArgs,
+  });
+}
+
+async function handleAppsStop(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsLifecycleMutation(args, io, toolRuntime, mode, {
+    operation: 'stop',
+    toolName: 'flux_apps_stop',
+    parse: parseAppsStopArgs,
+  });
+}
+
+async function handleAppsRestart(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsLifecycleMutation(args, io, toolRuntime, mode, {
+    operation: 'restart',
+    toolName: 'flux_apps_restart',
+    parse: parseAppsRestartArgs,
+  });
+}
+
+async function handleAppsRedeploy(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsRedeployArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_redeploy', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = await readPersistedResourceValue(normalized.envelope.resourceUri);
+  const resourceRecord = asRecord(resourceValue) ?? {};
+  const responseRecord = asRecord(resourceRecord.response) ?? {};
+  const requestRecord = asRecord(resourceRecord.request) ?? {};
+  const semantic = deriveProgressSemantic(resourceValue);
+  const payload = {
+    ok: semantic.ok ?? normalized.envelope.ok,
+    status: semantic.ok === true ? 'success' : semantic.ok === false ? 'error' : normalized.envelope.ok ? 'pending' : normalizeRuntimeCommandStatus(normalized, 'pending'),
+    ...(normalized.envelope.error && semantic.ok !== true ? { error: normalized.envelope.error } : {}),
+    operation: 'redeploy',
+    appname: parsed.appname,
+    force: parsed.rawArgs.force === true,
+    global: parsed.rawArgs.global === true,
+    timeoutMs: asOptionalNumberValue(parsed.rawArgs.timeoutMs) ?? asOptionalNumberValue(requestRecord.timeoutMs),
+    httpStatus: asOptionalNumberValue(summary.status) ?? asOptionalNumberValue(responseRecord.status),
+    semanticSource: semantic.source,
+    semanticMessage: semantic.message,
+    eventCount: semantic.eventCount,
+    events: semantic.events,
+    lastEvent: semantic.lastEvent,
+    resourceUri: normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsRedeployPretty(payload));
+  }
+
+  if (semantic.ok === false) return EXIT_CODE_FLUX_FAILURE;
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleAppsRedeployComponent(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsRedeployComponentArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_redeploy_component', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = await readPersistedResourceValue(normalized.envelope.resourceUri);
+  const resourceRecord = asRecord(resourceValue) ?? {};
+  const responseRecord = asRecord(resourceRecord.response) ?? {};
+  const requestRecord = asRecord(resourceRecord.request) ?? {};
+  const semantic = deriveProgressSemantic(resourceValue);
+  const payload = {
+    ok: semantic.ok ?? normalized.envelope.ok,
+    status: semantic.ok === true ? 'success' : semantic.ok === false ? 'error' : normalized.envelope.ok ? 'pending' : normalizeRuntimeCommandStatus(normalized, 'pending'),
+    ...(normalized.envelope.error && semantic.ok !== true ? { error: normalized.envelope.error } : {}),
+    operation: 'redeploy-component',
+    appname: parsed.appname,
+    component: parsed.component,
+    force: parsed.rawArgs.force === true,
+    timeoutMs: asOptionalNumberValue(parsed.rawArgs.timeoutMs) ?? asOptionalNumberValue(requestRecord.timeoutMs),
+    httpStatus: asOptionalNumberValue(summary.status) ?? asOptionalNumberValue(responseRecord.status),
+    semanticSource: semantic.source,
+    semanticMessage: semantic.message,
+    eventCount: semantic.eventCount,
+    events: semantic.events,
+    lastEvent: semantic.lastEvent,
+    resourceUri: normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsRedeployPretty(payload));
+  }
+
+  if (semantic.ok === false) return EXIT_CODE_FLUX_FAILURE;
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
 async function handleAppsTestInstall(
   args: string[],
   io: CliIo,
@@ -4996,6 +5401,16 @@ async function handleAppsCommand(
       return handleAppsMonitor(rest, io, toolRuntime, mode);
     case 'exec':
       return handleAppsExec(rest, io, toolRuntime, mode);
+    case 'start':
+      return handleAppsStart(rest, io, toolRuntime, mode);
+    case 'stop':
+      return handleAppsStop(rest, io, toolRuntime, mode);
+    case 'restart':
+      return handleAppsRestart(rest, io, toolRuntime, mode);
+    case 'redeploy':
+      return handleAppsRedeploy(rest, io, toolRuntime, mode);
+    case 'redeploy-component':
+      return handleAppsRedeployComponent(rest, io, toolRuntime, mode);
     case 'by-zelid':
       return handleAppsByZelid(rest, io, toolRuntime, mode);
     case 'get-spec':
