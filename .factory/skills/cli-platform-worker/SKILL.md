@@ -21,11 +21,12 @@ Use this skill for features that:
 1. Read `mission.md`, mission `AGENTS.md`, `.factory/library/architecture.md`, `.factory/library/environment.md`, and `.factory/library/user-testing.md`.
 2. Check the current roadmap slice and preserve the `fluxos-cli` package naming plus `flux` binary contract.
 3. Write failing tests first for parser/output/state/resource behavior before editing implementation code.
-4. Implement the smallest CLI slice that fully satisfies the feature without duplicating Flux business logic that should stay shared.
-5. If the feature needs shared behavior that does not exist yet, extract or request the smallest helper instead of copy-pasting MCP logic.
-6. Run targeted package tests first, then the build/test commands from `.factory/services.yaml`.
-7. Run at least one direct CLI smoke command covering the new slice (for example `--help`, `--json`, `state show`, or `resource read`).
-8. Update roadmap checkboxes only for the slice completed by this feature.
+4. If the branch already contains in-scope partial implementation for the feature, audit the existing diff first, add focused regression tests around the gap, and explicitly note the deviation from the clean-slate test-first path in your handoff.
+5. Implement the smallest CLI slice that fully satisfies the feature without duplicating Flux business logic that should stay shared.
+6. If the feature needs shared behavior that does not exist yet, extract or request the smallest helper instead of copy-pasting MCP logic.
+7. Run targeted package tests first, then the build/test commands from `.factory/services.yaml`.
+8. Run at least one direct CLI smoke command covering the new slice (for example `--help`, `--json`, `state show`, or `resource read`).
+9. Update roadmap checkboxes only for the slice completed by this feature.
 
 ## Example Handoff
 
