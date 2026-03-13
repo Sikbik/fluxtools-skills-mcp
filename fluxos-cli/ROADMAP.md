@@ -363,17 +363,17 @@ Done when:
 MCP is session-oriented. A CLI will be much less useful if every command starts from zero.
 
 ### 3.1 Define state model
-- [ ] Persist:
-  - [ ] `baseUrl`
-  - [ ] `zelidauth`
-  - [ ] enterprise key
-  - [ ] HTTP defaults
-  - [ ] FluxDrive base URL
-  - [ ] profile name
-- [ ] Decide file location strategy:
-  - [ ] XDG on Linux
-  - [ ] fallback to home config directory
-  - [ ] project-local override if requested
+- [x] Persist:
+  - [x] `baseUrl`
+  - [x] `zelidauth`
+  - [x] enterprise key
+  - [x] HTTP defaults
+  - [x] FluxDrive base URL
+  - [x] profile name
+- [x] Decide file location strategy:
+  - [x] XDG on Linux
+  - [x] fallback to home config directory
+  - [x] project-local override if requested
 
 Done when:
 
@@ -395,8 +395,8 @@ Done when:
 - multiple nodes or environments can be managed cleanly
 
 ### 3.3 Add explicit state visibility
-- [ ] `flux state show`
-- [ ] `flux state clear`
+- [x] `flux state show`
+- [x] `flux state clear`
 - [ ] `flux auth clear`
 - [ ] `flux enterprise-key clear`
 
@@ -743,10 +743,10 @@ Recommended implementation order:
 - [x] stable exit codes
 
 ### Milestone M2 - Persistent operator session
-- [ ] saved base URL
-- [ ] saved auth
+- [x] saved base URL
+- [x] saved auth
 - [ ] profiles
-- [ ] state visibility commands
+- [x] state visibility commands
 
 ### Milestone M3 - App operations CLI
 - [ ] list apps

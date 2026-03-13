@@ -10,6 +10,14 @@ import {
   type ResourceDescriptor as CliResourceDescriptor,
   type ResourcePruneResult,
 } from './state/resourceStore.js';
+import {
+  clearPersistedProfileState,
+  defaultPersistedProfileState,
+  getStateVisibilitySummary,
+  loadPersistedStateSnapshot,
+  type PersistedProfileState,
+  updatePersistedProfileState,
+} from './state/sessionState.js';
 
 export type TextWriter = {
   write(chunk: string): void;
@@ -62,6 +70,7 @@ export type ToolRuntime = {
 export type RunCliOptions = {
   io?: CliIo;
   toolRuntime?: ToolRuntime;
+  persistedStateMode?: 'auto' | 'on' | 'off';
 };
 
 type ToolCatalogEntry = {
@@ -104,6 +113,10 @@ Commands:
                                  Read a persisted CLI resource payload
   resource prune [--json|--pretty] [--clear-all]
                                  Prune expired/overflow resources or clear all
+  state show [--json|--pretty]
+                                 Show persisted CLI session state for the active profile
+  state clear [--json|--pretty]
+                                 Reset persisted CLI session state for the active profile
 
 Options:
   -h, --help  Show this help output
@@ -139,6 +152,17 @@ Notes:
   - --clear-all removes all persisted CLI resources explicitly.
 `;
 
+const STATE_HELP_TEXT = `FluxOS CLI - state
+
+Usage:
+  flux state show [--json|--pretty]
+  flux state clear [--json|--pretty]
+
+Notes:
+  - State is persisted per active CLI profile under the configured state directory.
+  - JSON mode shows redacted auth and enterprise-key summaries only.
+`;
+
 function writeLine(writer: TextWriter, text: string) {
   writer.write(text.endsWith('\n') ? text : `${text}\n`);
 }
@@ -153,6 +177,10 @@ function renderToolHelp(): string {
 
 function renderResourceHelp(): string {
   return RESOURCE_HELP_TEXT;
+}
+
+function renderStateHelp(): string {
+  return STATE_HELP_TEXT;
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -736,8 +764,149 @@ function emitFailure(kind: FailureKind, message: string, io: CliIo, outputMode: 
 }
 
 async function getDefaultToolRuntime(): Promise<ToolRuntime> {
-  const module = (await import('./runtime/toolRuntime.js')) as { defaultToolRuntime: ToolRuntime };
-  return module.defaultToolRuntime;
+  const module = (await import('./runtime/toolRuntime.js')) as { createDefaultToolRuntime(): ToolRuntime };
+  return module.createDefaultToolRuntime();
+}
+
+function normalizeBaseUrl(url: string): string {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Base URL must start with http:// or https://');
+  }
+
+  return url.replace(/\/+$/, '');
+}
+
+function shouldPersistState(mode: RunCliOptions['persistedStateMode']): boolean {
+  return mode !== 'off';
+}
+
+async function hydratePersistedSessionState(toolRuntime: ToolRuntime, mode: RunCliOptions['persistedStateMode']): Promise<void> {
+  if (!shouldPersistState(mode)) return;
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const profile = snapshot.profile;
+
+  if (profile.baseUrl) {
+    await toolRuntime.callTool('flux_set_base_url', { baseUrl: profile.baseUrl });
+  }
+
+  if (profile.zelidauth) {
+    let value: unknown = profile.zelidauth;
+    try {
+      value = JSON.parse(profile.zelidauth);
+    } catch {
+      value = profile.zelidauth;
+    }
+
+    await toolRuntime.callTool('flux_set_zelidauth', { zelidauth: value });
+  }
+
+  if (profile.enterpriseKey) {
+    await toolRuntime.callTool('flux_set_enterprise_key', { enterpriseKey: profile.enterpriseKey });
+  }
+
+  const defaults = defaultPersistedProfileState();
+  const httpDefaultsChanged =
+    profile.httpDefaults.timeoutMs !== defaults.httpDefaults.timeoutMs ||
+    profile.httpDefaults.retryCount !== defaults.httpDefaults.retryCount ||
+    profile.httpDefaults.retryBackoffMs !== defaults.httpDefaults.retryBackoffMs;
+
+  if (httpDefaultsChanged) {
+    await toolRuntime.callTool('flux_set_http_defaults', profile.httpDefaults);
+  }
+
+  if (profile.fluxDriveMwsBaseUrl !== defaults.fluxDriveMwsBaseUrl) {
+    await toolRuntime.callTool('flux_fluxdrive_set_base_url', { baseUrl: profile.fluxDriveMwsBaseUrl });
+  }
+}
+
+async function persistMutatedSessionState(
+  toolName: string,
+  rawArgs: Record<string, unknown>,
+  rawResult: ToolCallResult,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<void> {
+  if (!shouldPersistState(mode)) return;
+
+  const normalized = normalizeToolCall(toolName, rawResult);
+  if (!normalized.envelope.ok) return;
+
+  switch (toolName) {
+    case 'flux_set_base_url': {
+      const baseUrl = typeof rawArgs.baseUrl === 'string' ? rawArgs.baseUrl.trim() : '';
+      if (!baseUrl) return;
+
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        baseUrl: normalizeBaseUrl(baseUrl),
+      }));
+      return;
+    }
+
+    case 'flux_set_http_defaults': {
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        httpDefaults: {
+          timeoutMs: typeof rawArgs.timeoutMs === 'number' ? rawArgs.timeoutMs : current.httpDefaults.timeoutMs,
+          retryCount: typeof rawArgs.retryCount === 'number' ? rawArgs.retryCount : current.httpDefaults.retryCount,
+          retryBackoffMs:
+            typeof rawArgs.retryBackoffMs === 'number' ? rawArgs.retryBackoffMs : current.httpDefaults.retryBackoffMs,
+        },
+      }));
+      return;
+    }
+
+    case 'flux_set_zelidauth': {
+      const rawValue = rawArgs.zelidauth;
+      if (typeof rawValue !== 'string' && (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue))) return;
+      const serialized = typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue);
+
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        zelidauth: serialized,
+      }));
+      return;
+    }
+
+    case 'flux_clear_zelidauth': {
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        zelidauth: null,
+      }));
+      return;
+    }
+
+    case 'flux_set_enterprise_key': {
+      const enterpriseKey = typeof rawArgs.enterpriseKey === 'string' ? rawArgs.enterpriseKey.trim() : '';
+      if (!enterpriseKey) return;
+
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        enterpriseKey,
+      }));
+      return;
+    }
+
+    case 'flux_clear_enterprise_key': {
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        enterpriseKey: null,
+      }));
+      return;
+    }
+
+    case 'flux_fluxdrive_set_base_url': {
+      const baseUrl = typeof rawArgs.baseUrl === 'string' ? rawArgs.baseUrl.trim() : '';
+      if (!baseUrl) return;
+
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        fluxDriveMwsBaseUrl: normalizeBaseUrl(baseUrl),
+      }));
+      return;
+    }
+  }
 }
 
 async function hydratePersistedResourceArguments(rawArgs: Record<string, unknown>, toolRuntime: ToolRuntime): Promise<void> {
@@ -809,7 +978,12 @@ async function handleToolList(args: string[], io: CliIo, toolRuntime: ToolRuntim
   return EXIT_CODE_SUCCESS;
 }
 
-async function handleToolCall(args: string[], io: CliIo, toolRuntime: ToolRuntime): Promise<number> {
+async function handleToolCall(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
   const [toolName, ...rest] = args;
 
   if (!toolName || toolName.startsWith('-')) {
@@ -834,8 +1008,10 @@ async function handleToolCall(args: string[], io: CliIo, toolRuntime: ToolRuntim
 
   let normalized: ToolCallNormalization;
   try {
+    await hydratePersistedSessionState(toolRuntime, mode);
     await hydratePersistedResourceArguments(parsed.rawArgs, toolRuntime);
     const rawResult = await toolRuntime.callTool(toolName, parsed.rawArgs);
+    await persistMutatedSessionState(toolName, parsed.rawArgs, rawResult, mode);
     await persistToolResources(rawResult, toolRuntime);
     normalized = normalizeToolCall(toolName, rawResult);
   } catch (error) {
@@ -1039,7 +1215,100 @@ async function handleResourceCommand(args: string[], io: CliIo): Promise<number>
   }
 }
 
-async function handleToolCommand(args: string[], io: CliIo, toolRuntime: ToolRuntime): Promise<number> {
+function renderStatePretty(state: Awaited<ReturnType<typeof getStateVisibilitySummary>>): string {
+  return [
+    `Active profile: ${state.activeProfile}`,
+    `Base URL: ${state.baseUrl ?? '<unset>'}`,
+    `Auth: ${state.auth.present ? `present${state.auth.zelid ? ` (zelid: ${state.auth.zelid})` : ''}` : 'not set'}`,
+    `Enterprise key: ${state.enterpriseKey.present ? 'present' : 'not set'}`,
+    `FluxDrive base URL: ${state.fluxDriveMwsBaseUrl}`,
+    `HTTP defaults: timeoutMs=${state.httpDefaults.timeoutMs}, retryCount=${state.httpDefaults.retryCount}, retryBackoffMs=${state.httpDefaults.retryBackoffMs}`,
+    `State dir: ${state.paths.stateDir}`,
+    `State file: ${state.paths.stateFile}`,
+    `Resource store file: ${state.paths.resourceStoreFile}`,
+  ].join('\n');
+}
+
+async function handleStateShow(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux state show\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const state = await getStateVisibilitySummary();
+  const payload = {
+    ok: true,
+    status: 'ok',
+    state,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderStatePretty(state));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleStateClear(args: string[], io: CliIo): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux state clear\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  await clearPersistedProfileState();
+  const state = await getStateVisibilitySummary();
+  const payload = {
+    ok: true,
+    status: 'ok',
+    action: 'clear',
+    state,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, `Cleared persisted state for profile ${state.activeProfile}.`);
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleStateCommand(args: string[], io: CliIo): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderStateHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'show':
+      return handleStateShow(rest, io);
+    case 'clear':
+      return handleStateClear(rest, io);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown state subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleToolCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
   if (args.length === 0 || isHelpFlag(args[0])) {
     writeLine(io.stdout, renderToolHelp());
     return EXIT_CODE_SUCCESS;
@@ -1051,7 +1320,7 @@ async function handleToolCommand(args: string[], io: CliIo, toolRuntime: ToolRun
     case 'list':
       return handleToolList(rest, io, toolRuntime);
     case 'call':
-      return handleToolCall(rest, io, toolRuntime);
+      return handleToolCall(rest, io, toolRuntime, mode);
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown tool subcommand: ${subcommand}`, io, parsed.outputMode);
@@ -1061,6 +1330,7 @@ async function handleToolCommand(args: string[], io: CliIo, toolRuntime: ToolRun
 
 export async function runCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
   const io = options.io ?? { stdout: process.stdout, stderr: process.stderr };
+  const effectivePersistedStateMode = options.persistedStateMode ?? (options.toolRuntime ? 'off' : 'auto');
 
   if (argv.length === 0 || isHelpFlag(argv[0])) {
     writeLine(io.stdout, renderHelp());
@@ -1073,10 +1343,12 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
     switch (command) {
       case 'tool': {
         const toolRuntime = options.toolRuntime ?? (await getDefaultToolRuntime());
-        return await handleToolCommand(argv.slice(1), io, toolRuntime);
+        return await handleToolCommand(argv.slice(1), io, toolRuntime, effectivePersistedStateMode);
       }
       case 'resource':
         return await handleResourceCommand(argv.slice(1), io);
+      case 'state':
+        return await handleStateCommand(argv.slice(1), io);
       default:
         writeLine(io.stderr, `Unknown command: ${command}`);
         writeLine(io.stderr, '');

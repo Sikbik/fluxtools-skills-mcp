@@ -1,3 +1,6 @@
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
 import type { ToolRuntime } from '../cli.js';
 import { clearCliResources, pruneCliResources, readCliResource } from '../state/resourceStore.js';
 
@@ -19,8 +22,20 @@ type FluxMcpModule = {
   hydrateResource(resource: { uri: string; name: string; description?: string; mimeType?: string; text: string }): Promise<unknown>;
 };
 
-async function loadFluxMcpModule(): Promise<FluxMcpModule> {
-  return (await import('flux-mcp')) as unknown as FluxMcpModule;
+const require = createRequire(import.meta.url);
+const fluxMcpEntryUrl = pathToFileURL(require.resolve('flux-mcp')).href;
+
+function createFluxMcpModuleLoader() {
+  let cached: Promise<FluxMcpModule> | undefined;
+
+  return async function loadFluxMcpModule(): Promise<FluxMcpModule> {
+    if (!cached) {
+      const sessionToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      cached = import(`${fluxMcpEntryUrl}?fluxos_cli_session=${sessionToken}`) as Promise<FluxMcpModule>;
+    }
+
+    return cached;
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -90,44 +105,48 @@ function cloneToolResult(result: ToolResult) {
   };
 }
 
-export const defaultToolRuntime: ToolRuntime = {
-  async listTools() {
-    const { tools } = await loadFluxMcpModule();
-    return tools.map(cloneToolDefinition);
-  },
+export function createDefaultToolRuntime(): ToolRuntime {
+  const loadFluxMcpModule = createFluxMcpModuleLoader();
 
-  async callTool(name, rawArgs) {
-    if (name === 'flux_resource_read') {
-      const cliResult = await readCliBackedResource(rawArgs);
-      if (cliResult) return cliResult;
-    }
+  return {
+    async listTools() {
+      const { tools } = await loadFluxMcpModule();
+      return tools.map(cloneToolDefinition);
+    },
 
-    if (name === 'flux_resource_prune') {
-      return pruneCliBackedResources(rawArgs);
-    }
+    async callTool(name, rawArgs) {
+      if (name === 'flux_resource_read') {
+        const cliResult = await readCliBackedResource(rawArgs);
+        if (cliResult) return cliResult;
+      }
 
-    const { callTool } = await loadFluxMcpModule();
-    return cloneToolResult(await callTool(name, rawArgs));
-  },
+      if (name === 'flux_resource_prune') {
+        return pruneCliBackedResources(rawArgs);
+      }
 
-  async readResource(uri) {
-    const { callTool } = await loadFluxMcpModule();
-    const result = await callTool('flux_resource_read', { uri });
-    if (result.isError) return null;
+      const { callTool } = await loadFluxMcpModule();
+      return cloneToolResult(await callTool(name, rawArgs));
+    },
 
-    const textItem = result.content.find((item) => item.type === 'text' && typeof item.text === 'string');
-    const structured = result.structuredContent;
-    const mimeType =
-      structured && typeof structured === 'object' && !Array.isArray(structured) && typeof structured.mimeType === 'string'
-        ? structured.mimeType
-        : undefined;
+    async readResource(uri) {
+      const { callTool } = await loadFluxMcpModule();
+      const result = await callTool('flux_resource_read', { uri });
+      if (result.isError) return null;
 
-    if (!textItem || typeof textItem.text !== 'string') return null;
-    return { uri, mimeType, text: textItem.text };
-  },
+      const textItem = result.content.find((item) => item.type === 'text' && typeof item.text === 'string');
+      const structured = result.structuredContent;
+      const mimeType =
+        structured && typeof structured === 'object' && !Array.isArray(structured) && typeof structured.mimeType === 'string'
+          ? structured.mimeType
+          : undefined;
 
-  async hydrateResource(resource) {
-    const module = await loadFluxMcpModule();
-    await module.hydrateResource(resource);
-  },
-};
+      if (!textItem || typeof textItem.text !== 'string') return null;
+      return { uri, mimeType, text: textItem.text };
+    },
+
+    async hydrateResource(resource) {
+      const module = await loadFluxMcpModule();
+      await module.hydrateResource(resource);
+    },
+  };
+}

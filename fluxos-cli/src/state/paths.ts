@@ -17,3 +17,7 @@ export function resolveCliStateDir(): string {
 export function resolveCliResourceStorePath(): string {
   return path.join(resolveCliStateDir(), 'resources.json');
 }
+
+export function resolveCliStateStorePath(): string {
+  return path.join(resolveCliStateDir(), 'state.json');
+}
