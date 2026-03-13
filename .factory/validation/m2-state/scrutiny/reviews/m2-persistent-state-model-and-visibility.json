@@ -1,0 +1,28 @@
+{
+  "featureId": "m2-persistent-state-model-and-visibility",
+  "reviewedAt": "2026-03-13T08:30:34Z",
+  "commitId": "30dc0b545d805fbe8675314d23f351f718111d62",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The slice adds disk-backed session-state persistence, redacted `flux state show`, `flux state clear`, and generic-command state hydration, but it does not actually model the full effective CLI state. Env-backed auth, enterprise-key, FluxDrive, and HTTP-default values still affect the runtime while remaining invisible to `state show` and uncleared by `state clear`.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/state/sessionState.ts",
+        "line": 95,
+        "severity": "blocking",
+        "description": "`defaultProfileState()` and `getStateVisibilitySummary()` only seed/show `FLUX_API_BASE_URL` plus hard-coded defaults (`fluxos-cli/src/state/sessionState.ts:95-105`, `:388-400`). But the actual default runtime still imports env-backed auth, enterprise key, FluxDrive base URL, and HTTP defaults from MCP (`flux-mcp/src/index.ts:116-119`, `:2059-2062`; `flux-mcp/src/fluxClient.ts:168-170`). As a result, with `FLUX_ZELIDAUTH`, `FLUX_ENTERPRISE_KEY`, `FLUXDRIVE_MWS_BASE_URL`, or `FLUX_HTTP_*` set, `flux state show` reports stale defaults / absent auth while `flux tool call flux_get_state --json` keeps using the env-backed values, and `flux state clear` only rewrites the persisted snapshot instead of resetting the effective session. That breaks VAL-STATE-002's active-effective-state requirement and makes the clear/show contract misleading for default-configured sessions."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared environment notes are stale for CLI persistence: they still describe XDG-state persistence as an M1 resource-store exception while this feature now uses the same state-dir policy for persisted session state too.",
+      "evidence": "`.factory/library/environment.md:16` says persisted CLI operator state is planned to follow XDG config paths with only the M1 resource store using `FLUXOS_CLI_STATE_DIR` / `XDG_STATE_HOME` / `~/.local/state/fluxos-cli`, but `fluxos-cli/src/state/paths.ts:4-16` and `fluxos-cli/src/state/sessionState.ts:190-197` now store session state at that same state-directory path."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The reviewed commit lands persisted state storage and visibility commands, but `flux state show` / `flux state clear` do not reflect or reset env-backed effective auth, enterprise-key, FluxDrive, and HTTP-default state that the runtime still uses."
+}

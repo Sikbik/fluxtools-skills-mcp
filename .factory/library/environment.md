@@ -13,7 +13,7 @@ Environment variables, external dependencies, and setup notes for the `fluxos-cl
 - Public live testing is read-only and opt-in. Plan for `FLUX_LIVE_TESTS=1` plus `FLUX_API_BASE_URL=https://api.runonflux.io`.
 - No interactive auth during normal implementation or validation.
 - Any future authenticated live validation must be isolated behind a dedicated non-interactive staging profile and must not run by default.
-- Persisted CLI operator state is planned to follow XDG config paths on Linux with a home-directory fallback, but the current M1 resource store is an exception: it persists under `FLUXOS_CLI_STATE_DIR`, then `XDG_STATE_HOME/fluxos-cli`, then `~/.local/state/fluxos-cli`.
+- Persisted `fluxos-cli` session state, profile state, and the CLI resource store use the same Linux state-directory policy: `FLUXOS_CLI_STATE_DIR` when set, otherwise `XDG_STATE_HOME/fluxos-cli`, otherwise `~/.local/state/fluxos-cli`.
 - Use ephemeral stub HTTP servers bound to `127.0.0.1:0` for automated integration tests.
 - `jq` is not installed in this environment; use Python or the Read tool when you need to inspect JSON mission artifacts.
 - Run `.factory/init.sh` with `bash` (or its shebang). Invoking it with `sh` fails in this environment because the script uses `pipefail`.
