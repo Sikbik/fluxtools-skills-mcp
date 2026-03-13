@@ -411,10 +411,10 @@ Done when:
 Once `flux tool` works, the next step is to make the highest-value workflows ergonomic.
 
 ### 4.1 Add `flux auth`
-- [ ] `flux auth login --zelid ...`
-- [ ] `flux auth status`
+- [x] `flux auth login --zelid ...`
+- [x] `flux auth status`
 - [ ] `flux auth diagnose`
-- [ ] `flux auth logout`
+- [x] `flux auth logout`
 - [ ] `flux auth phrase`
 
 Done when:

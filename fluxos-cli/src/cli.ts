@@ -12,7 +12,6 @@ import {
 } from './state/resourceStore.js';
 import {
   createPersistedProfile,
-  clearPersistedAuthState,
   clearPersistedEnterpriseKeyState,
   clearPersistedProfileState,
   deletePersistedProfile,
@@ -131,6 +130,12 @@ Commands:
                                  Switch to a persisted CLI profile
   profile delete <name> [--json|--pretty]
                                  Delete a persisted CLI profile
+  auth login --zelid <zelid> [--signature <sig>] [--login-phrase <phrase>]
+                                 Run phrase-first auth or verify and persist auth
+  auth status [--json|--pretty]
+                                 Show current auth/base-url session status
+  auth logout [--json|--pretty]
+                                 Remove persisted auth material for the active profile
   auth clear [--json|--pretty]
                                  Remove persisted auth material for the active profile
   enterprise-key clear [--json|--pretty]
@@ -197,10 +202,17 @@ Notes:
 const AUTH_HELP_TEXT = `FluxOS CLI - auth
 
 Usage:
+  flux auth login --zelid <zelid> [--signature <sig>] [--login-phrase <phrase>]
+                  [--gateway-base-url <url>] [--force] [--use-emergency-phrase]
+                  [--json|--pretty|--raw]
+  flux auth status [--json|--pretty|--raw]
+  flux auth logout [--json|--pretty]
   flux auth clear [--json|--pretty]
 
 Notes:
-  - Clears only persisted auth material for the active profile.
+  - \`login\` preserves the shared phrase-first auth semantics from flux-mcp.
+  - \`status\` is read-only and reports the hydrated session summary for the active profile.
+  - \`logout\` and \`clear\` clear only persisted auth material for the active profile.
   - Base URL, enterprise key, HTTP defaults, and FluxDrive settings stay unchanged.
 `;
 
@@ -840,6 +852,22 @@ function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+async function executeToolCall(
+  toolName: string,
+  rawArgs: Record<string, unknown>,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<ToolCallNormalization> {
+  await hydratePersistedSessionState(toolRuntime, mode);
+  await hydratePersistedResourceArguments(rawArgs, toolRuntime);
+
+  const rawResult = await toolRuntime.callTool(toolName, rawArgs);
+  await persistMutatedSessionState(toolName, rawArgs, rawResult, mode);
+  await persistToolResources(rawResult, toolRuntime);
+
+  return normalizeToolCall(toolName, rawResult);
+}
+
 function shouldPersistState(mode: RunCliOptions['persistedStateMode']): boolean {
   return mode !== 'off';
 }
@@ -928,6 +956,29 @@ async function persistMutatedSessionState(
       await updatePersistedProfileState((current) => ({
         ...current,
         zelidauth: null,
+      }));
+      return;
+    }
+
+    case 'flux_auth_login': {
+      const result = asRecord(normalized.envelope.result);
+      if (!result || result.needSignature === true) return;
+
+      const zelidauthSet = result.zelidauthSet === true;
+      const alreadyAuthenticated = result.alreadyAuthenticated === true;
+      if (!zelidauthSet && !alreadyAuthenticated) return;
+
+      const baseUrl = typeof result.baseUrl === 'string' && result.baseUrl.trim() ? normalizeBaseUrl(result.baseUrl) : null;
+      const zelid = typeof rawArgs.zelid === 'string' ? rawArgs.zelid.trim() : '';
+      const signature = typeof rawArgs.signature === 'string' ? rawArgs.signature.trim() : '';
+      const loginPhrase = typeof rawArgs.loginPhrase === 'string' ? rawArgs.loginPhrase.trim() : '';
+
+      await updatePersistedProfileState((current) => ({
+        ...current,
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(zelidauthSet && zelid && signature && loginPhrase
+          ? { zelidauth: JSON.stringify({ zelid, signature, loginPhrase }) }
+          : {}),
       }));
       return;
     }
@@ -1063,12 +1114,7 @@ async function handleToolCall(
 
   let normalized: ToolCallNormalization;
   try {
-    await hydratePersistedSessionState(toolRuntime, mode);
-    await hydratePersistedResourceArguments(parsed.rawArgs, toolRuntime);
-    const rawResult = await toolRuntime.callTool(toolName, parsed.rawArgs);
-    await persistMutatedSessionState(toolName, parsed.rawArgs, rawResult, mode);
-    await persistToolResources(rawResult, toolRuntime);
-    normalized = normalizeToolCall(toolName, rawResult);
+    normalized = await executeToolCall(toolName, parsed.rawArgs, toolRuntime, mode);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode, toolName);
@@ -1338,22 +1384,351 @@ async function handleStateClear(args: string[], io: CliIo): Promise<number> {
   return EXIT_CODE_SUCCESS;
 }
 
-async function handleAuthClear(args: string[], io: CliIo): Promise<number> {
+type AuthLoginParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+function readFlagValue(
+  args: string[],
+  index: number,
+  arg: string,
+  flagName: string
+): { value: string; nextIndex: number } | { error: string } {
+  if (arg === flagName) {
+    const value = args[index + 1];
+    if (!value) {
+      return { error: `Missing value for ${flagName}.` };
+    }
+
+    return { value, nextIndex: index + 1 };
+  }
+
+  const prefix = `${flagName}=`;
+  const value = arg.slice(prefix.length);
+  if (!value) {
+    return { error: `Missing value for ${flagName}.` };
+  }
+
+  return { value, nextIndex: index };
+}
+
+function parseAuthLoginArgs(args: string[]): AuthLoginParseResult {
+  const requested = { json: false, pretty: false, raw: false };
+  const positional: string[] = [];
+  const rawArgs: Record<string, unknown> = {
+    verify: true,
+    setZelidauth: true,
+    checkPrivilege: true,
+    autoPinGateway: true,
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === '--json') {
+      requested.json = true;
+      continue;
+    }
+
+    if (arg === '--pretty') {
+      requested.pretty = true;
+      continue;
+    }
+
+    if (arg === '--raw') {
+      requested.raw = true;
+      continue;
+    }
+
+    if (arg === '--force') {
+      rawArgs.force = true;
+      continue;
+    }
+
+    if (arg === '--use-emergency-phrase') {
+      rawArgs.useEmergencyPhrase = true;
+      continue;
+    }
+
+    if (arg === '--zelid' || arg.startsWith('--zelid=')) {
+      const value = readFlagValue(args, index, arg, '--zelid');
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs.zelid = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    if (arg === '--signature' || arg.startsWith('--signature=')) {
+      const value = readFlagValue(args, index, arg, '--signature');
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs.signature = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    if (arg === '--login-phrase' || arg.startsWith('--login-phrase=')) {
+      const value = readFlagValue(args, index, arg, '--login-phrase');
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs.loginPhrase = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    if (arg === '--gateway-base-url' || arg.startsWith('--gateway-base-url=')) {
+      const value = readFlagValue(args, index, arg, '--gateway-base-url');
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      rawArgs.gatewayBaseUrl = value.value;
+      index = value.nextIndex;
+      continue;
+    }
+
+    positional.push(arg);
+  }
+
+  const outputMode = resolveOutputModePreference(requested);
+  const selectedOutputModes = Number(requested.json) + Number(requested.pretty) + Number(requested.raw);
+  if (selectedOutputModes > 1) {
+    return { outputMode, error: 'Choose only one output mode: --json, --pretty, or --raw.' };
+  }
+
+  const zelid = typeof rawArgs.zelid === 'string' ? rawArgs.zelid.trim() : '';
+  if (!zelid) {
+    return {
+      outputMode,
+      error:
+        'Usage: flux auth login --zelid <zelid> [--signature <sig>] [--login-phrase <phrase>] [--gateway-base-url <url>] [--force] [--use-emergency-phrase] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode,
+    rawArgs: {
+      ...rawArgs,
+      zelid,
+      ...(typeof rawArgs.signature === 'string' ? { signature: rawArgs.signature.trim() } : {}),
+      ...(typeof rawArgs.loginPhrase === 'string' ? { loginPhrase: rawArgs.loginPhrase } : {}),
+      ...(typeof rawArgs.gatewayBaseUrl === 'string' ? { gatewayBaseUrl: rawArgs.gatewayBaseUrl.trim() } : {}),
+    },
+    positional,
+  };
+}
+
+function mergeAuthLoginPayload(normalized: ToolCallNormalization, activeProfile: string): Record<string, unknown> {
+  const result = asRecord(normalized.envelope.result) ?? {};
+
+  return {
+    ...result,
+    ok: normalized.envelope.ok,
+    status:
+      typeof result.status === 'string' || typeof result.status === 'number'
+        ? result.status
+        : normalized.envelope.ok
+          ? 'ok'
+          : normalized.envelope.status,
+    activeProfile,
+    ...(normalized.envelope.resourceUri && result.resourceUri === undefined ? { resourceUri: normalized.envelope.resourceUri } : {}),
+    ...(normalized.envelope.nextActions && result.nextActions === undefined ? { nextActions: normalized.envelope.nextActions } : {}),
+  };
+}
+
+function renderAuthLoginPretty(payload: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const zelid = typeof payload.zelid === 'string' ? payload.zelid : '<unknown>';
+  const baseUrl = typeof payload.baseUrl === 'string' ? payload.baseUrl : null;
+  const activeProfile = typeof payload.activeProfile === 'string' ? payload.activeProfile : null;
+
+  if (payload.needSignature === true) {
+    lines.push(`Login phrase ready for ${zelid}.`);
+    if (activeProfile) lines.push(`Active profile: ${activeProfile}`);
+    if (typeof payload.pinnedBaseUrl === 'string' && payload.pinnedBaseUrl) {
+      lines.push(`Pinned base URL: ${payload.pinnedBaseUrl}`);
+    }
+    if (typeof payload.gatewayBaseUrl === 'string' && payload.gatewayBaseUrl) {
+      lines.push(`Gateway base URL: ${payload.gatewayBaseUrl}`);
+    }
+    if (typeof payload.loginPhrase === 'string' && payload.loginPhrase) {
+      lines.push('Login phrase:');
+      lines.push(payload.loginPhrase);
+    }
+    if (typeof payload.signLauncherHttpUrl === 'string' && payload.signLauncherHttpUrl) {
+      lines.push(`Sign launcher: ${payload.signLauncherHttpUrl}`);
+    }
+    if (typeof payload.zelcoreLauncherHttpUrl === 'string' && payload.zelcoreLauncherHttpUrl) {
+      lines.push(`Zelcore launcher: ${payload.zelcoreLauncherHttpUrl}`);
+    }
+    if (typeof payload.zelcoreSignLink === 'string' && payload.zelcoreSignLink) {
+      lines.push(`Zelcore sign link: ${payload.zelcoreSignLink}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  lines.push(payload.alreadyAuthenticated === true ? `Already authenticated as ${zelid}.` : `Authenticated as ${zelid}.`);
+  if (activeProfile) lines.push(`Active profile: ${activeProfile}`);
+  lines.push(`Base URL: ${baseUrl ?? '<unset>'}`);
+
+  if (typeof payload.privilege === 'string' && payload.privilege) {
+    lines.push(`Privilege: ${payload.privilege}`);
+  }
+
+  return lines.join('\n');
+}
+
+function normalizeAuthStatusPayload(result: unknown, activeProfile: string): Record<string, unknown> {
+  const record = asRecord(result) ?? {};
+
+  return {
+    ok: true,
+    status: 'ok',
+    activeProfile,
+    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : null,
+    auth: asRecord(record.zelidauth) ?? { present: false },
+    ...(record.zelidauthCache !== undefined ? { authCache: record.zelidauthCache } : {}),
+    ...(record.enterpriseKey !== undefined ? { enterpriseKey: record.enterpriseKey } : {}),
+    ...(record.fluxDriveMwsBaseUrl !== undefined ? { fluxDriveMwsBaseUrl: record.fluxDriveMwsBaseUrl } : {}),
+    ...(record.httpDefaults !== undefined ? { httpDefaults: record.httpDefaults } : {}),
+  };
+}
+
+function renderAuthStatusPretty(payload: Record<string, unknown>): string {
+  const auth = asRecord(payload.auth);
+  return [
+    `Active profile: ${typeof payload.activeProfile === 'string' ? payload.activeProfile : '<unknown>'}`,
+    `Base URL: ${typeof payload.baseUrl === 'string' ? payload.baseUrl : '<unset>'}`,
+    `Auth: ${auth?.present === true ? `present${typeof auth.zelid === 'string' ? ` (zelid: ${auth.zelid})` : ''}` : 'not set'}`,
+  ].join('\n');
+}
+
+async function handleAuthLogin(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAuthLoginArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux auth login\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_auth_login', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Flux auth login failed.', io, parsed.outputMode);
+  }
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const payload = mergeAuthLoginPayload(normalized, snapshot.activeProfile);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAuthLoginPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAuthStatus(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
     return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
 
   if (parsed.positional.length > 0) {
-    return emitFailure('validation', `Unexpected arguments for \`flux auth clear\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+    return emitFailure('validation', `Unexpected arguments for \`flux auth status\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
   }
 
-  await clearPersistedAuthState();
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_get_state', {}, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read auth status.', io, parsed.outputMode);
+  }
+
+  const snapshot = await loadPersistedStateSnapshot();
+  const payload = normalizeAuthStatusPayload(normalized.envelope.result, snapshot.activeProfile);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAuthStatusPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAuthSessionClear(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  action: 'clear' | 'logout'
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux auth ${action}\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  try {
+    const normalized = await executeToolCall('flux_clear_zelidauth', {}, toolRuntime, mode);
+    if (!normalized.envelope.ok) {
+      return emitFailure(
+        normalized.failureKind ?? 'flux',
+        normalized.envelope.error ?? 'Could not clear auth state.',
+        io,
+        parsed.outputMode
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
   const state = await getStateVisibilitySummary();
   const payload = {
     ok: true,
     status: 'ok',
-    action: 'clear',
+    action,
     target: 'auth',
     state,
   };
@@ -1361,13 +1736,27 @@ async function handleAuthClear(args: string[], io: CliIo): Promise<number> {
   if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
     renderJson(io.stdout, payload);
   } else {
-    writeLine(io.stdout, `Cleared persisted auth for profile ${state.activeProfile}.`);
+    writeLine(io.stdout, `${action === 'logout' ? 'Logged out' : 'Cleared persisted auth'} for profile ${state.activeProfile}.`);
   }
 
   return EXIT_CODE_SUCCESS;
 }
 
-async function handleAuthCommand(args: string[], io: CliIo): Promise<number> {
+async function handleAuthClear(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAuthSessionClear(args, io, toolRuntime, mode, 'clear');
+}
+
+async function handleAuthCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
   if (args.length === 0 || isHelpFlag(args[0])) {
     writeLine(io.stdout, renderAuthHelp());
     return EXIT_CODE_SUCCESS;
@@ -1376,8 +1765,14 @@ async function handleAuthCommand(args: string[], io: CliIo): Promise<number> {
   const [subcommand, ...rest] = args;
 
   switch (subcommand) {
+    case 'login':
+      return handleAuthLogin(rest, io, toolRuntime, mode);
+    case 'status':
+      return handleAuthStatus(rest, io, toolRuntime, mode);
+    case 'logout':
+      return handleAuthSessionClear(rest, io, toolRuntime, mode, 'logout');
     case 'clear':
-      return handleAuthClear(rest, io);
+      return handleAuthClear(rest, io, toolRuntime, mode);
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown auth subcommand: ${subcommand}`, io, parsed.outputMode);
@@ -1700,7 +2095,12 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
       case 'profile':
         return await handleProfileCommand(argv.slice(1), io);
       case 'auth':
-        return await handleAuthCommand(argv.slice(1), io);
+        return await handleAuthCommand(
+          argv.slice(1),
+          io,
+          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          effectivePersistedStateMode
+        );
       case 'enterprise-key':
         return await handleEnterpriseKeyCommand(argv.slice(1), io);
       default:
