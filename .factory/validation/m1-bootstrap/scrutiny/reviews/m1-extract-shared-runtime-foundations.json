@@ -1,0 +1,28 @@
+{
+  "featureId": "m1-extract-shared-runtime-foundations",
+  "reviewedAt": "2026-03-13T02:03:21Z",
+  "commitId": "08f24c081499dd2b0d9de32f4031cb90f4beca3e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The commit delivers the requested first shared-runtime extraction: endpoint inventory loading/search/category helpers now live in `shared-runtime/src/endpoints.js`, `flux-mcp` re-exports them, `fluxos-cli` has a matching adapter for bundled inventory loading, and the new parity tests cover both cross-surface semantics and CLI inventory loading. I found one non-blocking issue in the roadmap update.",
+    "issues": [
+      {
+        "file": "fluxos-cli/ROADMAP.md",
+        "line": 268,
+        "severity": "non_blocking",
+        "description": "The roadmap marks 'Define a shared execution interface for calling a Flux operation without MCP transport assumptions' and 'Separate transport concerns from operation logic' complete, but this slice only extracted endpoint-inventory helpers (`shared-runtime/src/endpoints.js`, `flux-mcp/src/endpoints.ts`, `fluxos-cli/src/runtime/endpoints.ts`). No shared execution interface for Flux operation calls was added, so Phase 1.2 progress is currently overstated."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker had to bypass a documented `jq`-based feature-inspection step because `jq` is not installed in this environment. The mission worker startup procedure should document a Python/Read fallback so shared-runtime workers do not lose time on a missing prerequisite.",
+      "evidence": "Handoff `skillFeedback.deviations` says the worker read `features.json` directly after the suggested `jq` command failed, and this review session reproduced the same `bash: jq: command not found` failure while inspecting `/home/stache/.factory/missions/ba1a1372-48d2-4039-badd-1467e9108d17/features.json`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The feature successfully establishes the first shared-runtime boundary by extracting endpoint inventory helpers and adding CLI/MCP parity coverage, though the roadmap checkbox update slightly overstates remaining Phase 1.2 completion."
+}

@@ -1,0 +1,34 @@
+{
+  "featureId": "m1-tool-args-output-and-exit-contracts",
+  "reviewedAt": "2026-03-13T01:30:21Z",
+  "commitId": "f644e8c69db1e941946c7491d7ac831ef795939c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The slice adds the requested argument modes, output modes, and exit-code plumbing, but the reviewed implementation breaks the normalized result envelope for some existing MCP tools and does not actually satisfy the exact auth-failure exit-code contract across the current tool set.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 599,
+        "severity": "blocking",
+        "description": "`normalizeToolCall` now decides failure only from `toolResult.isError` or Flux-request envelope detection and ignores `structuredContent.ok`. Existing MCP tools such as `flux_auth_diagnose` return `{ ok: false, checks, nextSteps }` with `isError: false` (`flux-mcp/src/index.ts:4311`), so the CLI wraps that result as `{ ok: true, status: \"ok\" }` and exits 0 instead of preserving the tool's documented negative result state. That breaks the stable JSON envelope contract for automation."
+      },
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 443,
+        "severity": "blocking",
+        "description": "`classifyFailureKind` recognizes only a narrow set of auth phrases (`authentication required`, `not authenticated`, `zelidauth not set`, `auth required`, `unauthorized`). Real MCP auth failures like `zelidauth is required for enterprise spec decryption...` (`flux-mcp/src/index.ts:7442`) do not match any of those checks, so they fall through to `flux` and exit with code 6 instead of the required auth code 3. The feature therefore does not deliver the exact auth exit-code contract it claims."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The mission shared-state docs do not record a canonical/shared failure-classification rule for mapping MCP errors to CLI exit codes, so the worker had to infer it by grepping scattered MCP error strings and implementing phrase-matching locally in the CLI.",
+      "evidence": "`.factory/library/shared-runtime.md` says parity should keep the same error classification where reasonable, but it documents no helper or source of truth for that mapping. The worker transcript for session `249a5a2f-bb79-47d7-b88f-0e311852d0cf` shows repeated searches through `flux-mcp/src/index.ts` and `flux-mcp/src/fluxClient.ts` for auth/confirm/network/error strings before editing `fluxos-cli/src/cli.ts`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The feature lands the new argument and output flags, but the reviewed CLI normalization/classification logic still misreports some real non-success tool results and maps some auth-required failures to the Flux exit code instead of auth-required."
+}

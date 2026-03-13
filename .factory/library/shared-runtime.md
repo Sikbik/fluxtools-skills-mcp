@@ -41,6 +41,7 @@ Extraction guidance:
 
 - The MCP server/tool registry in `flux-mcp/src/index.ts` stays MCP-only.
 - MCP `resource_link` transport behavior stays MCP-only; only sanitizer/prune logic should move later.
+- There is not yet a shared helper/source of truth for CLI failure classification (for example auth/confirm/network/Flux exit-code mapping). Current classification work still needs to inspect real MCP tool result envelopes and message strings in `flux-mcp/src/index.ts` and related runtime code.
 
 ### Intentionally CLI-only
 
