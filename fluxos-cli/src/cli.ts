@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import {
@@ -193,6 +194,38 @@ type AppsRedeployComponentParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type AppsGenerateSpecParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsSpecInputSource = {
+  kind: 'file' | 'json' | 'resource';
+  value: string;
+};
+
+type AppsSpecInputParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      specSource: AppsSpecInputSource;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type AppsPlanRenewParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      appname: string;
+      specSource: AppsSpecInputSource | null;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -271,6 +304,29 @@ Commands:
   apps redeploy-component [<appname>] [<component>] [--appname <name>] [--component <name>] [--force] [--timeout-ms <ms>]
                           [--confirm] [--json|--pretty|--raw]
                                  Redeploy one component and summarize parsed progress events
+  apps generate-spec --name <name> --owner <zelid> --repotag <repo:tag> [--app-description <text>]
+                     [--component-name <name>] [--component-description <text>] [--port <port> ...]
+                     [--container-port <port> ...] [--domain <domain> ...] [--env KEY=VALUE ...]
+                     [--command <command> ...] [--instances <n>] [--cpu <n>] [--ram <mb>] [--hdd <gb>]
+                     [--container-data <path>] [--staticip] [--enterprise <value>] [--json|--pretty|--raw]
+                                 Generate a v8 app spec and persist it as a reusable CLI artifact
+  apps verify-registration (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]
+                                 Verify a registration spec and return the canonicalized spec artifact
+  apps verify-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]
+                                 Verify an update spec and return the canonicalized spec artifact
+  apps calculate-price (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]
+                                 Calculate FLUX pricing for a spec artifact
+  apps plan-registration (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                         [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
+                                 Build registration planning metadata, payment guidance, and signing artifacts
+  apps plan-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                   [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
+                                 Build update planning metadata, payment guidance, and signing artifacts
+  apps plan-renew <appname> [--owner <zelid>] [--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>]
+                  [--weeks <n>] [--blocks-to-add <n>] [--mode <from_now|add_to_remaining>]
+                  [--blocks-per-week <n>] [--seconds-per-block <n>] [--timestamp <ms>] [--type-version <n>]
+                  [--json|--pretty|--raw]
+                                 Plan an app renewal, including expiry calculations and enterprise caveats
   apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                                  [--json|--pretty|--raw]
                                  List global apps for a ZelID with expiry metadata
@@ -424,6 +480,22 @@ Usage:
   flux apps redeploy [<appname>] [--appname <name>] [--force] [--global] [--timeout-ms <ms>] [--confirm] [--json|--pretty|--raw]
   flux apps redeploy-component [<appname>] [<component>] [--appname <name>] [--component <name>] [--force] [--timeout-ms <ms>]
                               [--confirm] [--json|--pretty|--raw]
+  flux apps generate-spec --name <name> --owner <zelid> --repotag <repo:tag> [--app-description <text>]
+                          [--component-name <name>] [--component-description <text>] [--port <port> ...]
+                          [--container-port <port> ...] [--domain <domain> ...] [--env KEY=VALUE ...]
+                          [--command <command> ...] [--instances <n>] [--cpu <n>] [--ram <mb>] [--hdd <gb>]
+                          [--container-data <path>] [--staticip] [--enterprise <value>] [--json|--pretty|--raw]
+  flux apps verify-registration (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]
+  flux apps verify-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]
+  flux apps calculate-price (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]
+  flux apps plan-registration (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                              [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
+  flux apps plan-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>)
+                        [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]
+  flux apps plan-renew <appname> [--owner <zelid>] [--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>]
+                       [--weeks <n>] [--blocks-to-add <n>] [--mode <from_now|add_to_remaining>]
+                       [--blocks-per-week <n>] [--seconds-per-block <n>] [--timestamp <ms>] [--type-version <n>]
+                       [--json|--pretty|--raw]
   flux apps by-zelid [<zelid>] [--include-expired] [--estimate-time-remaining] [--seconds-per-block <n>] [--limit <n>]
                     [--json|--pretty|--raw]
   flux apps get-spec <appname> [--decrypt] [--json|--pretty|--raw]
@@ -443,6 +515,9 @@ Notes:
   - Lifecycle mutations keep \`--confirm\` explicit and preserve relevant lifecycle flags.
   - \`redeploy\` and \`redeploy-component\` parse persisted progress output into semantic status summaries.
   - \`exec\` and \`test-install\` preserve explicit status fields instead of relying on HTTP status alone.
+  - Deployment planning commands accept spec JSON, files, or prior CLI resource artifacts.
+  - \`generate-spec\`, verification, pricing, and planning commands return stable metadata plus reusable artifacts.
+  - \`plan-renew\` surfaces expiry calculations and enterprise caveats explicitly when a full renewable spec is unavailable.
   - \`by-zelid\` defaults to persisted auth ZelID when no explicit ZelID is provided.
   - \`get-spec\` reads the base spec and points enterprise apps to \`get-spec-full\`.
   - \`get-spec-full\` keeps enterprise inspection explicit; returning secrets requires
@@ -1675,7 +1750,7 @@ function parseAppsFlagArgs(
   args: string[],
   config: {
     stringFlags?: Array<{ flag: string; key: string; repeatable?: boolean }>;
-    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number; repeatable?: boolean }>;
     booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
   }
 ): { outputMode: OutputMode; rawArgs: Record<string, unknown>; positional: string[] } | { outputMode: OutputMode; error: string } {
@@ -1732,7 +1807,12 @@ function parseAppsFlagArgs(
         return { outputMode: resolveOutputModePreference(requested), error: value.error };
       }
 
-      rawArgs[integerFlag.key] = value.value;
+      if (integerFlag.repeatable) {
+        const current = Array.isArray(rawArgs[integerFlag.key]) ? (rawArgs[integerFlag.key] as number[]) : [];
+        rawArgs[integerFlag.key] = [...current, value.value];
+      } else {
+        rawArgs[integerFlag.key] = value.value;
+      }
       index = value.nextIndex;
       continue;
     }
@@ -2127,6 +2207,286 @@ function parseAppsTestInstallArgs(args: string[]): AppsTestInstallParseResult {
       ...parsed.rawArgs,
       hash,
     },
+    positional: [],
+  };
+}
+
+function resolveAppsSpecInputSource(
+  rawArgs: Record<string, unknown>,
+  outputMode: OutputMode,
+  usage: string,
+  opts?: { optional?: boolean }
+): AppsSpecInputSource | { outputMode: OutputMode; error: string } {
+  const file = typeof rawArgs.specFile === 'string' && rawArgs.specFile.trim() ? rawArgs.specFile.trim() : null;
+  const json = typeof rawArgs.specJson === 'string' && rawArgs.specJson.trim() ? rawArgs.specJson.trim() : null;
+  const resourceUri = typeof rawArgs.specResourceUri === 'string' && rawArgs.specResourceUri.trim()
+    ? rawArgs.specResourceUri.trim()
+    : null;
+
+  const provided = [
+    file ? ({ kind: 'file', value: file } satisfies AppsSpecInputSource) : null,
+    json ? ({ kind: 'json', value: json } satisfies AppsSpecInputSource) : null,
+    resourceUri ? ({ kind: 'resource', value: resourceUri } satisfies AppsSpecInputSource) : null,
+  ].filter((entry): entry is AppsSpecInputSource => entry !== null);
+
+  if (provided.length > 1) {
+    return {
+      outputMode,
+      error: 'Provide exactly one of --spec-file, --spec-json, or --spec-resource-uri.',
+    };
+  }
+
+  if (provided.length === 0) {
+    if (opts?.optional === true) {
+      return { kind: 'json', value: '' };
+    }
+
+    return {
+      outputMode,
+      error: usage,
+    };
+  }
+
+  return provided[0];
+}
+
+function parseAppsGenerateSpecArgs(args: string[]): AppsGenerateSpecParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--name', key: 'name' },
+      { flag: '--owner', key: 'owner' },
+      { flag: '--repotag', key: 'repotag' },
+      { flag: '--app-description', key: 'appDescription' },
+      { flag: '--component-name', key: 'componentName' },
+      { flag: '--component-description', key: 'componentDescription' },
+      { flag: '--domain', key: 'domains', repeatable: true },
+      { flag: '--env', key: 'environment', repeatable: true },
+      { flag: '--command', key: 'commands', repeatable: true },
+      { flag: '--container-data', key: 'containerData' },
+      { flag: '--enterprise', key: 'enterprise' },
+    ],
+    integerFlags: [
+      { flag: '--port', key: 'ports', min: 1, repeatable: true },
+      { flag: '--container-port', key: 'containerPorts', min: 1, repeatable: true },
+      { flag: '--instances', key: 'instances', min: 1 },
+      { flag: '--cpu', key: 'cpu', min: 1 },
+      { flag: '--ram', key: 'ram', min: 1 },
+      { flag: '--hdd', key: 'hdd', min: 1 },
+    ],
+    booleanFlags: [{ flag: '--staticip', key: 'staticip' }],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps generate-spec\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  const usage =
+    'Usage: flux apps generate-spec --name <name> --owner <zelid> --repotag <repo:tag> [--app-description <text>] [--component-name <name>] [--component-description <text>] [--port <port> ...] [--container-port <port> ...] [--domain <domain> ...] [--env KEY=VALUE ...] [--command <command> ...] [--instances <n>] [--cpu <n>] [--ram <mb>] [--hdd <gb>] [--container-data <path>] [--staticip] [--enterprise <value>] [--json|--pretty|--raw]';
+
+  const name = typeof parsed.rawArgs.name === 'string' ? parsed.rawArgs.name.trim() : '';
+  const owner = typeof parsed.rawArgs.owner === 'string' ? parsed.rawArgs.owner.trim() : '';
+  const repotag = typeof parsed.rawArgs.repotag === 'string' ? parsed.rawArgs.repotag.trim() : '';
+  if (!name || !owner || !repotag) {
+    return {
+      outputMode: parsed.outputMode,
+      error: usage,
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      name,
+      owner,
+      repotag,
+    },
+    positional: [],
+  };
+}
+
+function parseAppsSpecInputArgs(
+  args: string[],
+  options: {
+    usage: string;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+    stringFlags?: Array<{ flag: string; key: string; repeatable?: boolean }>;
+  }
+): AppsSpecInputParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--spec-file', key: 'specFile' },
+      { flag: '--spec-json', key: 'specJson' },
+      { flag: '--spec-resource-uri', key: 'specResourceUri' },
+      ...(options.stringFlags ?? []),
+    ],
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  const specSource = resolveAppsSpecInputSource(parsed.rawArgs, parsed.outputMode, options.usage);
+  if ('error' in specSource) return specSource;
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: parsed.rawArgs,
+    specSource,
+    positional: [],
+  };
+}
+
+function parseAppsVerifyRegistrationArgs(args: string[]): AppsSpecInputParseResult {
+  const usage =
+    'Usage: flux apps verify-registration (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]';
+  const parsed = parseAppsSpecInputArgs(args, { usage });
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps verify-registration\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsVerifyUpdateArgs(args: string[]): AppsSpecInputParseResult {
+  const usage =
+    'Usage: flux apps verify-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]';
+  const parsed = parseAppsSpecInputArgs(args, { usage });
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps verify-update\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsCalculatePriceArgs(args: string[]): AppsSpecInputParseResult {
+  const usage =
+    'Usage: flux apps calculate-price (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--json|--pretty|--raw]';
+  const parsed = parseAppsSpecInputArgs(args, { usage });
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps calculate-price\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsPlanRegistrationArgs(args: string[]): AppsSpecInputParseResult {
+  const usage =
+    'Usage: flux apps plan-registration (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]';
+  const parsed = parseAppsSpecInputArgs(args, {
+    usage,
+    integerFlags: [
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+    ],
+  });
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps plan-registration\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsPlanUpdateArgs(args: string[]): AppsSpecInputParseResult {
+  const usage =
+    'Usage: flux apps plan-update (--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>) [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]';
+  const parsed = parseAppsSpecInputArgs(args, {
+    usage,
+    integerFlags: [
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+    ],
+  });
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps plan-update\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseAppsPlanRenewArgs(args: string[]): AppsPlanRenewParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--owner', key: 'owner' },
+      { flag: '--spec-file', key: 'specFile' },
+      { flag: '--spec-json', key: 'specJson' },
+      { flag: '--spec-resource-uri', key: 'specResourceUri' },
+      { flag: '--mode', key: 'mode' },
+    ],
+    integerFlags: [
+      { flag: '--weeks', key: 'weeks', min: 1 },
+      { flag: '--blocks-to-add', key: 'blocksToAdd', min: 0 },
+      { flag: '--blocks-per-week', key: 'blocksPerWeek', min: 1 },
+      { flag: '--seconds-per-block', key: 'secondsPerBlock', min: 1 },
+      { flag: '--timestamp', key: 'timestamp', min: 1 },
+      { flag: '--type-version', key: 'typeVersion', min: 1 },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length === 0 || parsed.positional[0].startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux apps plan-renew <appname> [--owner <zelid>] [--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>] [--weeks <n>] [--blocks-to-add <n>] [--mode <from_now|add_to_remaining>] [--blocks-per-week <n>] [--seconds-per-block <n>] [--timestamp <ms>] [--type-version <n>] [--json|--pretty|--raw]',
+    };
+  }
+
+  if (parsed.positional.length > 1) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux apps plan-renew\`: ${parsed.positional.slice(1).join(' ')}`,
+    };
+  }
+
+  const appname = parsed.positional[0].trim();
+  const specSource = resolveAppsSpecInputSource(
+    parsed.rawArgs,
+    parsed.outputMode,
+    '',
+    { optional: true }
+  );
+  if ('error' in specSource) return specSource;
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      appname,
+    },
+    appname,
+    specSource: specSource.value ? specSource : null,
     positional: [],
   };
 }
@@ -3378,6 +3738,121 @@ async function readPersistedResourceValue(uri: string | null | undefined): Promi
   return parseStoredResourceValue(resource.text, resource.mimeType);
 }
 
+function buildCliGeneratedResourceUri(kind: string): string {
+  return `flux://resource/${kind}/${randomUUID()}`;
+}
+
+async function persistJsonArtifactResource(
+  kind: string,
+  name: string,
+  value: unknown,
+  description?: string
+): Promise<string> {
+  const uri = buildCliGeneratedResourceUri(kind);
+  await persistCliResource({
+    descriptor: {
+      uri,
+      name,
+      description,
+      mimeType: 'application/json',
+    },
+    contents: {
+      uri,
+      mimeType: 'application/json',
+      text: JSON.stringify(value, null, 2),
+    },
+  });
+
+  return uri;
+}
+
+function asOptionalIntegerValue(value: unknown): number | null {
+  const numeric = asOptionalNumberValue(value);
+  if (numeric === null || !Number.isInteger(numeric)) return null;
+  return numeric;
+}
+
+function unwrapSpecCandidate(value: unknown): Record<string, unknown> | null {
+  const unwrapped = unwrapFluxPayloadFromValue(value);
+  const record = asRecord(unwrapped);
+  if (!record) return null;
+
+  const nestedSpec = normalizeSpecValue(record.spec);
+  if (nestedSpec) return nestedSpec;
+
+  return normalizeSpecValue(unwrapped);
+}
+
+async function loadSpecFromSource(specSource: AppsSpecInputSource): Promise<Record<string, unknown>> {
+  if (specSource.kind === 'resource') {
+    const resourceValue = await readPersistedResourceValue(specSource.value);
+    if (resourceValue === null) {
+      throw new Error(`Resource not found: ${specSource.value}`);
+    }
+
+    const spec = unwrapSpecCandidate(resourceValue);
+    if (!spec) {
+      throw new Error(`Spec resource ${specSource.value} did not contain a JSON object spec.`);
+    }
+
+    return spec;
+  }
+
+  let text = specSource.value;
+  if (specSource.kind === 'file') {
+    try {
+      text = await readFile(specSource.value, 'utf8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Could not read --spec-file ${specSource.value}: ${message}`);
+    }
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid JSON for ${specSource.kind === 'file' ? `--spec-file ${specSource.value}` : '--spec-json'}: ${message}`);
+  }
+
+  const spec = unwrapSpecCandidate(parsed);
+  if (!spec) {
+    throw new Error('Spec input must decode to a JSON object or an object containing a `spec` field.');
+  }
+
+  return spec;
+}
+
+function extractAppIdentityFromSpec(spec: Record<string, unknown>): { appname: string | null; owner: string | null } {
+  return {
+    appname: asOptionalStringValue(spec.name),
+    owner: asOptionalStringValue(spec.owner),
+  };
+}
+
+function extractFluxAmountFromValue(value: unknown): number | null {
+  const record = asRecord(unwrapFluxPayloadFromValue(value));
+  if (!record) return null;
+
+  return asOptionalNumberValue(record.flux);
+}
+
+function normalizePriceShape(value: unknown): Record<string, unknown> | null {
+  const record = asRecord(unwrapFluxPayloadFromValue(value));
+  return record && Object.keys(record).length > 0 ? record : null;
+}
+
+function normalizePlanningStatus(result: Record<string, unknown>, ok: boolean): string {
+  const explicit = asOptionalStringValue(result.status);
+  if (explicit) return explicit;
+  return ok ? 'ok' : 'planning_incomplete';
+}
+
+function normalizePlanningResourceRecord(value: unknown): Record<string, unknown> {
+  return asRecord(value) ?? {};
+}
+
 function unwrapFluxPayloadFromValue(value: unknown): unknown {
   if (looksLikeFluxRequestResult(value)) {
     const requestRecord = value as Record<string, unknown>;
@@ -4200,6 +4675,56 @@ function renderAppsTestInstallPretty(payload: Record<string, unknown>): string {
     `Events: ${String(payload.eventCount ?? 0)}`,
     `Last event: ${asOptionalStringValue(payload.lastEvent) ?? '-'}`,
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsGenerateSpecPretty(payload: Record<string, unknown>): string {
+  return [
+    `Generated spec for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Owner: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`,
+    `Version: ${String(asOptionalIntegerValue(payload.specVersion) ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsSpecValidationPretty(payload: Record<string, unknown>): string {
+  return [
+    `${asOptionalStringValue(payload.validation) === 'update' ? 'Update' : 'Registration'} spec validation`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `App: ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Owner: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsPricePretty(payload: Record<string, unknown>): string {
+  return [
+    `Price for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `FLUX: ${String(asOptionalNumberValue(payload.fluxAmount) ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsPlanPretty(payload: Record<string, unknown>): string {
+  return [
+    `Plan for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Type: ${asOptionalStringValue(payload.type) ?? '-'}`,
+    `Requires auth: ${payload.requiresAuth === true ? 'yes' : 'no'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+    `Message resource: ${asOptionalStringValue(payload.messageToSignResourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderAppsRenewPlanPretty(payload: Record<string, unknown>): string {
+  return [
+    `Renew plan for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Expire computed: ${String(asOptionalIntegerValue(payload.expireComputed) ?? '-')}`,
+    `Enterprise: ${payload.isEnterprise === true ? 'yes' : 'no'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+    ...(asOptionalStringValue(payload.specWarning) ? [`Warning: ${asOptionalStringValue(payload.specWarning)}`] : []),
   ].join('\n');
 }
 
@@ -5363,6 +5888,408 @@ async function handleAppsTestInstall(
   return exitCodeForFailureKind(normalized.failureKind ?? 'flux');
 }
 
+async function handleAppsGenerateSpec(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsGenerateSpecArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_generate_app_spec_v8', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not generate app spec.', io, parsed.outputMode);
+  }
+
+  const result = asRecord(normalized.envelope.result) ?? {};
+  const spec = unwrapSpecCandidate(result);
+  if (!spec) {
+    return emitFailure('flux', 'Generated spec response did not include a JSON object spec.', io, parsed.outputMode);
+  }
+
+  const identity = extractAppIdentityFromSpec(spec);
+  const artifactUri = await persistJsonArtifactResource(
+    'apps/generated-spec',
+    `Generated spec ${identity.appname ?? 'app'}`,
+    { spec },
+    'Generated v8 app spec artifact'
+  );
+
+  const payload = {
+    ok: true,
+    status: 'ok',
+    appname: identity.appname,
+    owner: identity.owner,
+    specVersion: asOptionalIntegerValue(spec.version),
+    spec,
+    resourceUri: artifactUri,
+    nextActions: [
+      { command: 'flux apps verify-registration', arguments: { specResourceUri: artifactUri } },
+      { command: 'flux apps plan-registration', arguments: { specResourceUri: artifactUri } },
+    ],
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGenerateSpecPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsVerifySpec(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    validation: 'registration' | 'update';
+    toolName: 'flux_apps_verify_registration_spec' | 'flux_apps_verify_update_spec';
+    parse: (args: string[]) => AppsSpecInputParseResult;
+  }
+): Promise<number> {
+  const parsed = options.parse(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let spec: Record<string, unknown>;
+  try {
+    spec = await loadSpecFromSource(parsed.specSource);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, { spec }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(
+      normalized.failureKind ?? 'flux',
+      normalized.envelope.error ?? `Could not verify ${options.validation} spec.`,
+      io,
+      parsed.outputMode
+    );
+  }
+
+  const verifiedSpec = unwrapSpecCandidate(normalized.envelope.result);
+  if (!verifiedSpec) {
+    return emitFailure('flux', 'Verification response did not include a JSON object spec.', io, parsed.outputMode);
+  }
+
+  const identity = extractAppIdentityFromSpec(verifiedSpec);
+  const artifactUri = await persistJsonArtifactResource(
+    `apps/verify-${options.validation}`,
+    `${options.validation} spec ${identity.appname ?? 'app'}`,
+    { validation: options.validation, spec: verifiedSpec },
+    `Verified ${options.validation} spec artifact`
+  );
+
+  const payload = {
+    ok: true,
+    status: 'ok',
+    validation: options.validation,
+    appname: identity.appname,
+    owner: identity.owner,
+    spec: verifiedSpec,
+    resourceUri: artifactUri,
+    nextActions: options.validation === 'registration'
+      ? [{ command: 'flux apps plan-registration', arguments: { specResourceUri: artifactUri } }]
+      : [{ command: 'flux apps plan-update', arguments: { specResourceUri: artifactUri } }],
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsSpecValidationPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsVerifyRegistration(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsVerifySpec(args, io, toolRuntime, mode, {
+    validation: 'registration',
+    toolName: 'flux_apps_verify_registration_spec',
+    parse: parseAppsVerifyRegistrationArgs,
+  });
+}
+
+async function handleAppsVerifyUpdate(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsVerifySpec(args, io, toolRuntime, mode, {
+    validation: 'update',
+    toolName: 'flux_apps_verify_update_spec',
+    parse: parseAppsVerifyUpdateArgs,
+  });
+}
+
+async function handleAppsCalculatePrice(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsCalculatePriceArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let spec: Record<string, unknown>;
+  try {
+    spec = await loadSpecFromSource(parsed.specSource);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_calculate_price', { spec }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not calculate app price.', io, parsed.outputMode);
+  }
+
+  const identity = extractAppIdentityFromSpec(spec);
+  const price = normalizePriceShape(normalized.envelope.result);
+  if (!price) {
+    return emitFailure('flux', 'Price response did not include a JSON object.', io, parsed.outputMode);
+  }
+
+  const artifactUri = await persistJsonArtifactResource(
+    'apps/calculate-price',
+    `Price ${identity.appname ?? 'app'}`,
+    { spec, price },
+    'Calculated price artifact'
+  );
+
+  const payload = {
+    ok: true,
+    status: 'ok',
+    appname: identity.appname,
+    owner: identity.owner,
+    fluxAmount: extractFluxAmountFromValue(price),
+    price,
+    resourceUri: artifactUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsPricePretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsPlanCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    toolName: 'flux_apps_plan_registration' | 'flux_apps_plan_update';
+    parse: (args: string[]) => AppsSpecInputParseResult;
+  }
+): Promise<number> {
+  const parsed = options.parse(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let spec: Record<string, unknown>;
+  try {
+    spec = await loadSpecFromSource(parsed.specSource);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const toolArgs: Record<string, unknown> = {
+    spec,
+    ...(typeof parsed.rawArgs.timestamp === 'number' ? { timestamp: parsed.rawArgs.timestamp } : {}),
+    ...(typeof parsed.rawArgs.typeVersion === 'number' ? { typeVersion: parsed.rawArgs.typeVersion } : {}),
+  };
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, toolArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not build app plan.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceUri = asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri ?? null;
+  const resourceRecord = normalizePlanningResourceRecord(await readPersistedResourceValue(resourceUri));
+  const identity = extractAppIdentityFromSpec(spec);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: normalizePlanningStatus(summary, true),
+    appname: asOptionalStringValue(summary.appname) ?? identity.appname,
+    owner: asOptionalStringValue(summary.owner) ?? identity.owner,
+    verifiedSpec: unwrapSpecCandidate(resourceRecord.verified),
+    price: normalizePriceShape(resourceRecord.price),
+    payload: normalizeSpecValue(resourceRecord.payload),
+    payment: normalizeSpecValue(summary.payment) ?? normalizeSpecValue(resourceRecord.payment),
+    resourceUri,
+    messageToSignResourceUri: asOptionalStringValue(summary.messageToSignResourceUri)
+      ?? asOptionalStringValue(resourceRecord.messageToSignResourceUri),
+    nextActions: normalizeNextActionItems(summary.nextActions ?? resourceRecord.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsPlanPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleAppsPlanRegistration(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsPlanCommand(args, io, toolRuntime, mode, {
+    toolName: 'flux_apps_plan_registration',
+    parse: parseAppsPlanRegistrationArgs,
+  });
+}
+
+async function handleAppsPlanUpdate(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  return handleAppsPlanCommand(args, io, toolRuntime, mode, {
+    toolName: 'flux_apps_plan_update',
+    parse: parseAppsPlanUpdateArgs,
+  });
+}
+
+async function handleAppsPlanRenew(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseAppsPlanRenewArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let spec: Record<string, unknown> | undefined;
+  if (parsed.specSource) {
+    try {
+      spec = await loadSpecFromSource(parsed.specSource);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+    }
+  }
+
+  const toolArgs: Record<string, unknown> = {
+    appname: parsed.appname,
+    ...(typeof parsed.rawArgs.owner === 'string' ? { owner: parsed.rawArgs.owner } : {}),
+    ...(typeof parsed.rawArgs.weeks === 'number' ? { weeks: parsed.rawArgs.weeks } : {}),
+    ...(typeof parsed.rawArgs.blocksToAdd === 'number' ? { blocksToAdd: parsed.rawArgs.blocksToAdd } : {}),
+    ...(typeof parsed.rawArgs.mode === 'string' ? { mode: parsed.rawArgs.mode } : {}),
+    ...(typeof parsed.rawArgs.blocksPerWeek === 'number' ? { blocksPerWeek: parsed.rawArgs.blocksPerWeek } : {}),
+    ...(typeof parsed.rawArgs.secondsPerBlock === 'number' ? { secondsPerBlock: parsed.rawArgs.secondsPerBlock } : {}),
+    ...(typeof parsed.rawArgs.timestamp === 'number' ? { timestamp: parsed.rawArgs.timestamp } : {}),
+    ...(typeof parsed.rawArgs.typeVersion === 'number' ? { typeVersion: parsed.rawArgs.typeVersion } : {}),
+    ...(spec ? { spec } : {}),
+  };
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_plan_renew', toolArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceUri = asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri ?? null;
+  const resourceRecord = normalizePlanningResourceRecord(await readPersistedResourceValue(resourceUri));
+  const status = normalizePlanningStatus(summary, normalized.envelope.ok);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status,
+    appname: asOptionalStringValue(summary.appname) ?? parsed.appname,
+    ownerFilter: asOptionalStringValue(summary.ownerFilter) ?? asOptionalStringValue(parsed.rawArgs.owner),
+    reference: asRecord(summary.reference) ?? asRecord(resourceRecord.reference) ?? {},
+    policy: asRecord(summary.policy) ?? asRecord(resourceRecord.policy) ?? {},
+    expireComputed: asOptionalIntegerValue(summary.expireComputed) ?? asOptionalIntegerValue(resourceRecord.expireComputed),
+    specSource: asOptionalStringValue(summary.specSource) ?? asOptionalStringValue(resourceRecord.specSource),
+    specWarning: asOptionalStringValue(summary.specWarning) ?? asOptionalStringValue(resourceRecord.specWarning),
+    isEnterprise: summary.isEnterprise === true || resourceRecord.isEnterprise === true,
+    payment: normalizeSpecValue(summary.payment) ?? normalizeSpecValue(resourceRecord.payment),
+    verifiedSpec: unwrapSpecCandidate(resourceRecord.verified),
+    price: normalizePriceShape(resourceRecord.price),
+    payload: normalizeSpecValue(resourceRecord.payload),
+    updatedSpec: normalizeSpecValue(resourceRecord.updatedSpec),
+    resourceUri,
+    messageToSignResourceUri: asOptionalStringValue(summary.messageToSignResourceUri)
+      ?? asOptionalStringValue(resourceRecord.messageToSignResourceUri),
+    nextActions: normalizeNextActionItems(summary.nextActions ?? resourceRecord.nextActions ?? normalized.envelope.nextActions),
+    ...(
+      normalized.envelope.error && normalized.envelope.error !== 'Flux tool execution failed.' && status !== 'planning_incomplete'
+        ? { error: normalized.envelope.error }
+        : {}
+    ),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsRenewPlanPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
 async function handleAppsCommand(
   args: string[],
   io: CliIo,
@@ -5411,6 +6338,20 @@ async function handleAppsCommand(
       return handleAppsRedeploy(rest, io, toolRuntime, mode);
     case 'redeploy-component':
       return handleAppsRedeployComponent(rest, io, toolRuntime, mode);
+    case 'generate-spec':
+      return handleAppsGenerateSpec(rest, io, toolRuntime, mode);
+    case 'verify-registration':
+      return handleAppsVerifyRegistration(rest, io, toolRuntime, mode);
+    case 'verify-update':
+      return handleAppsVerifyUpdate(rest, io, toolRuntime, mode);
+    case 'calculate-price':
+      return handleAppsCalculatePrice(rest, io, toolRuntime, mode);
+    case 'plan-registration':
+      return handleAppsPlanRegistration(rest, io, toolRuntime, mode);
+    case 'plan-update':
+      return handleAppsPlanUpdate(rest, io, toolRuntime, mode);
+    case 'plan-renew':
+      return handleAppsPlanRenew(rest, io, toolRuntime, mode);
     case 'by-zelid':
       return handleAppsByZelid(rest, io, toolRuntime, mode);
     case 'get-spec':

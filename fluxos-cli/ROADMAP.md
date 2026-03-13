@@ -491,14 +491,14 @@ Done when:
 - runtime debugging is practical from a single CLI surface
 
 ### 5.4 Add app deployment commands
-- [ ] `flux apps generate-spec`
-- [ ] `flux apps verify-registration`
-- [ ] `flux apps verify-update`
-- [ ] `flux apps calculate-price`
-- [ ] `flux apps plan-registration`
+- [x] `flux apps generate-spec`
+- [x] `flux apps verify-registration`
+- [x] `flux apps verify-update`
+- [x] `flux apps calculate-price`
+- [x] `flux apps plan-registration`
 - [ ] `flux apps register`
-- [ ] `flux apps plan-update`
-- [ ] `flux apps plan-renew`
+- [x] `flux apps plan-update`
+- [x] `flux apps plan-renew`
 - [ ] `flux apps update`
 - [ ] `flux apps register-and-verify`
 - [ ] `flux apps update-and-verify`
@@ -753,7 +753,7 @@ Recommended implementation order:
 - [x] get spec
 - [ ] logs and health
 - [x] lifecycle controls
-- [ ] plan registration/update
+- [x] plan registration/update
 
 ### Milestone M4 - Full operational surface
 - [ ] daemon
