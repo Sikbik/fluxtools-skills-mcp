@@ -105,6 +105,31 @@ function defaultProfileState(): PersistedProfileState {
   };
 }
 
+function initialEffectiveProfileState(): PersistedProfileState {
+  const defaults = defaultProfileState();
+  const fluxDriveBaseUrl = process.env.FLUXDRIVE_MWS_BASE_URL?.trim();
+
+  return {
+    baseUrl: defaults.baseUrl,
+    zelidauth: asNonEmptyString(process.env.FLUX_ZELIDAUTH),
+    enterpriseKey: asNonEmptyString(process.env.FLUX_ENTERPRISE_KEY),
+    fluxDriveMwsBaseUrl: fluxDriveBaseUrl ? normalizeBaseUrl(fluxDriveBaseUrl) : defaults.fluxDriveMwsBaseUrl,
+    httpDefaults: {
+      timeoutMs: Number.isFinite(Number(process.env.FLUX_HTTP_TIMEOUT_MS)) && Number(process.env.FLUX_HTTP_TIMEOUT_MS) > 0
+        ? Number(process.env.FLUX_HTTP_TIMEOUT_MS)
+        : DEFAULT_HTTP_DEFAULTS.timeoutMs,
+      retryCount: Number.isFinite(Number(process.env.FLUX_HTTP_RETRY_COUNT)) && Number(process.env.FLUX_HTTP_RETRY_COUNT) >= 0
+        && Number.isInteger(Number(process.env.FLUX_HTTP_RETRY_COUNT))
+        ? Number(process.env.FLUX_HTTP_RETRY_COUNT)
+        : DEFAULT_HTTP_DEFAULTS.retryCount,
+      retryBackoffMs: Number.isFinite(Number(process.env.FLUX_HTTP_RETRY_BACKOFF_MS))
+        && Number(process.env.FLUX_HTTP_RETRY_BACKOFF_MS) >= 0
+        ? Number(process.env.FLUX_HTTP_RETRY_BACKOFF_MS)
+        : DEFAULT_HTTP_DEFAULTS.retryBackoffMs,
+    },
+  };
+}
+
 function normalizeProfileName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -219,6 +244,14 @@ function getProfileState(store: StateFileShape, profileName = store.activeProfil
   return asPersistedProfileState(store.profiles[profileName]);
 }
 
+function getEffectiveProfileState(store: StateFileShape, profileName = store.activeProfile): PersistedProfileState {
+  if (profileName in store.profiles) {
+    return asPersistedProfileState(store.profiles[profileName]);
+  }
+
+  return initialEffectiveProfileState();
+}
+
 function collectProfileNames(store: StateFileShape): string[] {
   return Array.from(new Set([DEFAULT_ACTIVE_PROFILE, store.activeProfile, ...Object.keys(store.profiles)]))
     .map((name) => name.trim())
@@ -231,7 +264,7 @@ function hasProfile(store: StateFileShape, profileName: string): boolean {
 }
 
 function summarizeProfile(store: StateFileShape, profileName: string): PersistedProfileSummary {
-  const profile = getProfileState(store, profileName);
+  const profile = getEffectiveProfileState(store, profileName);
 
   return {
     name: profileName,
@@ -268,7 +301,7 @@ export async function loadPersistedStateSnapshot(): Promise<PersistedStateSnapsh
   const store = await loadStateFile();
   return {
     activeProfile: store.activeProfile,
-    profile: getProfileState(store),
+    profile: getEffectiveProfileState(store),
   };
 }
 
@@ -354,7 +387,7 @@ export async function updatePersistedProfileState(
 ): Promise<PersistedStateSnapshot> {
   const store = await loadStateFile();
   const activeProfile = store.activeProfile || DEFAULT_ACTIVE_PROFILE;
-  const nextProfileState = update(getProfileState(store, activeProfile), { activeProfile });
+  const nextProfileState = update(getEffectiveProfileState(store, activeProfile), { activeProfile });
 
   store.activeProfile = activeProfile;
   store.profiles[activeProfile] = nextProfileState;

@@ -16,7 +16,6 @@ import {
   clearPersistedEnterpriseKeyState,
   clearPersistedProfileState,
   deletePersistedProfile,
-  defaultPersistedProfileState,
   getStateVisibilitySummary,
   listPersistedProfiles,
   loadPersistedStateSnapshot,
@@ -851,9 +850,15 @@ async function hydratePersistedSessionState(toolRuntime: ToolRuntime, mode: RunC
   const snapshot = await loadPersistedStateSnapshot();
   const profile = snapshot.profile;
 
+  await toolRuntime.callTool('flux_clear_zelidauth', {});
+  await toolRuntime.callTool('flux_clear_enterprise_key', {});
+
   if (profile.baseUrl) {
     await toolRuntime.callTool('flux_set_base_url', { baseUrl: profile.baseUrl });
   }
+
+  await toolRuntime.callTool('flux_set_http_defaults', profile.httpDefaults);
+  await toolRuntime.callTool('flux_fluxdrive_set_base_url', { baseUrl: profile.fluxDriveMwsBaseUrl });
 
   if (profile.zelidauth) {
     let value: unknown = profile.zelidauth;
@@ -868,20 +873,6 @@ async function hydratePersistedSessionState(toolRuntime: ToolRuntime, mode: RunC
 
   if (profile.enterpriseKey) {
     await toolRuntime.callTool('flux_set_enterprise_key', { enterpriseKey: profile.enterpriseKey });
-  }
-
-  const defaults = defaultPersistedProfileState();
-  const httpDefaultsChanged =
-    profile.httpDefaults.timeoutMs !== defaults.httpDefaults.timeoutMs ||
-    profile.httpDefaults.retryCount !== defaults.httpDefaults.retryCount ||
-    profile.httpDefaults.retryBackoffMs !== defaults.httpDefaults.retryBackoffMs;
-
-  if (httpDefaultsChanged) {
-    await toolRuntime.callTool('flux_set_http_defaults', profile.httpDefaults);
-  }
-
-  if (profile.fluxDriveMwsBaseUrl !== defaults.fluxDriveMwsBaseUrl) {
-    await toolRuntime.callTool('flux_fluxdrive_set_base_url', { baseUrl: profile.fluxDriveMwsBaseUrl });
   }
 }
 

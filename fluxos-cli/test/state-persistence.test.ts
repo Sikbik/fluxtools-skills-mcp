@@ -15,6 +15,18 @@ const DEFAULT_HTTP_DEFAULTS = {
 
 const DEFAULT_FLUXDRIVE_BASE_URL = 'https://mws.fluxdrive.runonflux.io';
 
+const MANAGED_ENV_KEYS = [
+  'FLUXOS_CLI_STATE_DIR',
+  'XDG_STATE_HOME',
+  'FLUX_API_BASE_URL',
+  'FLUX_ZELIDAUTH',
+  'FLUX_ENTERPRISE_KEY',
+  'FLUXDRIVE_MWS_BASE_URL',
+  'FLUX_HTTP_TIMEOUT_MS',
+  'FLUX_HTTP_RETRY_COUNT',
+  'FLUX_HTTP_RETRY_BACKOFF_MS',
+] as const;
+
 function createCapture() {
   let stdout = '';
   let stderr = '';
@@ -73,12 +85,33 @@ function summarizeZelidauth(raw: string | null): { present: boolean; zelid?: str
   return { present: true };
 }
 
+function readOptionalEnvString(name: 'FLUX_API_BASE_URL' | 'FLUX_ZELIDAUTH' | 'FLUX_ENTERPRISE_KEY' | 'FLUXDRIVE_MWS_BASE_URL') {
+  const raw = process.env[name]?.trim();
+  return raw ? raw : null;
+}
+
+function readEnvHttpDefaults() {
+  const timeoutMs = Number(process.env.FLUX_HTTP_TIMEOUT_MS ?? DEFAULT_HTTP_DEFAULTS.timeoutMs);
+  const retryCount = Number(process.env.FLUX_HTTP_RETRY_COUNT ?? DEFAULT_HTTP_DEFAULTS.retryCount);
+  const retryBackoffMs = Number(process.env.FLUX_HTTP_RETRY_BACKOFF_MS ?? DEFAULT_HTTP_DEFAULTS.retryBackoffMs);
+
+  return {
+    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_HTTP_DEFAULTS.timeoutMs,
+    retryCount: Number.isFinite(retryCount) && retryCount >= 0 && Number.isInteger(retryCount)
+      ? retryCount
+      : DEFAULT_HTTP_DEFAULTS.retryCount,
+    retryBackoffMs: Number.isFinite(retryBackoffMs) && retryBackoffMs >= 0
+      ? retryBackoffMs
+      : DEFAULT_HTTP_DEFAULTS.retryBackoffMs,
+  };
+}
+
 function createFakeStateToolRuntime() {
-  let baseUrl: string | null = null;
-  let zelidauth: string | null = null;
-  let enterpriseKey: string | null = null;
-  let httpDefaults = { ...DEFAULT_HTTP_DEFAULTS };
-  let fluxDriveMwsBaseUrl = DEFAULT_FLUXDRIVE_BASE_URL;
+  let baseUrl: string | null = normalizeBaseUrl(readOptionalEnvString('FLUX_API_BASE_URL') ?? 'https://api.runonflux.io');
+  let zelidauth: string | null = readOptionalEnvString('FLUX_ZELIDAUTH');
+  let enterpriseKey: string | null = readOptionalEnvString('FLUX_ENTERPRISE_KEY');
+  let httpDefaults = readEnvHttpDefaults();
+  let fluxDriveMwsBaseUrl = normalizeBaseUrl(readOptionalEnvString('FLUXDRIVE_MWS_BASE_URL') ?? DEFAULT_FLUXDRIVE_BASE_URL);
 
   const jsonResult = (payload: Record<string, unknown>, isError = false) => ({
     isError,
@@ -167,43 +200,38 @@ function createFakeStateToolRuntime() {
   };
 }
 
-async function withTempStateDir<T>(run: (stateDir: string) => Promise<T>) {
+async function withTempStateDir<T>(
+  run: (stateDir: string) => Promise<T>,
+  envOverrides: Partial<Record<(typeof MANAGED_ENV_KEYS)[number], string | undefined>> = {}
+) {
   const stateDir = await mkdtemp(join(tmpdir(), 'fluxos-cli-state-persistence-'));
 
-  const previousStateDir = process.env.FLUXOS_CLI_STATE_DIR;
-  const previousXdgStateHome = process.env.XDG_STATE_HOME;
-  const previousFluxDriveBaseUrl = process.env.FLUXDRIVE_MWS_BASE_URL;
-  const previousTimeoutMs = process.env.FLUX_HTTP_TIMEOUT_MS;
-  const previousRetryCount = process.env.FLUX_HTTP_RETRY_COUNT;
-  const previousRetryBackoffMs = process.env.FLUX_HTTP_RETRY_BACKOFF_MS;
+  const previousEnv = new Map<string, string | undefined>(
+    MANAGED_ENV_KEYS.map((key) => [key, process.env[key]])
+  );
 
   process.env.FLUXOS_CLI_STATE_DIR = stateDir;
   delete process.env.XDG_STATE_HOME;
+  delete process.env.FLUX_API_BASE_URL;
+  delete process.env.FLUX_ZELIDAUTH;
+  delete process.env.FLUX_ENTERPRISE_KEY;
   delete process.env.FLUXDRIVE_MWS_BASE_URL;
   delete process.env.FLUX_HTTP_TIMEOUT_MS;
   delete process.env.FLUX_HTTP_RETRY_COUNT;
   delete process.env.FLUX_HTTP_RETRY_BACKOFF_MS;
 
+  for (const [key, value] of Object.entries(envOverrides)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+
   try {
     return await run(stateDir);
   } finally {
-    if (previousStateDir === undefined) delete process.env.FLUXOS_CLI_STATE_DIR;
-    else process.env.FLUXOS_CLI_STATE_DIR = previousStateDir;
-
-    if (previousXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
-    else process.env.XDG_STATE_HOME = previousXdgStateHome;
-
-    if (previousFluxDriveBaseUrl === undefined) delete process.env.FLUXDRIVE_MWS_BASE_URL;
-    else process.env.FLUXDRIVE_MWS_BASE_URL = previousFluxDriveBaseUrl;
-
-    if (previousTimeoutMs === undefined) delete process.env.FLUX_HTTP_TIMEOUT_MS;
-    else process.env.FLUX_HTTP_TIMEOUT_MS = previousTimeoutMs;
-
-    if (previousRetryCount === undefined) delete process.env.FLUX_HTTP_RETRY_COUNT;
-    else process.env.FLUX_HTTP_RETRY_COUNT = previousRetryCount;
-
-    if (previousRetryBackoffMs === undefined) delete process.env.FLUX_HTTP_RETRY_BACKOFF_MS;
-    else process.env.FLUX_HTTP_RETRY_BACKOFF_MS = previousRetryBackoffMs;
+    for (const [key, value] of previousEnv.entries()) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
 
     await rm(stateDir, { recursive: true, force: true });
   }
@@ -548,5 +576,120 @@ describe.sequential('state persistence', () => {
       expect(genericPayload.result.fluxDriveMwsBaseUrl).toBe(DEFAULT_FLUXDRIVE_BASE_URL);
       expect(genericPayload.result.httpDefaults).toEqual(DEFAULT_HTTP_DEFAULTS);
     });
+  });
+
+  it('shows env-backed effective state and state clear neutralizes env-backed runtime inputs', async () => {
+    const envZelidauth = JSON.stringify({ zelid: 'env-user', signature: 'env-signature', loginPhrase: 'env-phrase' });
+
+    await withTempStateDir(
+      async () => {
+        const showResult = await invokeCli(['state', 'show', '--json']);
+        expect(showResult.exitCode).toBe(0);
+        expect(showResult.stderr).toBe('');
+
+        const showPayload = JSON.parse(showResult.stdout) as {
+          state: {
+            activeProfile: string;
+            baseUrl: string | null;
+            auth: { present: boolean; zelid?: string };
+            enterpriseKey: { present: boolean };
+            fluxDriveMwsBaseUrl: string;
+            httpDefaults: { timeoutMs: number; retryCount: number; retryBackoffMs: number };
+          };
+        };
+
+        expect(showPayload.state).toMatchObject({
+          activeProfile: 'default',
+          baseUrl: 'https://env.api.example',
+          auth: { present: true, zelid: 'env-user' },
+          enterpriseKey: { present: true },
+          fluxDriveMwsBaseUrl: 'https://env.mws.example',
+          httpDefaults: { timeoutMs: 91000, retryCount: 9, retryBackoffMs: 321 },
+        });
+
+        const beforeClear = await invokeCli(['tool', 'call', 'flux_get_state', '--json'], {
+          toolRuntime: createFakeStateToolRuntime(),
+          persistedStateMode: 'on',
+        });
+
+        expect(beforeClear.exitCode).toBe(0);
+
+        const beforeClearPayload = JSON.parse(beforeClear.stdout) as {
+          result: {
+            baseUrl: string | null;
+            zelidauth: { present: boolean; zelid?: string };
+            enterpriseKey: { present: boolean };
+            fluxDriveMwsBaseUrl: string;
+            httpDefaults: { timeoutMs: number; retryCount: number; retryBackoffMs: number };
+          };
+        };
+
+        expect(beforeClearPayload.result).toEqual({
+          baseUrl: 'https://env.api.example',
+          zelidauth: { present: true, zelid: 'env-user' },
+          enterpriseKey: { present: true },
+          fluxDriveMwsBaseUrl: 'https://env.mws.example',
+          httpDefaults: { timeoutMs: 91000, retryCount: 9, retryBackoffMs: 321 },
+        });
+
+        const clearResult = await invokeCli(['state', 'clear', '--json']);
+        expect(clearResult.exitCode).toBe(0);
+        expect(clearResult.stderr).toBe('');
+
+        const clearPayload = JSON.parse(clearResult.stdout) as {
+          state: {
+            activeProfile: string;
+            baseUrl: string | null;
+            auth: { present: boolean; zelid?: string };
+            enterpriseKey: { present: boolean };
+            fluxDriveMwsBaseUrl: string;
+            httpDefaults: { timeoutMs: number; retryCount: number; retryBackoffMs: number };
+          };
+        };
+
+        expect(clearPayload.state).toMatchObject({
+          activeProfile: 'default',
+          baseUrl: 'https://env.api.example',
+          auth: { present: false },
+          enterpriseKey: { present: false },
+          fluxDriveMwsBaseUrl: DEFAULT_FLUXDRIVE_BASE_URL,
+          httpDefaults: DEFAULT_HTTP_DEFAULTS,
+        });
+
+        const afterClear = await invokeCli(['tool', 'call', 'flux_get_state', '--json'], {
+          toolRuntime: createFakeStateToolRuntime(),
+          persistedStateMode: 'on',
+        });
+
+        expect(afterClear.exitCode).toBe(0);
+
+        const afterClearPayload = JSON.parse(afterClear.stdout) as {
+          result: {
+            baseUrl: string | null;
+            zelidauth: { present: boolean; zelid?: string };
+            enterpriseKey: { present: boolean };
+            fluxDriveMwsBaseUrl: string;
+            httpDefaults: { timeoutMs: number; retryCount: number; retryBackoffMs: number };
+          };
+        };
+
+        expect(afterClearPayload.result).toEqual({
+          baseUrl: 'https://env.api.example',
+          zelidauth: { present: false },
+          enterpriseKey: { present: false },
+          fluxDriveMwsBaseUrl: DEFAULT_FLUXDRIVE_BASE_URL,
+          httpDefaults: DEFAULT_HTTP_DEFAULTS,
+        });
+      },
+      {
+        FLUX_API_BASE_URL: 'https://env.api.example/',
+        FLUX_ZELIDAUTH: envZelidauth,
+        FLUX_ENTERPRISE_KEY: 'env-enterprise-key',
+        FLUXDRIVE_MWS_BASE_URL: 'https://env.mws.example/',
+        FLUX_HTTP_TIMEOUT_MS: '91000',
+        FLUX_HTTP_RETRY_COUNT: '9',
+        FLUX_HTTP_RETRY_BACKOFF_MS: '321',
+      }
+    );
   });
 });
