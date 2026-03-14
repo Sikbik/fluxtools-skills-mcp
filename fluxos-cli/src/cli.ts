@@ -353,6 +353,26 @@ Commands:
                                  Reindex explorer and optionally include explorer app state
   explorer rescan [--block-height <n>] [--rescan-apps] [--confirm] [--json|--pretty|--raw]
                                  Rescan explorer from an optional block height with explicit confirmation
+  daemon call <method> [--param <json-or-string> ...] [--redact-tx-hex|--no-redact-tx-hex]
+                                 Run a read-only daemon method through the allowlisted shared tool
+  daemon info [--json|--pretty|--raw]
+                                 Read daemon getinfo through the first-class CLI surface
+  daemon blockchain-info [--json|--pretty|--raw]
+                                 Read daemon getblockchaininfo through the first-class CLI surface
+  daemon network-info [--json|--pretty|--raw]
+                                 Read daemon getnetworkinfo through the first-class CLI surface
+  daemon peer-info [--json|--pretty|--raw]
+                                 Read daemon getpeerinfo through the first-class CLI surface
+  daemon mempool-info [--json|--pretty|--raw]
+                                 Read daemon getmempoolinfo through the first-class CLI surface
+  daemon raw-mempool [--verbose] [--json|--pretty|--raw]
+                                 Read daemon getrawmempool with optional verbose payloads
+  daemon block-count [--json|--pretty|--raw]
+                                 Read daemon getblockcount through the first-class CLI surface
+  daemon connection-count [--json|--pretty|--raw]
+                                 Read daemon getconnectioncount through the first-class CLI surface
+  daemon difficulty [--json|--pretty|--raw]
+                                 Read daemon getdifficulty through the first-class CLI surface
   apps list-running [--json|--pretty|--raw]
                                  List running apps on the active node
   apps list-all [--json|--pretty|--raw]
@@ -594,6 +614,27 @@ Notes:
   - \`reindex\` and \`rescan\` expose the explorer app-specific flags as CLI-friendly kebab-case options.
 `;
 
+const DAEMON_HELP_TEXT = `FluxOS CLI - daemon
+
+Usage:
+  flux daemon call <method> [--param <json-or-string> ...] [--redact-tx-hex|--no-redact-tx-hex] [--json|--pretty|--raw]
+  flux daemon info [--json|--pretty|--raw]
+  flux daemon blockchain-info [--json|--pretty|--raw]
+  flux daemon network-info [--json|--pretty|--raw]
+  flux daemon peer-info [--json|--pretty|--raw]
+  flux daemon mempool-info [--json|--pretty|--raw]
+  flux daemon raw-mempool [--verbose] [--json|--pretty|--raw]
+  flux daemon block-count [--json|--pretty|--raw]
+  flux daemon connection-count [--json|--pretty|--raw]
+  flux daemon difficulty [--json|--pretty|--raw]
+
+Notes:
+  - \`call\` stays read-only and inherits the shared daemon allowlist from flux-mcp.
+  - Repeated \`--param\` values are parsed as JSON when possible, otherwise treated as strings.
+  - Named commands preserve the same daemon semantics as their shared MCP wrappers.
+  - \`raw-mempool --verbose\` maps to the shared verbose getrawmempool behavior.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -762,6 +803,10 @@ function renderNodeHelp(): string {
 
 function renderExplorerHelp(): string {
   return EXPLORER_HELP_TEXT;
+}
+
+function renderDaemonHelp(): string {
+  return DAEMON_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -4186,6 +4231,23 @@ type ExplorerBalanceParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type DaemonCallParseResult =
+  | {
+      outputMode: OutputMode;
+      method: string;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type DaemonReadParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -4271,6 +4333,57 @@ function parseExplorerBalanceArgs(args: string[]): ExplorerBalanceParseResult {
     address: address.trim(),
     positional: rest,
   };
+}
+
+function parseDaemonCallArgs(args: string[]): DaemonCallParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [{ flag: '--param', key: 'params', repeatable: true }],
+    booleanFlags: [
+      { flag: '--redact-tx-hex', key: 'redactTxHex', value: true },
+      { flag: '--no-redact-tx-hex', key: 'redactTxHex', value: false },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+
+  const [method, ...rest] = parsed.positional;
+  if (!method || method.startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux daemon call <method> [--param <json-or-string> ...] [--redact-tx-hex|--no-redact-tx-hex] [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    method: method.trim(),
+    rawArgs: {
+      method: method.trim(),
+      params: Array.isArray(parsed.rawArgs.params) ? (parsed.rawArgs.params as string[]).map((value) => parseJsonText(value)) : [],
+      ...(Object.prototype.hasOwnProperty.call(parsed.rawArgs, 'redactTxHex') ? { redactTxHex: parsed.rawArgs.redactTxHex } : {}),
+    },
+    positional: rest,
+  };
+}
+
+function parseDaemonReadArgs(
+  args: string[],
+  options?: { command?: string; booleanFlags?: Array<{ flag: string; key: string; value?: boolean }> }
+): DaemonReadParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    booleanFlags: options?.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux daemon ${options?.command ?? 'command'}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
 }
 
 function normalizeNodeGatewayPayload(result: unknown, activeProfile: string, currentBaseUrl: string | null): Record<string, unknown> {
@@ -4447,6 +4560,52 @@ function renderExplorerMutationPretty(payload: Record<string, unknown>): string 
     ...(Object.prototype.hasOwnProperty.call(payload, 'blockHeight') ? [`Block height: ${String(payload.blockHeight ?? '-')}`] : []),
     `Message: ${asOptionalStringValue(payload.message) ?? '-'}`,
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function normalizeDaemonResourceData(value: unknown): unknown {
+  const record = asRecord(value);
+  if (record && Object.prototype.hasOwnProperty.call(record, 'redacted')) {
+    return record.redacted;
+  }
+
+  return unwrapFluxPayloadFromValue(value);
+}
+
+function normalizeDaemonPayload(options: {
+  normalized: ToolCallNormalization;
+  summary: Record<string, unknown>;
+  resourcePayload: unknown;
+  methodFallback: string;
+}): Record<string, unknown> {
+  const data = normalizeDaemonResourceData(options.resourcePayload);
+  const method = asOptionalStringValue(options.summary.method) ?? options.methodFallback;
+
+  return {
+    ok: options.normalized.envelope.ok,
+    status: options.normalized.envelope.ok ? 'ok' : failureStatus(options.normalized.failureKind ?? 'flux'),
+    ...(options.normalized.envelope.error ? { error: options.normalized.envelope.error } : {}),
+    method,
+    httpStatus:
+      asOptionalNumberValue(options.summary.httpStatus)
+      ?? asOptionalNumberValue(options.summary.status)
+      ?? asOptionalNumberValue(options.normalized.envelope.status),
+    resourceUri: asOptionalStringValue(options.summary.resourceUri) ?? options.normalized.envelope.resourceUri,
+    ...(Array.isArray(data) ? { count: data.length, data } : typeof data === 'object' && data !== null ? { data } : { value: data }),
+  };
+}
+
+function renderDaemonPretty(payload: Record<string, unknown>, title?: string): string {
+  const dataLabel = Object.prototype.hasOwnProperty.call(payload, 'value') ? 'Value' : 'Data';
+  const dataValue = Object.prototype.hasOwnProperty.call(payload, 'value') ? payload.value : payload.data;
+
+  return [
+    title ?? `Daemon ${asOptionalStringValue(payload.method) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `HTTP status: ${String(payload.httpStatus ?? '-')}`,
+    ...(typeof payload.count === 'number' ? [`Count: ${String(payload.count)}`] : []),
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+    `${dataLabel}: ${typeof dataValue === 'string' ? dataValue : JSON.stringify(dataValue, null, 2)}`,
   ].join('\n');
 }
 
@@ -4788,6 +4947,190 @@ async function handleExplorerCommand(
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown explorer subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleDaemonCall(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseDaemonCallArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux daemon call\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_daemon_call', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const payload = normalizeDaemonPayload({
+    normalized,
+    summary,
+    resourcePayload,
+    methodFallback: parsed.method,
+  });
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderDaemonPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleDaemonNamedCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: string;
+    toolName:
+      | 'flux_daemon_get_info'
+      | 'flux_daemon_get_blockchain_info'
+      | 'flux_daemon_get_network_info'
+      | 'flux_daemon_get_peer_info'
+      | 'flux_daemon_get_mempool_info'
+      | 'flux_daemon_get_raw_mempool'
+      | 'flux_daemon_get_block_count'
+      | 'flux_daemon_get_connection_count'
+      | 'flux_daemon_get_difficulty';
+    methodFallback: string;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+    title?: string;
+  }
+): Promise<number> {
+  const parsed = parseDaemonReadArgs(args, {
+    command: options.command,
+    booleanFlags: options.booleanFlags,
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const payload = normalizeDaemonPayload({
+    normalized,
+    summary,
+    resourcePayload,
+    methodFallback: options.methodFallback,
+  });
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderDaemonPretty(payload, options.title));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleDaemonCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderDaemonHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'call':
+      return handleDaemonCall(rest, io, toolRuntime, mode);
+    case 'info':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'info',
+        toolName: 'flux_daemon_get_info',
+        methodFallback: 'getinfo',
+        title: 'Daemon info',
+      });
+    case 'blockchain-info':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'blockchain-info',
+        toolName: 'flux_daemon_get_blockchain_info',
+        methodFallback: 'getblockchaininfo',
+        title: 'Daemon blockchain info',
+      });
+    case 'network-info':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'network-info',
+        toolName: 'flux_daemon_get_network_info',
+        methodFallback: 'getnetworkinfo',
+        title: 'Daemon network info',
+      });
+    case 'peer-info':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'peer-info',
+        toolName: 'flux_daemon_get_peer_info',
+        methodFallback: 'getpeerinfo',
+        title: 'Daemon peer info',
+      });
+    case 'mempool-info':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'mempool-info',
+        toolName: 'flux_daemon_get_mempool_info',
+        methodFallback: 'getmempoolinfo',
+        title: 'Daemon mempool info',
+      });
+    case 'raw-mempool':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'raw-mempool',
+        toolName: 'flux_daemon_get_raw_mempool',
+        methodFallback: 'getrawmempool',
+        booleanFlags: [{ flag: '--verbose', key: 'verbose' }],
+        title: 'Daemon raw mempool',
+      });
+    case 'block-count':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'block-count',
+        toolName: 'flux_daemon_get_block_count',
+        methodFallback: 'getblockcount',
+        title: 'Daemon block count',
+      });
+    case 'connection-count':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'connection-count',
+        toolName: 'flux_daemon_get_connection_count',
+        methodFallback: 'getconnectioncount',
+        title: 'Daemon connection count',
+      });
+    case 'difficulty':
+      return handleDaemonNamedCommand(rest, io, toolRuntime, mode, {
+        command: 'difficulty',
+        toolName: 'flux_daemon_get_difficulty',
+        methodFallback: 'getdifficulty',
+        title: 'Daemon difficulty',
+      });
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown daemon subcommand: ${subcommand}`, io, parsed.outputMode);
     }
   }
 }
@@ -8500,6 +8843,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'explorer':
         return await handleExplorerCommand(
+          argv.slice(1),
+          io,
+          await getCommandToolRuntime(options.toolRuntime),
+          effectivePersistedStateMode
+        );
+      case 'daemon':
+        return await handleDaemonCommand(
           argv.slice(1),
           io,
           await getCommandToolRuntime(options.toolRuntime),
