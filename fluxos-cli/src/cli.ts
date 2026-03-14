@@ -249,6 +249,23 @@ type AppsPlanRenewParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type GitDeployParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type GitDeploySubmissionParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      planResourceUri: string;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
@@ -368,6 +385,26 @@ Commands:
                                  Poll message propagation and report pending/temporary/permanent status
   apps messages <hash> [--kind temporary|permanent|both] [--json|--pretty|--raw]
                                  Read propagation messages and summarize pending/temporary/permanent state
+  git generate-spec --name <name> --owner <zelid> --repo-url <url> [--branch <name>] [--project-path <path>]
+                    [--repo-username <name>] [--repo-token <token>] [--contact <value> ...]
+                    [--app-port <port>] [--exposed-port <port>] [--management-port <port>] [--domain <domain>]
+                    [--instances <n>] [--cpu <n>] [--ram-mb <mb>] [--hdd-gb <gb>] [--expire-blocks <n>]
+                    [--geolocation <code> ...] [--env KEY=VALUE ...] [--enterprise|--no-enterprise]
+                    [--public-key-base64 <base64>] [--repotag <repo:tag>] [--staticip] [--confirm]
+                    [--json|--pretty|--raw]
+                                 Generate a reusable Flux Git deploy spec artifact
+  git plan-registration --name <name> --owner <zelid> --repo-url <url> [--branch <name>] [--project-path <path>]
+                        [--repo-username <name>] [--repo-token <token>] [--contact <value> ...]
+                        [--app-port <port>] [--exposed-port <port>] [--management-port <port>] [--domain <domain>]
+                        [--instances <n>] [--cpu <n>] [--ram-mb <mb>] [--hdd-gb <gb>] [--expire-blocks <n>]
+                        [--geolocation <code> ...] [--env KEY=VALUE ...] [--enterprise|--no-enterprise]
+                        [--public-key-base64 <base64>] [--repotag <repo:tag>] [--staticip]
+                        [--timestamp <ms>] [--type-version <n>] [--confirm] [--json|--pretty|--raw]
+                                 Build a reusable Git deploy registration plan artifact
+  git register-and-verify --plan-resource-uri <uri> --signature <sig> [--attempts <n>] [--interval-ms <ms>]
+                          [--poll-timeout-ms <ms>] [--verify-global|--no-verify-global] [--poll|--no-poll]
+                          --confirm [--json|--pretty|--raw]
+                                 Submit a Git deploy registration from a reusable plan artifact
   apps plan-renew <appname> [--owner <zelid>] [--spec-file <path> | --spec-json <json> | --spec-resource-uri <uri>]
                   [--weeks <n>] [--blocks-to-add <n>] [--mode <from_now|add_to_remaining>]
                   [--blocks-per-week <n>] [--seconds-per-block <n>] [--timestamp <ms>] [--type-version <n>]
@@ -595,6 +632,39 @@ Notes:
     \`--include-secrets --confirm\`.
 `;
 
+const GIT_HELP_TEXT = `FluxOS CLI - git
+
+Usage:
+  flux git generate-spec --name <name> --owner <zelid> --repo-url <url> [--description <text>]
+                         [--branch <name>] [--project-path <path>] [--repo-username <name>]
+                         [--repo-token <token>] [--contact <value> ...] [--app-port <port>]
+                         [--exposed-port <port>] [--management-port <port>] [--domain <domain>]
+                         [--instances <n>] [--cpu <n>] [--ram-mb <mb>] [--hdd-gb <gb>]
+                         [--expire-blocks <n>] [--geolocation <code> ...] [--env KEY=VALUE ...]
+                         [--enterprise|--no-enterprise] [--public-key-base64 <base64>]
+                         [--repotag <repo:tag>] [--staticip] [--confirm] [--json|--pretty|--raw]
+  flux git plan-registration --name <name> --owner <zelid> --repo-url <url> [--description <text>]
+                             [--branch <name>] [--project-path <path>] [--repo-username <name>]
+                             [--repo-token <token>] [--contact <value> ...] [--app-port <port>]
+                             [--exposed-port <port>] [--management-port <port>] [--domain <domain>]
+                             [--instances <n>] [--cpu <n>] [--ram-mb <mb>] [--hdd-gb <gb>]
+                             [--expire-blocks <n>] [--geolocation <code> ...] [--env KEY=VALUE ...]
+                             [--enterprise|--no-enterprise] [--public-key-base64 <base64>]
+                             [--repotag <repo:tag>] [--staticip] [--timestamp <ms>] [--type-version <n>]
+                             [--confirm] [--json|--pretty|--raw]
+  flux git register-and-verify --plan-resource-uri <uri> --signature <sig> [--attempts <n>]
+                               [--interval-ms <ms>] [--poll-timeout-ms <ms>]
+                               [--verify-global|--no-verify-global] [--poll|--no-poll]
+                               --confirm [--json|--pretty|--raw]
+
+Notes:
+  - These commands preserve the shared Flux Git deploy (Orbit) planning and submission semantics.
+  - \`plan-registration\` emits a reusable plan artifact plus a message-to-sign resource.
+  - \`register-and-verify\` consumes the reusable plan artifact via \`--plan-resource-uri\`.
+  - Supplying \`--repo-token\` requires \`--confirm\`; raw token material is redacted from
+    persisted CLI resources and command output.
+`;
+
 function writeLine(writer: TextWriter, text: string) {
   writer.write(text.endsWith('\n') ? text : `${text}\n`);
 }
@@ -633,6 +703,10 @@ function renderEnterpriseKeyHelp(): string {
 
 function renderAppsHelp(): string {
   return APPS_HELP_TEXT;
+}
+
+function renderGitHelp(): string {
+  return GIT_HELP_TEXT;
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -2803,6 +2877,168 @@ function parseAppsPlanRenewArgs(args: string[]): AppsPlanRenewParseResult {
     },
     appname,
     specSource: specSource.value ? specSource : null,
+    positional: [],
+  };
+}
+
+function parseGitDeployArgs(
+  args: string[],
+  options: {
+    command: 'generate-spec' | 'plan-registration';
+    usage: string;
+    includePlanningFlags?: boolean;
+  }
+): GitDeployParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--name', key: 'name' },
+      { flag: '--owner', key: 'owner' },
+      { flag: '--description', key: 'description' },
+      { flag: '--repo-url', key: 'repoUrl' },
+      { flag: '--branch', key: 'branch' },
+      { flag: '--project-path', key: 'projectPath' },
+      { flag: '--repo-username', key: 'repoUsername' },
+      { flag: '--repo-token', key: 'repoToken' },
+      { flag: '--contact', key: 'contacts', repeatable: true },
+      { flag: '--domain', key: 'domain' },
+      { flag: '--geolocation', key: 'geolocation', repeatable: true },
+      { flag: '--env', key: 'environment', repeatable: true },
+      { flag: '--public-key-base64', key: 'publicKeyBase64' },
+      { flag: '--repotag', key: 'repotag' },
+      { flag: '--cpu', key: 'cpu' },
+    ],
+    integerFlags: [
+      { flag: '--app-port', key: 'appPort', min: 1 },
+      { flag: '--exposed-port', key: 'exposedPort', min: 1 },
+      { flag: '--management-port', key: 'managementPort', min: 1 },
+      { flag: '--instances', key: 'instances', min: 1 },
+      { flag: '--ram-mb', key: 'ramMb', min: 1 },
+      { flag: '--hdd-gb', key: 'hddGb', min: 1 },
+      { flag: '--expire-blocks', key: 'expireBlocks', min: 1 },
+      ...(options.includePlanningFlags === true
+        ? [
+            { flag: '--timestamp', key: 'timestamp', min: 1 },
+            { flag: '--type-version', key: 'typeVersion', min: 1 },
+          ]
+        : []),
+    ],
+    booleanFlags: [
+      { flag: '--enterprise', key: 'enterprise', value: true },
+      { flag: '--no-enterprise', key: 'enterprise', value: false },
+      { flag: '--staticip', key: 'staticip', value: true },
+      { flag: '--confirm', key: 'confirm', value: true },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux git ${options.command}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  const name = typeof parsed.rawArgs.name === 'string' ? parsed.rawArgs.name.trim() : '';
+  const owner = typeof parsed.rawArgs.owner === 'string' ? parsed.rawArgs.owner.trim() : '';
+  const repoUrl = typeof parsed.rawArgs.repoUrl === 'string' ? parsed.rawArgs.repoUrl.trim() : '';
+  if (!name || !owner || !repoUrl) {
+    return {
+      outputMode: parsed.outputMode,
+      error: options.usage,
+    };
+  }
+
+  const cpu = asOptionalNumberValue(parsed.rawArgs.cpu);
+  if (Object.prototype.hasOwnProperty.call(parsed.rawArgs, 'cpu') && cpu === null) {
+    return {
+      outputMode: parsed.outputMode,
+      error: '--cpu must be a positive number.',
+    };
+  }
+
+  if (cpu !== null && cpu <= 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: '--cpu must be a positive number.',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      name,
+      owner,
+      repoUrl,
+      ...(cpu !== null ? { cpu } : {}),
+    },
+    positional: [],
+  };
+}
+
+function parseGitGenerateSpecArgs(args: string[]): GitDeployParseResult {
+  return parseGitDeployArgs(args, {
+    command: 'generate-spec',
+    usage:
+      'Usage: flux git generate-spec --name <name> --owner <zelid> --repo-url <url> [--description <text>] [--branch <name>] [--project-path <path>] [--repo-username <name>] [--repo-token <token>] [--contact <value> ...] [--app-port <port>] [--exposed-port <port>] [--management-port <port>] [--domain <domain>] [--instances <n>] [--cpu <n>] [--ram-mb <mb>] [--hdd-gb <gb>] [--expire-blocks <n>] [--geolocation <code> ...] [--env KEY=VALUE ...] [--enterprise|--no-enterprise] [--public-key-base64 <base64>] [--repotag <repo:tag>] [--staticip] [--confirm] [--json|--pretty|--raw]',
+  });
+}
+
+function parseGitPlanRegistrationArgs(args: string[]): GitDeployParseResult {
+  return parseGitDeployArgs(args, {
+    command: 'plan-registration',
+    usage:
+      'Usage: flux git plan-registration --name <name> --owner <zelid> --repo-url <url> [--description <text>] [--branch <name>] [--project-path <path>] [--repo-username <name>] [--repo-token <token>] [--contact <value> ...] [--app-port <port>] [--exposed-port <port>] [--management-port <port>] [--domain <domain>] [--instances <n>] [--cpu <n>] [--ram-mb <mb>] [--hdd-gb <gb>] [--expire-blocks <n>] [--geolocation <code> ...] [--env KEY=VALUE ...] [--enterprise|--no-enterprise] [--public-key-base64 <base64>] [--repotag <repo:tag>] [--staticip] [--timestamp <ms>] [--type-version <n>] [--confirm] [--json|--pretty|--raw]',
+    includePlanningFlags: true,
+  });
+}
+
+function parseGitRegisterAndVerifyArgs(args: string[]): GitDeploySubmissionParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: [
+      { flag: '--plan-resource-uri', key: 'planResourceUri' },
+      { flag: '--signature', key: 'signature' },
+    ],
+    integerFlags: [
+      { flag: '--attempts', key: 'attempts', min: 1 },
+      { flag: '--interval-ms', key: 'intervalMs', min: 0 },
+      { flag: '--poll-timeout-ms', key: 'pollTimeoutMs', min: 1 },
+    ],
+    booleanFlags: [
+      { flag: '--verify-global', key: 'verifyGlobal', value: true },
+      { flag: '--no-verify-global', key: 'verifyGlobal', value: false },
+      { flag: '--poll', key: 'poll', value: true },
+      { flag: '--no-poll', key: 'poll', value: false },
+      { flag: '--confirm', key: 'confirm', value: true },
+    ],
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux git register-and-verify\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  const planResourceUri = typeof parsed.rawArgs.planResourceUri === 'string' ? parsed.rawArgs.planResourceUri.trim() : '';
+  const signature = typeof parsed.rawArgs.signature === 'string' ? parsed.rawArgs.signature.trim() : '';
+  if (!planResourceUri || !signature) {
+    return {
+      outputMode: parsed.outputMode,
+      error:
+        'Usage: flux git register-and-verify --plan-resource-uri <uri> --signature <sig> [--attempts <n>] [--interval-ms <ms>] [--poll-timeout-ms <ms>] [--verify-global|--no-verify-global] [--poll|--no-poll] --confirm [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    rawArgs: {
+      ...parsed.rawArgs,
+      planResourceUri,
+      signature,
+    },
+    planResourceUri,
     positional: [],
   };
 }
@@ -5144,6 +5380,29 @@ function renderAppsRenewPlanPretty(payload: Record<string, unknown>): string {
   ].join('\n');
 }
 
+function renderGitPlanPretty(payload: Record<string, unknown>): string {
+  return [
+    `Git deploy plan for ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Requires auth: ${payload.requiresAuth === true ? 'yes' : 'no'}`,
+    `Private repo token: ${payload.hasRepoToken === true ? 'yes (redacted)' : 'no'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+    `Message resource: ${asOptionalStringValue(payload.messageToSignResourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderGitSubmissionPretty(payload: Record<string, unknown>): string {
+  return [
+    `Git register and verify ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Owner: ${asOptionalStringValue(payload.owner) ?? '<unknown>'}`,
+    `Hash: ${asOptionalStringValue(payload.hash) ?? '<none>'}`,
+    `Plan resource: ${asOptionalStringValue(payload.planResourceUri) ?? '<none>'}`,
+    `Message resource: ${asOptionalStringValue(payload.messageToSignResourceUri) ?? '<none>'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
 function renderAppsMetadataPretty(title: string, value: Record<string, unknown> | null): string {
   if (!value) return `${title}\nNo metadata returned.`;
   return [title, ...Object.entries(value).map(([key, entryValue]) => `- ${key}: ${typeof entryValue === 'object' ? JSON.stringify(entryValue) : String(entryValue)}`)].join('\n');
@@ -7052,6 +7311,196 @@ async function handleAppsPlanRenew(
   return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
 }
 
+async function handleGitGenerateSpec(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseGitGenerateSpecArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_git_deploy_generate_spec_v8', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not generate git deploy spec.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceValue = unwrapFluxPayloadFromValue(await readPersistedResourceValue(normalized.envelope.resourceUri));
+  const spec = normalizeSpecValue(resourceValue);
+  if (!spec) {
+    return emitFailure('flux', 'Git deploy spec resource did not contain a JSON object spec.', io, parsed.outputMode);
+  }
+
+  const payload = {
+    ...summary,
+    ok: true,
+    status: asOptionalStringValue(summary.status) ?? 'ok',
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.name),
+    owner: asOptionalStringValue(summary.owner) ?? asOptionalStringValue(parsed.rawArgs.owner),
+    spec,
+    hasRepoToken: summary.hasRepoToken === true,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderAppsGenerateSpecPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleGitPlanRegistration(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseGitPlanRegistrationArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_git_deploy_plan_registration', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not build git deploy plan.', io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourceUri = asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri ?? null;
+  const resourceRecord = normalizePlanningResourceRecord(await readPersistedResourceValue(resourceUri));
+  const verifiedSpec = unwrapSpecCandidate(resourceRecord.verified) ?? normalizeSpecValue(resourceRecord.spec);
+  const payloadRecord = normalizeSpecValue(resourceRecord.payload);
+  const payload = {
+    ...summary,
+    ok: true,
+    status: normalizePlanningStatus(summary, true),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.name),
+    owner: asOptionalStringValue(summary.owner) ?? asOptionalStringValue(parsed.rawArgs.owner),
+    git: normalizeSpecValue(summary.git) ?? normalizeSpecValue(resourceRecord.git),
+    verifiedSpec,
+    price: normalizePriceShape(resourceRecord.price),
+    payload: payloadRecord,
+    payment: normalizeSpecValue(summary.payment) ?? normalizeSpecValue(resourceRecord.payment),
+    resourceUri,
+    hasRepoToken: summary.hasRepoToken === true || normalizeSpecValue(summary.git)?.hasRepoToken === true,
+    messageToSignResourceUri: asOptionalStringValue(summary.messageToSignResourceUri)
+      ?? asOptionalStringValue(resourceRecord.messageToSignResourceUri),
+    nextActions: normalizeNextActionItems(summary.nextActions ?? resourceRecord.nextActions ?? normalized.envelope.nextActions),
+    signatureNotes: normalizeSpecValue(summary.signatureNotes) ?? normalizeSpecValue(resourceRecord.signatureNotes),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderGitPlanPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleGitRegisterAndVerify(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseGitRegisterAndVerifyArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const planResourceValue = await readPersistedResourceValue(parsed.planResourceUri);
+  if (planResourceValue === null) {
+    return emitFailure('validation', `Resource not found: ${parsed.planResourceUri}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_git_deploy_register_and_verify', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const planRecord = normalizePlanningResourceRecord(planResourceValue);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: asOptionalStringValue(summary.status)
+      ?? (normalized.envelope.ok ? 'submitted' : failureStatus(normalized.failureKind ?? 'flux')),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: 'git-register-and-verify',
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(planRecord.appname),
+    owner: asOptionalStringValue(summary.owner) ?? asOptionalStringValue(planRecord.owner),
+    hash: asOptionalStringValue(summary.hash),
+    git: normalizeSpecValue(summary.git) ?? normalizeSpecValue(planRecord.git),
+    hasRepoToken: normalizeSpecValue(summary.git)?.hasRepoToken === true || normalizeSpecValue(planRecord.git)?.hasRepoToken === true,
+    planResourceUri: parsed.planResourceUri,
+    messageToSignResourceUri: asOptionalStringValue(summary.messageToSignResourceUri)
+      ?? asOptionalStringValue(planRecord.messageToSignResourceUri),
+    payment: normalizeSpecValue(summary.payment) ?? normalizeSpecValue(planRecord.payment),
+    signatureNotes: normalizeSpecValue(summary.signatureNotes),
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderGitSubmissionPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleGitCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderGitHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'generate-spec':
+      return handleGitGenerateSpec(rest, io, toolRuntime, mode);
+    case 'plan-registration':
+      return handleGitPlanRegistration(rest, io, toolRuntime, mode);
+    case 'register-and-verify':
+      return handleGitRegisterAndVerify(rest, io, toolRuntime, mode);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown git subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
 async function handleAppsCommand(
   args: string[],
   io: CliIo,
@@ -7472,6 +7921,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'apps':
         return await handleAppsCommand(
+          argv.slice(1),
+          io,
+          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          effectivePersistedStateMode
+        );
+      case 'git':
+        return await handleGitCommand(
           argv.slice(1),
           io,
           options.toolRuntime ?? (await getDefaultToolRuntime()),
