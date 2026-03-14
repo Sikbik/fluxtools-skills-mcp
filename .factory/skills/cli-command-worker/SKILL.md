@@ -27,11 +27,12 @@ Use this skill for features that add or extend first-class command families such
 2. Identify the existing MCP tool behavior for the command family and the JSON/safety contract the CLI must preserve.
 3. Write failing tests first for command parsing, JSON output, confirmation/auth gates, and representative happy-path behavior.
 4. If the branch already contains in-scope partial implementation for the feature, audit the existing diff first, add focused regression tests around the gap, and explicitly note the deviation from the clean-slate test-first path in your handoff.
-5. Implement a thin first-class CLI adapter on top of the shared or extracted behavior. Do not fork Flux business rules into CLI-only code.
-6. Preserve `--json` purity, stderr behavior, exit-code mapping, and confirmation/mutation gating.
-7. Run targeted package tests for the command family, then the shared build/test commands from `.factory/services.yaml`.
-8. Run at least one direct CLI smoke check for the new command family. Use public live read-only checks only when the feature explicitly requires them and the mission boundary allows it.
-9. Update roadmap checkboxes only for the completed slice(s) owned by the feature.
+5. When that partial diff already passes the feature's targeted validators and the repo-wide validators, switch into finalize-and-verify mode: avoid broad refactors, run only the feature-specific smoke checks needed by the verification steps, and commit the slice once the existing diff satisfies the contract.
+6. Implement a thin first-class CLI adapter on top of the shared or extracted behavior. Do not fork Flux business rules into CLI-only code.
+7. Preserve `--json` purity, stderr behavior, exit-code mapping, and confirmation/mutation gating.
+8. Run targeted package tests for the command family, then the shared build/test commands from `.factory/services.yaml`.
+9. Run at least one direct CLI smoke check for the new command family. Use public live read-only checks only when the feature explicitly requires them and the mission boundary allows it.
+10. Update roadmap checkboxes only for the completed slice(s) owned by the feature.
 
 ## Example Handoff
 
