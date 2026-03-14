@@ -331,6 +331,31 @@ function createAppsRuntimeDebugRuntime(): ToolRuntime {
             );
           }
 
+          if (hash === 'mixed-hash') {
+            setJsonResource(resourceUri, {
+              request: { hash },
+              response: { ok: true, status: 200 },
+              parsed: {
+                events: ['pulling image', 'success: Installed', 'error: image pull failed'],
+                jsonObjects: [{ status: 'success', data: { message: 'Installed' } }],
+              },
+            });
+            return jsonResultWithResource(
+              {
+                ok: false,
+                httpStatus: 200,
+                hash,
+                timeoutMs: 120000,
+                eventCount: 3,
+                events: ['pulling image', 'success: Installed', 'error: image pull failed'],
+                resourceUri,
+                nextActions: [{ tool: 'flux_resource_read', arguments: { uri: resourceUri } }],
+              },
+              resourceUri,
+              { isError: true }
+            );
+          }
+
           setJsonResource(resourceUri, {
             request: { hash },
             response: { ok: true, status: 200 },
@@ -566,6 +591,18 @@ describe.sequential('apps runtime debug, exec, and test-install', () => {
         hash: 'bad-hash',
         lastEvent: 'error: image pull failed',
         resourceUri: 'flux://resource/apps/test-install/bad-hash',
+      });
+
+      const mixed = await invokeCli(['apps', 'test-install', 'mixed-hash', '--confirm', '--json'], runtime);
+      expect(mixed.exitCode).toBe(6);
+      expect(JSON.parse(mixed.stdout)).toMatchObject({
+        ok: false,
+        status: 'error',
+        semanticSource: 'events',
+        hash: 'mixed-hash',
+        semanticMessage: 'error: image pull failed',
+        lastEvent: 'error: image pull failed',
+        resourceUri: 'flux://resource/apps/test-install/mixed-hash',
       });
     });
   });

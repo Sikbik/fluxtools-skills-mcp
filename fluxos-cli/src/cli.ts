@@ -130,6 +130,7 @@ const LAUNCHER_KEEP_ALIVE_ALWAYS_TOOL_NAMES = new Set([
 ]);
 
 const LAUNCHER_KEEP_ALIVE_PRETTY_ONLY_TOOL_NAMES = new Set([
+  'flux_build_message_to_sign',
   'flux_apps_plan_registration',
   'flux_apps_plan_update',
   'flux_git_deploy_plan_registration',
@@ -1319,6 +1320,27 @@ function emitFailure(kind: FailureKind, message: string, io: CliIo, outputMode: 
   return exitCodeForFailureKind(kind);
 }
 
+function emitStructuredFailure(
+  kind: FailureKind,
+  message: string,
+  io: CliIo,
+  outputMode: OutputMode,
+  payload: Record<string, unknown>
+): number {
+  if (isJsonLikeOutputMode(outputMode)) {
+    renderJson(io.stdout, {
+      ok: false,
+      status: failureStatus(kind),
+      ...payload,
+      error: message,
+    });
+  } else {
+    writeLine(io.stderr, message);
+  }
+
+  return exitCodeForFailureKind(kind);
+}
+
 async function getDefaultToolRuntime(): Promise<ToolRuntime> {
   const module = (await import('./runtime/toolRuntime.js')) as { createDefaultToolRuntime(): ToolRuntime };
   return module.createDefaultToolRuntime();
@@ -1950,11 +1972,34 @@ function readIntegerFlagValue(
   return { value, nextIndex: raw.nextIndex };
 }
 
+function readNumberFlagValue(
+  args: string[],
+  index: number,
+  arg: string,
+  flagName: string,
+  opts?: { min?: number }
+): { value: number; nextIndex: number } | { error: string } {
+  const raw = readFlagValue(args, index, arg, flagName);
+  if ('error' in raw) return raw;
+
+  const value = Number(raw.value);
+  if (!Number.isFinite(value)) {
+    return { error: `${flagName} must be a number.` };
+  }
+
+  if (typeof opts?.min === 'number' && value < opts.min) {
+    return { error: `${flagName} must be >= ${opts.min}.` };
+  }
+
+  return { value, nextIndex: raw.nextIndex };
+}
+
 function parseAppsFlagArgs(
   args: string[],
   config: {
     stringFlags?: Array<{ flag: string; key: string; repeatable?: boolean }>;
     integerFlags?: Array<{ flag: string; key: string; min?: number; repeatable?: boolean }>;
+    numberFlags?: Array<{ flag: string; key: string; min?: number; repeatable?: boolean }>;
     booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
   }
 ): { outputMode: OutputMode; rawArgs: Record<string, unknown>; positional: string[] } | { outputMode: OutputMode; error: string } {
@@ -2016,6 +2061,23 @@ function parseAppsFlagArgs(
         rawArgs[integerFlag.key] = [...current, value.value];
       } else {
         rawArgs[integerFlag.key] = value.value;
+      }
+      index = value.nextIndex;
+      continue;
+    }
+
+    const numberFlag = config.numberFlags?.find((flag) => arg === flag.flag || arg.startsWith(`${flag.flag}=`));
+    if (numberFlag) {
+      const value = readNumberFlagValue(args, index, arg, numberFlag.flag, { min: numberFlag.min });
+      if ('error' in value) {
+        return { outputMode: resolveOutputModePreference(requested), error: value.error };
+      }
+
+      if (numberFlag.repeatable) {
+        const current = Array.isArray(rawArgs[numberFlag.key]) ? (rawArgs[numberFlag.key] as number[]) : [];
+        rawArgs[numberFlag.key] = [...current, value.value];
+      } else {
+        rawArgs[numberFlag.key] = value.value;
       }
       index = value.nextIndex;
       continue;
@@ -2473,10 +2535,10 @@ function parseAppsGenerateSpecArgs(args: string[]): AppsGenerateSpecParseResult 
       { flag: '--port', key: 'ports', min: 1, repeatable: true },
       { flag: '--container-port', key: 'containerPorts', min: 1, repeatable: true },
       { flag: '--instances', key: 'instances', min: 1 },
-      { flag: '--cpu', key: 'cpu', min: 1 },
       { flag: '--ram', key: 'ram', min: 1 },
       { flag: '--hdd', key: 'hdd', min: 1 },
     ],
+    numberFlags: [{ flag: '--cpu', key: 'cpu', min: 0.1 }],
     booleanFlags: [{ flag: '--staticip', key: 'staticip' }],
   });
 
@@ -4968,18 +5030,6 @@ function deriveProgressSemantic(resourcePayload: unknown): {
   const lastJsonData = asRecord(lastJson?.data) ?? {};
   const lastJsonMessage = asOptionalStringValue(lastJsonData.message) ?? asOptionalStringValue(lastJson?.data);
 
-  if (lastJsonStatus === 'success') {
-    return {
-      ok: true,
-      source: 'json',
-      status: 'success',
-      message: lastJsonMessage,
-      lastEvent,
-      eventCount: events.length,
-      events,
-    };
-  }
-
   if (lastJsonStatus === 'error' || lastJsonStatus === 'failed' || lastJsonStatus === 'failure') {
     return {
       ok: false,
@@ -4999,6 +5049,18 @@ function deriveProgressSemantic(resourcePayload: unknown): {
       source: 'events',
       status: 'error',
       message: lastEvent,
+      lastEvent,
+      eventCount: events.length,
+      events,
+    };
+  }
+
+  if (lastJsonStatus === 'success') {
+    return {
+      ok: true,
+      source: 'json',
+      status: 'success',
+      message: lastJsonMessage,
       lastEvent,
       eventCount: events.length,
       events,
@@ -5631,15 +5693,16 @@ async function handleAppsGlobalStatus(
 
   const summary = asRecord(normalized.envelope.result) ?? {};
   const resourcePayload = asRecord(await readPersistedResourceValue(normalized.envelope.resourceUri)) ?? {};
-  const computed = normalizeGlobalStatusItems(resourcePayload.computed ?? resourcePayload.apps);
+  const allItems = normalizeGlobalStatusItems(resourcePayload.computed ?? resourcePayload.apps);
   const filters = {
     zelid: asOptionalStringValue(summary.zelid),
     appname: asOptionalStringValue(summary.appname),
     includeExpired: parsed.rawArgs.includeExpired === true,
     limit: typeof parsed.rawArgs.limit === 'number' ? parsed.rawArgs.limit : 50,
   };
-  const correlation = buildGlobalStatusCorrelation(summary, resourcePayload, computed, filters);
-  const nextActions = buildGlobalStatusNextActions(filters, computed);
+  const items = filters.includeExpired ? allItems : allItems.filter((item) => item.expired !== true);
+  const correlation = buildGlobalStatusCorrelation(summary, resourcePayload, items, filters);
+  const nextActions = buildGlobalStatusNextActions(filters, items);
   const payload = {
     ...summary,
     ok: normalized.envelope.ok,
@@ -5653,7 +5716,7 @@ async function handleAppsGlobalStatus(
     filters,
     correlation,
     nextActions,
-    items: computed,
+    items,
   };
 
   if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
@@ -5691,15 +5754,16 @@ async function handleAppsTroubleshoot(
   const nextActions = normalizeNextActionItems(summary.nextActions ?? derived.nextActions ?? normalized.envelope.nextActions);
   const correlation = buildTroubleshootCorrelation(summary, derived);
   const health = asRecord(resourcePayload.health);
+  const status = typeof summary.status === 'string' || typeof summary.status === 'number'
+    ? summary.status
+    : normalized.envelope.ok
+      ? 'ok'
+      : failureStatus(normalized.failureKind ?? 'flux');
 
   const payload = {
     ...summary,
     ok: normalized.envelope.ok,
-    status: normalized.envelope.ok
-      ? typeof summary.status === 'string' || typeof summary.status === 'number'
-        ? summary.status
-        : 'ok'
-      : failureStatus(normalized.failureKind ?? 'flux'),
+    status,
     ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
     appname: parsed.appname,
     deep: parsed.rawArgs.deep === true,
@@ -7105,6 +7169,7 @@ async function handleAppsVerifyFlowCommand(
     : submission.source === 'plan'
       ? false
       : true;
+  const identity = extractAppIdentityFromSpec(submission.spec);
 
   const toolArgs: Record<string, unknown> = {
     spec: submission.spec,
@@ -7128,11 +7193,18 @@ async function handleAppsVerifyFlowCommand(
     normalized = await executeToolCall(options.toolName, toolArgs, toolRuntime, mode);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+    const failureKind = classifyFailureKind(message);
+    return emitStructuredFailure(failureKind, message, io, parsed.outputMode, {
+      status: failureKind === 'flux' ? 'error' : failureStatus(failureKind),
+      operation: options.operation,
+      appname: identity.appname,
+      owner: identity.owner,
+      source: submission.source,
+      planResourceUri: submission.planResourceUri,
+    });
   }
 
   const summary = asRecord(normalized.envelope.result) ?? {};
-  const identity = extractAppIdentityFromSpec(submission.spec);
   const payload = {
     ...summary,
     ok: normalized.envelope.ok,

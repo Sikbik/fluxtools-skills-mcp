@@ -55,9 +55,13 @@ function createFluxRequestResult(data: unknown, status = 200) {
   };
 }
 
-function jsonResultWithResource(payload: Record<string, unknown>, resourceUri: string) {
+function jsonResultWithResource(
+  payload: Record<string, unknown>,
+  resourceUri: string,
+  opts?: { isError?: boolean }
+) {
   return {
-    isError: false,
+    isError: opts?.isError ?? false,
     structuredContent: payload,
     content: [
       { type: 'text', text: JSON.stringify(payload, null, 2) },
@@ -84,41 +88,61 @@ function createStatusTroubleshootRuntime(): ToolRuntime {
 
       switch (name) {
         case 'flux_apps_global_status': {
+          const appname = typeof args.appname === 'string' ? args.appname : null;
           const resourceUri = 'flux://resource/apps/global-status/demo';
+          const computed = appname === 'expired-app'
+            ? [
+                {
+                  name: 'expired-app',
+                  owner: 'demo-owner',
+                  hash: 'expired-hash',
+                  instances: 1,
+                  height: 100,
+                  expirationHeight: 120,
+                  blocksRemaining: -5,
+                  expired: true,
+                  hasTemporary: false,
+                  hasPermanent: false,
+                },
+              ]
+            : [
+                {
+                  name: 'demo-app',
+                  owner: 'demo-owner',
+                  hash: 'demo-hash',
+                  instances: 3,
+                  height: 100,
+                  expirationHeight: 220,
+                  blocksRemaining: 70,
+                  expired: false,
+                  hasTemporary: true,
+                  hasPermanent: false,
+                },
+              ];
+
           setJsonResource(resourceUri, {
-            appname: typeof args.appname === 'string' ? args.appname : null,
+            appname,
             currentHeight: 150,
-            computed: [
-              {
-                name: 'demo-app',
-                owner: 'demo-owner',
-                hash: 'demo-hash',
-                instances: 3,
-                height: 100,
-                expirationHeight: 220,
-                blocksRemaining: 70,
-                expired: false,
-                hasTemporary: true,
-                hasPermanent: false,
-              },
-            ],
-            location: { appname: 'demo-app', count: 2 },
-            localRuntime: { appname: 'demo-app', runningCount: 1 },
+            computed,
+            location: appname === 'expired-app' ? null : { appname: 'demo-app', count: 2 },
+            localRuntime: appname === 'expired-app' ? null : { appname: 'demo-app', runningCount: 1 },
           });
 
           return jsonResultWithResource(
             {
               ok: true,
               status: 'ok',
-              appname: typeof args.appname === 'string' ? args.appname : null,
+              appname,
               zelid: null,
               count: 1,
-              shown: 1,
-              temporaryCount: 1,
+              shown: appname === 'expired-app' && args.includeExpired !== true ? 0 : 1,
+              temporaryCount: appname === 'expired-app' ? 0 : 1,
               permanentCount: 0,
-              locationsCount: 2,
-              localRunningCount: 1,
-              propagation: { tempYes: 1, permYes: 0, both: 0, neither: 0 },
+              locationsCount: appname === 'expired-app' ? null : 2,
+              localRunningCount: appname === 'expired-app' ? null : 1,
+              propagation: appname === 'expired-app'
+                ? { tempYes: 0, permYes: 0, both: 0, neither: 1 }
+                : { tempYes: 1, permYes: 0, both: 0, neither: 0 },
               resourceUri,
             },
             resourceUri
@@ -126,6 +150,50 @@ function createStatusTroubleshootRuntime(): ToolRuntime {
         }
         case 'flux_apps_troubleshoot': {
           const appname = typeof args.appname === 'string' ? args.appname : 'demo-app';
+          if (appname === 'registry-down') {
+            const resourceUri = 'flux://resource/apps/troubleshoot/registry-down';
+            const suspects = [
+              {
+                code: 'global_registry_unreachable',
+                title: 'Global registry query failed',
+                severity: 'high',
+                evidence: { status: 503 },
+              },
+            ];
+
+            setJsonResource(resourceUri, {
+              appname,
+              derived: {
+                globalExists: false,
+                locationCount: 0,
+                installingCount: 0,
+                errorsCount: 0,
+                localRunningCount: 0,
+                suspects,
+                nextActions: [{ tool: 'flux_apps_troubleshoot', arguments: { appname, deep: true } }],
+              },
+              health: null,
+            });
+
+            return jsonResultWithResource(
+              {
+                ok: false,
+                status: 'global_registry_unreachable',
+                appname,
+                globalExists: false,
+                locationsCount: 0,
+                installingCount: 0,
+                errorsCount: 0,
+                localRunningCount: 0,
+                suspects,
+                nextActions: [{ tool: 'flux_apps_troubleshoot', arguments: { appname, deep: true } }],
+                resourceUri,
+              },
+              resourceUri,
+              { isError: true }
+            );
+          }
+
           const resourceUri = 'flux://resource/apps/troubleshoot/demo';
           const suspects = [
             {
@@ -255,6 +323,39 @@ describe.sequential('apps status and troubleshoot', () => {
     });
   });
 
+  it('reapplies expired filtering to persisted global-status resources unless explicitly requested', async () => {
+    await withTempStateDir(async () => {
+      const runtime = createStatusTroubleshootRuntime();
+
+      const filtered = await invokeCli(['apps', 'global-status', '--appname', 'expired-app', '--json'], runtime);
+      expect(filtered.exitCode).toBe(0);
+      expect(JSON.parse(filtered.stdout)).toMatchObject({
+        ok: true,
+        items: [],
+        correlation: {
+          appname: 'expired-app',
+          propagationState: 'not_found',
+          runtimeState: 'not_found',
+        },
+      });
+
+      const included = await invokeCli(
+        ['apps', 'global-status', '--appname', 'expired-app', '--include-expired', '--json'],
+        runtime
+      );
+      expect(included.exitCode).toBe(0);
+      expect(JSON.parse(included.stdout)).toMatchObject({
+        ok: true,
+        items: [
+          expect.objectContaining({
+            name: 'expired-app',
+            expired: true,
+          }),
+        ],
+      });
+    });
+  });
+
   it('returns suspects and next-step guidance for troubleshoot', async () => {
     await withTempStateDir(async () => {
       const runtime = createStatusTroubleshootRuntime();
@@ -291,6 +392,24 @@ describe.sequential('apps status and troubleshoot', () => {
       expect(prettyResult.stdout).toContain('Troubleshoot demo-app');
       expect(prettyResult.stdout).toContain('Top suspect: install_errors');
       expect(prettyResult.stdout).toContain('flux_apps_get_spec');
+    });
+  });
+
+  it('preserves registry-unreachable troubleshooting semantics when the upstream tool fails', async () => {
+    await withTempStateDir(async () => {
+      const runtime = createStatusTroubleshootRuntime();
+      const result = await invokeCli(['apps', 'troubleshoot', 'registry-down', '--json'], runtime);
+
+      expect(result.exitCode).toBe(6);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        status: 'global_registry_unreachable',
+        appname: 'registry-down',
+        topSuspect: {
+          code: 'global_registry_unreachable',
+          category: 'registry',
+        },
+      });
     });
   });
 });

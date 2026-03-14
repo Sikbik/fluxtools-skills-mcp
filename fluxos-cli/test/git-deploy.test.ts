@@ -72,28 +72,54 @@ function errorToolResult(message: string) {
   };
 }
 
-function buildRawGitSpec(args: Record<string, unknown>) {
-  return {
+function buildPlannedGitSpec(args: Record<string, unknown>) {
+  const enterprise = args.enterprise === true || Boolean(args.repoToken);
+  const baseSpec = {
     version: 8,
     name: String(args.name ?? 'git-demo'),
     owner: String(args.owner ?? 't1owner'),
     description: String(args.description ?? 'Git deploy app'),
+    contacts: Array.isArray(args.contacts) ? args.contacts : [],
+    instances: Number(args.instances ?? 3),
+    staticip: args.staticip === true,
+    enterprise: '',
+    nodes: [],
+    geolocation: Array.isArray(args.geolocation) ? args.geolocation : [],
+    expire: Number(args.expireBlocks ?? 88000),
     compose: [
       {
         name: 'cloudgit',
+        description: 'cloudgit',
         repotag: String(args.repotag ?? 'runonflux/orbit:latest'),
         ports: [Number(args.exposedPort ?? 20001), Number(args.managementPort ?? 20011)],
         containerPorts: [Number(args.appPort ?? 3000), 9001],
+        domains: [String(args.domain ?? ''), ''],
         environmentParameters: [
           `GIT_REPO_URL=https://${String(args.repoUsername ?? 'git')}:${String(args.repoToken ?? 'token123')}@github.com/acme/private-repo`,
           `APP_PORT=${String(args.appPort ?? 3000)}`,
           `API_TOKEN=${String(args.repoToken ?? 'token123')}`,
           'WEBHOOK_SECRET=hook-secret',
         ],
+        commands: [],
+        containerData: '/app',
+        cpu: Number(args.cpu ?? 1),
+        ram: Number(args.ramMb ?? 2000),
+        hdd: Number(args.hddGb ?? 10),
+        tiered: false,
         repoauth: 'secret-auth',
       },
     ],
-    repoToken: String(args.repoToken ?? 'token123'),
+  };
+
+  if (!enterprise) {
+    return baseSpec;
+  }
+
+  return {
+    ...baseSpec,
+    contacts: [],
+    compose: [],
+    enterprise: 'encrypted-enterprise-payload',
   };
 }
 
@@ -186,7 +212,7 @@ function createGitDeployRuntime(options?: { authenticated?: boolean }) {
         case 'flux_git_deploy_plan_registration': {
           const messageToSignResourceUri = 'flux://resource/git/plan/message';
           const resourceUri = 'flux://resource/git/plan/full';
-          const rawSpec = buildRawGitSpec(args);
+          const rawSpec = buildPlannedGitSpec(args);
           const summary = {
             ok: true,
             requiresAuth: !authenticated,
@@ -222,7 +248,6 @@ function createGitDeployRuntime(options?: { authenticated?: boolean }) {
           setTextResource(messageToSignResourceUri, 'GIT-PLAN-MESSAGE');
           setJsonResource(resourceUri, {
             ...summary,
-            repoToken: String(args.repoToken ?? 'token123'),
             spec: rawSpec,
             verified: createFluxRequestResult(rawSpec),
             price: createFluxRequestResult({ flux: 1.23, currency: 'FLUX' }),
@@ -232,7 +257,6 @@ function createGitDeployRuntime(options?: { authenticated?: boolean }) {
               timestamp: Number(args.timestamp ?? 111),
               appSpecification: rawSpec,
               signature: '<SIGNATURE>',
-              repoToken: String(args.repoToken ?? 'token123'),
             },
           });
 
@@ -484,26 +508,34 @@ describe.sequential('git deploy workflows', () => {
       expect(payload.hasRepoToken).toBe(true);
 
       const verifiedSpec = asRecord(payload.verifiedSpec);
-      const compose = (verifiedSpec.compose as Array<Record<string, unknown>> | undefined) ?? [];
-      const env = (compose[0]?.environmentParameters as string[] | undefined) ?? [];
-      expect(env).toContain('GIT_REPO_URL=<redacted>');
-      expect(env).toContain('API_TOKEN=<redacted>');
-      expect(env).toContain('WEBHOOK_SECRET=<redacted>');
+      expect(Array.isArray(verifiedSpec.compose)).toBe(true);
+      expect((verifiedSpec.compose as unknown[]).length).toBe(0);
+      expect(Array.isArray(verifiedSpec.contacts)).toBe(true);
+      expect((verifiedSpec.contacts as unknown[]).length).toBe(0);
+      expect(typeof verifiedSpec.enterprise).toBe('string');
+      expect(String(verifiedSpec.enterprise)).not.toHaveLength(0);
 
       const resourceRead = await invokeCli(['resource', 'read', 'flux://resource/git/plan/full', '--json']);
       expect(resourceRead.exitCode).toBe(0);
       expect(resourceRead.stdout).not.toContain('token123');
 
       const storedPlan = parseJson<{ contents: { value: Record<string, unknown> } }>(resourceRead.stdout).contents.value;
-      expect(storedPlan.repoToken).toBe('<REDACTED>');
-
       const storedSpec = asRecord(storedPlan.spec);
-      const storedCompose = (storedSpec.compose as Array<Record<string, unknown>> | undefined) ?? [];
-      const storedEnv = (storedCompose[0]?.environmentParameters as string[] | undefined) ?? [];
-      expect(storedEnv).toContain('GIT_REPO_URL=<redacted>');
-      expect(storedEnv).toContain('API_TOKEN=<redacted>');
-      expect(storedEnv).toContain('WEBHOOK_SECRET=<redacted>');
-      expect(storedCompose[0]?.repoauth).toBe('<redacted>');
+      expect(Array.isArray(storedSpec.compose)).toBe(true);
+      expect((storedSpec.compose as unknown[]).length).toBe(0);
+      expect(Array.isArray(storedSpec.contacts)).toBe(true);
+      expect((storedSpec.contacts as unknown[]).length).toBe(0);
+      expect(typeof storedSpec.enterprise).toBe('string');
+      expect(String(storedSpec.enterprise)).not.toHaveLength(0);
+
+      const storedPayload = asRecord(storedPlan.payload);
+      const storedAppSpecification = asRecord(storedPayload.appSpecification);
+      expect(Array.isArray(storedAppSpecification.compose)).toBe(true);
+      expect((storedAppSpecification.compose as unknown[]).length).toBe(0);
+      expect(Array.isArray(storedAppSpecification.contacts)).toBe(true);
+      expect((storedAppSpecification.contacts as unknown[]).length).toBe(0);
+      expect(typeof storedAppSpecification.enterprise).toBe('string');
+      expect(String(storedAppSpecification.enterprise)).not.toHaveLength(0);
 
       const resourceStore = await readFile(join(stateDir, 'resources.json'), 'utf8');
       expect(resourceStore).not.toContain('token123');

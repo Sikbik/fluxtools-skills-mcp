@@ -259,4 +259,55 @@ describe('tool runner integration', () => {
       }
     });
   });
+
+  it('keeps launcher servers refed for pretty generic tool calls that emit signing launchers', async () => {
+    await withTempStateDir(async () => {
+      const previousLocalLauncherEnv = process.env.FLUX_MCP_LOCAL_LAUNCHER;
+      process.env.FLUX_MCP_LOCAL_LAUNCHER = '1';
+
+      const runtime = await createSourceFluxMcpRuntime();
+
+      try {
+        await runtime.closeLocalLaunchersForTests?.();
+
+        const capture = createCapture();
+        const exitCode = await runCli(
+          [
+            'tool',
+            'call',
+            'flux_build_message_to_sign',
+            '--pretty',
+            '--args-json',
+            JSON.stringify({
+              type: 'fluxappregister',
+              version: 1,
+              timestamp: 123,
+              spec: {
+                version: 8,
+                name: 'mygitapp',
+                owner: 't1owner',
+                compose: [],
+              },
+            }),
+          ],
+          { io: capture.io, toolRuntime: runtime }
+        );
+
+        expect(exitCode).toBe(0);
+        expect(capture.getStderr()).toBe('');
+        expect(capture.getStdout()).toContain('flux_build_message_to_sign');
+
+        const state = await runtime.getLauncherDebugState?.();
+        expect(state?.keepAlive).toBe(true);
+        expect(typeof state?.localLauncherPort).toBe('number');
+        expect(state?.localLauncherRefed).toBe(true);
+        expect(state?.zelcoreLauncherPort).toBe(state?.localLauncherPort ?? null);
+        expect(state?.zelcoreLauncherRefed).toBe(true);
+      } finally {
+        await runtime.closeLocalLaunchersForTests?.();
+        if (previousLocalLauncherEnv === undefined) delete process.env.FLUX_MCP_LOCAL_LAUNCHER;
+        else process.env.FLUX_MCP_LOCAL_LAUNCHER = previousLocalLauncherEnv;
+      }
+    });
+  });
 });

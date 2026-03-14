@@ -47,6 +47,7 @@ session-report.md
 # Local agent planning files
 /AGENTS.md
 /fluxos-cli/ROADMAP.md
+/.factory/
 
 # Local (project-scoped) agent config / skill installs
 .codex/

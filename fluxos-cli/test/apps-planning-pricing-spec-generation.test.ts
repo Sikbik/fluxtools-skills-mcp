@@ -412,6 +412,8 @@ describe.sequential('apps planning, pricing, and spec generation', () => {
           'npm start',
           '--instances',
           '3',
+          '--cpu',
+          '0.5',
           '--json',
         ],
         runtime
@@ -431,6 +433,7 @@ describe.sequential('apps planning, pricing, and spec generation', () => {
           name: 'demo-app',
           owner: 't1owner',
           description: 'Demo app',
+          compose: [expect.objectContaining({ cpu: 0.5 })],
         },
       });
       expect(typeof generatedPayload.resourceUri).toBe('string');
@@ -463,6 +466,7 @@ describe.sequential('apps planning, pricing, and spec generation', () => {
               name: 'demo-app',
               owner: 't1owner',
               repotag: 'repo/demo:1.0.0',
+              cpu: 0.5,
             }),
           }),
           expect.objectContaining({

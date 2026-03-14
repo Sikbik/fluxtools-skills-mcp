@@ -143,6 +143,45 @@ function createAppsLifecycleRuntime(): { runtime: ToolRuntime; calls: Array<{ na
           }
 
           const resourceUri = `flux://resource/apps/redeploy/${appname}`;
+          if (appname === 'mixed-app') {
+            setJsonResource(resourceUri, {
+              request: {
+                appname,
+                force: args.force === true ? true : null,
+                global: args.global === true ? true : null,
+                timeoutMs: typeof args.timeoutMs === 'number' ? args.timeoutMs : null,
+              },
+              response: { ok: true, status: 200 },
+              parsed: {
+                events: [
+                  'redeploy: draining old container',
+                  'success: redeploy complete',
+                  'error: container failed health check',
+                ],
+                jsonObjects: [{ status: 'success', data: { message: 'Redeploy complete' } }],
+              },
+            });
+
+            return jsonResultWithResource(
+              {
+                ok: true,
+                status: 200,
+                appname,
+                force: args.force === true ? true : null,
+                global: args.global === true ? true : null,
+                eventCount: 3,
+                events: [
+                  'redeploy: draining old container',
+                  'success: redeploy complete',
+                  'error: container failed health check',
+                ],
+                resourceUri,
+                nextActions: [{ tool: 'flux_apps_logs', arguments: { appname } }],
+              },
+              resourceUri,
+            );
+          }
+
           setJsonResource(resourceUri, {
             request: {
               appname,
@@ -387,6 +426,30 @@ describe.sequential('apps lifecycle and redeploy', () => {
           args: { appname: 'demo-app', force: true, global: true, timeoutMs: 45000, confirm: true },
         },
       ]);
+    });
+  });
+
+  it('treats later redeploy error events as failures even when the last JSON object reports success', async () => {
+    await withTempStateDir(async () => {
+      const { runtime } = createAppsLifecycleRuntime();
+
+      const result = await invokeCli(
+        ['apps', 'redeploy', 'mixed-app', '--timeout-ms', '45000', '--confirm', '--json'],
+        runtime,
+      );
+
+      expect(result.exitCode).toBe(6);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        status: 'error',
+        operation: 'redeploy',
+        appname: 'mixed-app',
+        timeoutMs: 45000,
+        semanticSource: 'events',
+        semanticMessage: 'error: container failed health check',
+        lastEvent: 'error: container failed health check',
+        resourceUri: 'flux://resource/apps/redeploy/mixed-app',
+      });
     });
   });
 

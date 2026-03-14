@@ -76,6 +76,8 @@ function createAppsSubmissionRuntime(options?: {
   authenticated?: boolean;
   registerVerifyStatus?: 'submitted' | 'awaiting_payment' | 'verifying_global' | 'verified' | 'error';
   updateVerifyStatus?: 'submitted' | 'pending' | 'verifying_global' | 'verified' | 'error';
+  registerVerifyThrowMessage?: string;
+  updateVerifyThrowMessage?: string;
 }) {
   const resources = new Map<string, { text: string; mimeType: string }>();
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -335,6 +337,9 @@ function createAppsSubmissionRuntime(options?: {
           if (!authenticated) {
             return errorToolResult('Authentication required (zelidauth not set).');
           }
+          if (options?.registerVerifyThrowMessage) {
+            throw new Error(options.registerVerifyThrowMessage);
+          }
 
           const spec = asRecord(args.spec);
           const status = options?.registerVerifyStatus ?? 'awaiting_payment';
@@ -396,6 +401,9 @@ function createAppsSubmissionRuntime(options?: {
           }
           if (!authenticated) {
             return errorToolResult('Authentication required (zelidauth not set).');
+          }
+          if (options?.updateVerifyThrowMessage) {
+            throw new Error(options.updateVerifyThrowMessage);
           }
 
           const spec = asRecord(args.spec);
@@ -1003,6 +1011,73 @@ describe.sequential('apps submission and propagation workflows', () => {
         status: 'error',
         operation: 'update-and-verify',
         appname: 'demo-app',
+      });
+    });
+  });
+
+  it('preserves explicit error status when verify flows throw after submission planning succeeds', async () => {
+    await withTempStateDir(async () => {
+      const { runtime } = createAppsSubmissionRuntime({
+        authenticated: true,
+        registerVerifyThrowMessage: 'Could not extract message hash from registration response. Flux error: rejected',
+        updateVerifyThrowMessage: 'Could not extract message hash from update response. Flux error: rejected',
+      });
+      const specJson = JSON.stringify({
+        spec: { name: 'demo-app', owner: 't1owner', description: 'Demo app' },
+      });
+
+      const registrationPlan = parseJson<Record<string, unknown>>((await invokeCli(
+        ['apps', 'plan-registration', '--spec-json', specJson, '--timestamp', '111', '--type-version', '1', '--json'],
+        runtime,
+      )).stdout);
+
+      const updatePlan = parseJson<Record<string, unknown>>((await invokeCli(
+        ['apps', 'plan-update', '--spec-json', specJson, '--timestamp', '222', '--type-version', '2', '--json'],
+        runtime,
+      )).stdout);
+
+      const registerAndVerify = await invokeCli(
+        [
+          'apps',
+          'register-and-verify',
+          '--plan-resource-uri',
+          String(registrationPlan.resourceUri),
+          '--signature',
+          'signed-register',
+          '--confirm',
+          '--json',
+        ],
+        runtime,
+      );
+      expect(registerAndVerify.exitCode).toBe(6);
+      expect(parseJson<Record<string, unknown>>(registerAndVerify.stdout)).toMatchObject({
+        ok: false,
+        status: 'error',
+        operation: 'register-and-verify',
+        appname: 'demo-app',
+        planResourceUri: registrationPlan.resourceUri,
+      });
+
+      const updateAndVerify = await invokeCli(
+        [
+          'apps',
+          'update-and-verify',
+          '--plan-resource-uri',
+          String(updatePlan.resourceUri),
+          '--signature',
+          'signed-update',
+          '--confirm',
+          '--json',
+        ],
+        runtime,
+      );
+      expect(updateAndVerify.exitCode).toBe(6);
+      expect(parseJson<Record<string, unknown>>(updateAndVerify.stdout)).toMatchObject({
+        ok: false,
+        status: 'error',
+        operation: 'update-and-verify',
+        appname: 'demo-app',
+        planResourceUri: updatePlan.resourceUri,
       });
     });
   });
