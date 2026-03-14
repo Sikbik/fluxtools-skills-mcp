@@ -319,6 +319,9 @@ Global options:
   --no-state                  Skip persisted session hydration and persistence for this invocation
   --output-file <path>        Mirror stdout into a file after the command completes
 
+Workflow composition:
+  Compatible tool/app/git commands also accept --from-resource-uri <uri> to reuse a persisted CLI artifact
+
 Commands:
   help                           Show this help output
   tool list [--json|--pretty|--raw]
@@ -1030,6 +1033,127 @@ function parseGlobalOptions(argv: string[]): { options: GlobalCliOptions; argv: 
   }
 
   return { options, argv: argv.slice(index) };
+}
+
+function extractSingleStringFlag(
+  argv: string[],
+  flag: string
+): { value: string; argv: string[] } | { error: string } | null {
+  const matches: Array<{ value: string; indices: number[] }> = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === flag) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('-')) {
+        return { error: `Missing value for ${flag}.` };
+      }
+
+      matches.push({ value, indices: [index, index + 1] });
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith(`${flag}=`)) {
+      const value = arg.slice(flag.length + 1);
+      if (!value) {
+        return { error: `Missing value for ${flag}.` };
+      }
+
+      matches.push({ value, indices: [index] });
+    }
+  }
+
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    return { error: `Provide ${flag} only once per invocation.` };
+  }
+
+  const consumed = new Set(matches[0].indices);
+  return {
+    value: matches[0].value,
+    argv: argv.filter((_, index) => !consumed.has(index)),
+  };
+}
+
+function looksLikePlanningArtifact(value: unknown): boolean {
+  const record = normalizePlanningResourceRecord(value);
+
+  return (
+    asOptionalIntegerValue(record.timestamp) !== null
+    || asOptionalIntegerValue(record.typeVersion) !== null
+    || asOptionalStringValue(record.messageToSignResourceUri) !== null
+    || hasNonEmptyValue(record.payload)
+    || hasNonEmptyValue(record.verified)
+    || hasNonEmptyValue(record.payment)
+    || hasNonEmptyValue(record.signatureNotes)
+    || hasNonEmptyValue(record.git)
+    || record.requiresAuth === true
+  );
+}
+
+async function rewriteFromResourceUriArg(argv: string[]): Promise<string[] | { error: string }> {
+  const extracted = extractSingleStringFlag(argv, '--from-resource-uri');
+  if (!extracted) return argv;
+  if ('error' in extracted) return extracted;
+
+  const resourceUri = extracted.value;
+  const nextArgv = extracted.argv;
+  const [command, subcommand] = nextArgv;
+
+  if (command === 'tool' && subcommand === 'call') {
+    const resourceValue = await readPersistedResourceValue(resourceUri);
+    if (resourceValue === null) {
+      return { error: `Resource not found: ${resourceUri}` };
+    }
+
+    const rawArgs = asRecord(resourceValue);
+    if (!rawArgs) {
+      return { error: `Resource ${resourceUri} did not contain a JSON object suitable for tool arguments.` };
+    }
+
+    return [...nextArgv, '--args-json', JSON.stringify(rawArgs)];
+  }
+
+  if (command === 'apps') {
+    const specOnlyCommands = new Set([
+      'verify-registration',
+      'verify-update',
+      'calculate-price',
+      'plan-registration',
+      'plan-update',
+      'plan-renew',
+    ]);
+    const submissionCommands = new Set([
+      'register',
+      'update',
+      'register-and-verify',
+      'update-and-verify',
+    ]);
+
+    if (specOnlyCommands.has(subcommand)) {
+      return [...nextArgv, '--spec-resource-uri', resourceUri];
+    }
+
+    if (submissionCommands.has(subcommand)) {
+      const resourceValue = await readPersistedResourceValue(resourceUri);
+      if (resourceValue === null) {
+        return { error: `Resource not found: ${resourceUri}` };
+      }
+
+      return [
+        ...nextArgv,
+        looksLikePlanningArtifact(resourceValue) ? '--plan-resource-uri' : '--spec-resource-uri',
+        resourceUri,
+      ];
+    }
+  }
+
+  if (command === 'git' && subcommand === 'register-and-verify') {
+    return [...nextArgv, '--plan-resource-uri', resourceUri];
+  }
+
+  return { error: `--from-resource-uri is not supported for \`flux ${argv.slice(0, 2).join(' ')}\`.` };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -10366,7 +10490,15 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
     return EXIT_CODE_VALIDATION;
   }
 
-  const invocationArgv = parsedGlobals.argv;
+  const rewrittenArgv = await rewriteFromResourceUriArg(parsedGlobals.argv);
+  if ('error' in rewrittenArgv) {
+    writeLine(io.stderr, rewrittenArgv.error);
+    writeLine(io.stderr, '');
+    writeLine(io.stderr, renderHelp());
+    return EXIT_CODE_VALIDATION;
+  }
+
+  const invocationArgv = rewrittenArgv;
   const globalOptions = parsedGlobals.options;
   const effectivePersistedStateMode =
     globalOptions.noState ? 'off' : (options.persistedStateMode ?? (options.toolRuntime ? 'off' : 'auto'));
