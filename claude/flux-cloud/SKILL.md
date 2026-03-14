@@ -23,6 +23,13 @@ If the Flux MCP server is available, prefer MCP tools over ad-hoc curl:
 
 Setup instructions: `references/mcp-setup.md`.
 
+## Execution surface fallback
+
+- Prefer Flux MCP when it is connected and the client supports MCP resources well.
+- If MCP is unavailable but the repo-local CLI is present, prefer `fluxos-cli` / `flux` commands over ad-hoc curl.
+- Use raw HTTP only when neither MCP nor the CLI is available for the task.
+- Treat MCP and CLI as peer execution surfaces over shared Flux behavior; do not assume MCP should shell out through the CLI.
+
 ## First questions (ask only if missing)
 
 1) Node API base URL (direct node preferred for node-local ops): `http://<node-ip>:16127`
@@ -128,9 +135,12 @@ Reference: `../../codex/flux-cloud/references/git-deployments.md`.
 - Browse DB: `flux_syncthing_db_browse`
 - Trigger scan/restart (requires confirmation): `flux_syncthing_db_scan`, `flux_syncthing_restart`
 
-## Fallback: direct HTTP calls
+## Fallback: CLI, then direct HTTP calls
 
-If MCP is not available, use curl against `http://<node-ip>:16127`.
+If MCP is not available:
+
+1. Prefer `fluxos-cli` / `flux` commands from the repo.
+2. Use curl against `http://<node-ip>:16127` only when the CLI is unavailable.
 
 - Quick overview: `../../codex/flux-cloud/references/api-endpoints.md`
 - Full endpoint inventory (Flux source-derived): `https://github.com/RunOnFlux/flux/blob/master/ZelBack/src/routes.js`
@@ -138,6 +148,8 @@ If MCP is not available, use curl against `http://<node-ip>:16127`.
 ## References
 
 - `references/mcp-setup.md` — connect Flux MCP to Claude Code/Desktop/Gemini CLI
+- `../../fluxos-cli/README.md` — CLI execution-surface guidance and automation examples
+- `../../fluxos-cli/ARCHITECTURE.md` — MCP-vs-CLI positioning and fallback policy
 - `../../codex/flux-cloud/references/api-endpoints.md` — base URLs, envelopes, auth/privilege, gateway tradeoffs, mutation semantics
 - `references/app-spec-v8.md` — v8 spec template + rules
 - `references/register-update.md` — signing + register/update flow

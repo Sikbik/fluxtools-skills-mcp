@@ -1,10 +1,10 @@
-# Flux MCP and Skills
+# Flux MCP, CLI, and Skills
 
 > Production-focused MCP tooling and agent skills for Flux Cloud / FluxOS.
 
-This project turns the Flux node API into a safer operational surface for agents and operators. It combines a Node.js MCP server, Codex and Claude skill wrappers, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
+This project turns the Flux node API into a safer operational surface for agents and operators. It combines a Node.js MCP server, a shell-native CLI, Codex and Claude skill wrappers, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
 
-This repo is built for people who want to do real work on Flux infrastructure from an MCP client instead of hand-assembling raw REST calls.
+This repo is built for people who want to do real work on Flux infrastructure from an MCP client or a shell-native automation surface instead of hand-assembling raw REST calls.
 
 ## What This Repo Gives You
 
@@ -103,7 +103,7 @@ This repo is built for people who want to do real work on Flux infrastructure fr
 - Gateway-aware auth: the server can resolve the current gateway node and pin you to the direct node before authentication.
 - Enterprise support: the server handles Arcane public key retrieval, enterprise-key generation, and local enterprise payload decryption.
 - Endpoint discovery built in: the generated Flux route inventory is searchable from inside the MCP session.
-- Works with MCP and skills: you can use the same operational surface from Codex, Claude, Gemini, or any other stdio MCP client.
+- Works with MCP, CLI, and skills: you can use the same operational surface from Codex, Claude, Gemini, shell scripts, CI jobs, or any other stdio MCP client.
 
 ## Quick Start
 
@@ -148,6 +148,16 @@ codex mcp add flux \
 ```
 
 The same server works with Claude Code, Claude Desktop, Gemini CLI, and other stdio MCP clients. Full client-specific setup lives in [flux-mcp/README.md](flux-mcp/README.md).
+
+### Use the CLI directly
+
+```bash
+npm --prefix fluxos-cli ci
+npm --prefix fluxos-cli run build
+node fluxos-cli/dist/index.js --help
+```
+
+CLI usage guidance and automation examples live in [fluxos-cli/README.md](fluxos-cli/README.md).
 
 ### First calls worth trying
 
@@ -208,6 +218,7 @@ python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-cl
 | Path | Role |
 | --- | --- |
 | `flux-mcp/` | The main execution layer: MCP server, tool handlers, resources, and HTTP clients. |
+| `fluxos-cli/` | Shell-native Flux CLI for agent workflows, CI, scripts, and operators who want JSON-over-stdout contracts. |
 | `codex/flux-cloud/` | Codex skill wrapper, references, examples, and helper scripts. |
 | `claude/flux-cloud/` | Claude Code skill wrapper and references. |
 | `scripts/` | Setup and skill packaging helpers. |
@@ -219,6 +230,8 @@ python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-cl
 | Document | Why you would open it |
 | --- | --- |
 | [flux-mcp/README.md](flux-mcp/README.md) | Full MCP setup, technical workflows, configuration, and categorized tool catalog. |
+| [fluxos-cli/README.md](fluxos-cli/README.md) | CLI usage, automation patterns, composition helpers, and examples. |
+| [fluxos-cli/ARCHITECTURE.md](fluxos-cli/ARCHITECTURE.md) | Long-term execution-surface guidance: MCP vs CLI, shared runtime direction, and fallback decisions. |
 | [codex/flux-cloud/SKILL.md](codex/flux-cloud/SKILL.md) | Codex-side workflow guidance and tool usage patterns. |
 | [claude/flux-cloud/SKILL.md](claude/flux-cloud/SKILL.md) | Claude Code workflow guidance. |
 | [codex/flux-cloud/references/](codex/flux-cloud/references/) | Detailed Flux API references, app spec notes, signing docs, and troubleshooting. |

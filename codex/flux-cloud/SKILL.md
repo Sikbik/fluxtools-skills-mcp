@@ -24,6 +24,13 @@ If the MCP server is connected, prefer:
 - `flux_auth_diagnose`
 - `flux_app_health_report`
 
+## Execution surface preference
+
+- Prefer Flux MCP when MCP tools and resources are available.
+- If MCP is unavailable but the repo-local CLI is present, prefer `fluxos-cli` / `flux` commands over ad-hoc curl.
+- Use raw HTTP only as a last fallback.
+- Treat MCP and CLI as peer execution surfaces over shared Flux behavior; do not assume MCP should shell out to the CLI.
+
 ## Standard operating procedure (SOP)
 
 - Prefer dedicated `flux_*` tools over `flux_request`.
@@ -170,3 +177,5 @@ Use:
 - `references/arcane-enterprise.md` — Arcane detection + enterprise constraints
 - `references/git-deployments.md` — Git deployments (Orbit) spec + workflow
 - `references/troubleshooting.md` — common failure modes + checklists
+- `../../fluxos-cli/README.md` — CLI execution-surface guidance and automation examples
+- `../../fluxos-cli/ARCHITECTURE.md` — MCP-vs-CLI positioning and fallback policy

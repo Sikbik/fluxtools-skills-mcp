@@ -7,6 +7,8 @@ It complements `flux-mcp` instead of replacing it:
 - use MCP when the client already supports tool calling cleanly
 - use the CLI when you want shell access, CI integration, scripts, cron, or agent workflows that do not speak MCP
 
+Architecture guidance for how the CLI fits with MCP and skills lives in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
 ## What it does
 
 The CLI exposes first-class commands for:
