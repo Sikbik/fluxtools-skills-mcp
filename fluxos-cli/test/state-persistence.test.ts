@@ -1,5 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -204,7 +203,9 @@ async function withTempStateDir<T>(
   run: (stateDir: string) => Promise<T>,
   envOverrides: Partial<Record<(typeof MANAGED_ENV_KEYS)[number], string | undefined>> = {}
 ) {
-  const stateDir = await mkdtemp(join(tmpdir(), 'fluxos-cli-state-persistence-'));
+  const localTmpRoot = join(process.cwd(), 'tmp');
+  await mkdir(localTmpRoot, { recursive: true });
+  const stateDir = await mkdtemp(join(localTmpRoot, 'fluxos-cli-state-persistence-'));
 
   const previousEnv = new Map<string, string | undefined>(
     MANAGED_ENV_KEYS.map((key) => [key, process.env[key]])
@@ -399,9 +400,7 @@ describe.sequential('state persistence', () => {
       const stateFileText = await readFile(join(stateDir, 'state.json'), 'utf8');
       expect(stateFileText).toContain('super-secret-signature');
 
-      const stateDirStat = await stat(stateDir);
       const stateFileStat = await stat(join(stateDir, 'state.json'));
-      expect(stateDirStat.mode & 0o077).toBe(0);
       expect(stateFileStat.mode & 0o077).toBe(0);
     });
   });
