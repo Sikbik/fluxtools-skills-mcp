@@ -405,6 +405,22 @@ Commands:
                                  Read the FluxDrive backup list for one app
   fluxdrive remove-checkpoint --appname <name> --timestamp <ms> [--json|--pretty|--raw]
                                  Remove one FluxDrive checkpoint
+  syncthing metrics [--json|--pretty|--raw]
+                                 Read Syncthing metrics through the first-class CLI surface
+  syncthing metrics-health [--json|--pretty|--raw]
+                                 Read Syncthing metrics health through the first-class CLI surface
+  syncthing system-status [--json|--pretty|--raw]
+                                 Read Syncthing system status through the first-class CLI surface
+  syncthing list-folders [--json|--pretty|--raw]
+                                 List Syncthing folders through the first-class CLI surface
+  syncthing list-devices [--json|--pretty|--raw]
+                                 List Syncthing devices through the first-class CLI surface
+  syncthing db-browse <folder> [--levels <n>] [--prefix <path>] [--json|--pretty|--raw]
+                                 Browse one Syncthing DB folder through the first-class CLI surface
+  syncthing db-scan <folder> [--sub <path>] --confirm [--json|--pretty|--raw]
+                                 Trigger a Syncthing DB scan with explicit confirmation
+  syncthing restart --confirm [--json|--pretty|--raw]
+                                 Restart Syncthing with explicit confirmation
   apps list-running [--json|--pretty|--raw]
                                  List running apps on the active node
   apps list-all [--json|--pretty|--raw]
@@ -716,6 +732,24 @@ Notes:
   - These commands are transport/state wrappers only; they do not introduce new FluxDrive behavior.
 `;
 
+const SYNCTHING_HELP_TEXT = `FluxOS CLI - syncthing
+
+Usage:
+  flux syncthing metrics [--json|--pretty|--raw]
+  flux syncthing metrics-health [--json|--pretty|--raw]
+  flux syncthing system-status [--json|--pretty|--raw]
+  flux syncthing list-folders [--json|--pretty|--raw]
+  flux syncthing list-devices [--json|--pretty|--raw]
+  flux syncthing db-browse <folder> [--levels <n>] [--prefix <path>] [--json|--pretty|--raw]
+  flux syncthing db-scan <folder> [--sub <path>] --confirm [--json|--pretty|--raw]
+  flux syncthing restart --confirm [--json|--pretty|--raw]
+
+Notes:
+  - Read commands preserve the shared Syncthing summaries and resource-backed payloads from flux-mcp.
+  - \`db-browse\` and the list commands return the underlying payloads directly in JSON mode.
+  - \`db-scan\` and \`restart\` keep \`--confirm\` explicit.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -900,6 +934,10 @@ function renderBackupHelp(): string {
 
 function renderFluxDriveHelp(): string {
   return FLUXDRIVE_HELP_TEXT;
+}
+
+function renderSyncthingHelp(): string {
+  return SYNCTHING_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -4365,6 +4403,14 @@ type FluxDriveCommandParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type SyncthingParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -4604,6 +4650,58 @@ function parseFluxDriveArgs(
         error: `Missing required ${flag.flag} for \`flux fluxdrive ${options.command}\`.`,
       };
     }
+  }
+
+  return parsed;
+}
+
+function parseSyncthingArgs(
+  args: string[],
+  options: {
+    command: 'metrics' | 'metrics-health' | 'system-status' | 'list-folders' | 'list-devices' | 'db-browse' | 'db-scan' | 'restart';
+    stringFlags?: Array<{ flag: string; key: string }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+    positionalFolder?: boolean;
+  }
+): SyncthingParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: options.stringFlags,
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+
+  const positional = [...parsed.positional];
+  if (options.positionalFolder) {
+    const [folder, ...rest] = positional;
+    if (!folder || folder.startsWith('-')) {
+      return {
+        outputMode: parsed.outputMode,
+        error: `Usage: flux syncthing ${options.command} <folder>${options.command === 'db-browse' ? ' [--levels <n>] [--prefix <path>]' : ' [--sub <path>] --confirm'} [--json|--pretty|--raw]`,
+      };
+    }
+
+    if (rest.length > 0) {
+      return {
+        outputMode: parsed.outputMode,
+        error: `Unexpected arguments for \`flux syncthing ${options.command}\`: ${rest.join(' ')}`,
+      };
+    }
+
+    return {
+      outputMode: parsed.outputMode,
+      rawArgs: { ...parsed.rawArgs, folder },
+      positional: [],
+    };
+  }
+
+  if (positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux syncthing ${options.command}\`: ${positional.join(' ')}`,
+    };
   }
 
   return parsed;
@@ -4977,6 +5075,19 @@ function renderFluxDrivePretty(title: string, payload: Record<string, unknown>):
     ...(asOptionalStringValue(payload.component) ? [`Component: ${asOptionalStringValue(payload.component)}`] : []),
     ...(asOptionalStringValue(payload.filename) ? [`Filename: ${asOptionalStringValue(payload.filename)}`] : []),
     ...(typeof payload.taskId === 'number' ? [`Task ID: ${String(payload.taskId)}`] : []),
+    `Data: ${typeof dataValue === 'string' ? dataValue : JSON.stringify(dataValue, null, 2)}`,
+  ].join('\n');
+}
+
+function renderSyncthingPretty(title: string, payload: Record<string, unknown>): string {
+  const dataValue = Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload.value;
+
+  return [
+    title,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    ...(asOptionalStringValue(payload.folder) ? [`Folder: ${asOptionalStringValue(payload.folder)}`] : []),
+    ...(typeof payload.count === 'number' ? [`Count: ${String(payload.count)}`] : []),
+    ...(asOptionalStringValue(payload.resourceUri) ? [`Resource URI: ${asOptionalStringValue(payload.resourceUri)}`] : []),
     `Data: ${typeof dataValue === 'string' ? dataValue : JSON.stringify(dataValue, null, 2)}`,
   ].join('\n');
 }
@@ -6271,6 +6382,194 @@ async function handleFluxDriveCommand(
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown fluxdrive subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleSyncthingReadCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: 'metrics' | 'metrics-health' | 'system-status' | 'list-folders' | 'list-devices' | 'db-browse';
+    toolName:
+      | 'flux_syncthing_metrics'
+      | 'flux_syncthing_metrics_health'
+      | 'flux_syncthing_system_status'
+      | 'flux_syncthing_list_folders'
+      | 'flux_syncthing_list_devices'
+      | 'flux_syncthing_db_browse';
+    title: string;
+    stringFlags?: Array<{ flag: string; key: string }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    positionalFolder?: boolean;
+  }
+): Promise<number> {
+  const parsed = parseSyncthingArgs(args, {
+    command: options.command,
+    stringFlags: options.stringFlags,
+    integerFlags: options.integerFlags,
+    positionalFolder: options.positionalFolder,
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const data = unwrapFluxPayloadFromValue(resourcePayload);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    folder: asOptionalStringValue(summary.folder) ?? asOptionalStringValue(parsed.rawArgs.folder),
+    count:
+      typeof summary.count === 'number'
+        ? summary.count
+        : Array.isArray(data)
+          ? data.length
+          : undefined,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+    data,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderSyncthingPretty(options.title, payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleSyncthingMutation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: 'db-scan' | 'restart';
+    toolName: 'flux_syncthing_db_scan' | 'flux_syncthing_restart';
+    title: string;
+    stringFlags?: Array<{ flag: string; key: string }>;
+    positionalFolder?: boolean;
+  }
+): Promise<number> {
+  const parsed = parseSyncthingArgs(args, {
+    command: options.command,
+    stringFlags: options.stringFlags,
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }],
+    positionalFolder: options.positionalFolder,
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const data = unwrapFluxPayloadFromValue(normalized.envelope.result);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'success' : normalizeRuntimeCommandStatus(normalized, 'success'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    folder: asOptionalStringValue(parsed.rawArgs.folder),
+    data,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderSyncthingPretty(options.title, payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleSyncthingCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderSyncthingHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'metrics':
+      return handleSyncthingReadCommand(rest, io, toolRuntime, mode, {
+        command: 'metrics',
+        toolName: 'flux_syncthing_metrics',
+        title: 'Syncthing metrics',
+      });
+    case 'metrics-health':
+      return handleSyncthingReadCommand(rest, io, toolRuntime, mode, {
+        command: 'metrics-health',
+        toolName: 'flux_syncthing_metrics_health',
+        title: 'Syncthing metrics health',
+      });
+    case 'system-status':
+      return handleSyncthingReadCommand(rest, io, toolRuntime, mode, {
+        command: 'system-status',
+        toolName: 'flux_syncthing_system_status',
+        title: 'Syncthing system status',
+      });
+    case 'list-folders':
+      return handleSyncthingReadCommand(rest, io, toolRuntime, mode, {
+        command: 'list-folders',
+        toolName: 'flux_syncthing_list_folders',
+        title: 'Syncthing folders',
+      });
+    case 'list-devices':
+      return handleSyncthingReadCommand(rest, io, toolRuntime, mode, {
+        command: 'list-devices',
+        toolName: 'flux_syncthing_list_devices',
+        title: 'Syncthing devices',
+      });
+    case 'db-browse':
+      return handleSyncthingReadCommand(rest, io, toolRuntime, mode, {
+        command: 'db-browse',
+        toolName: 'flux_syncthing_db_browse',
+        title: 'Syncthing DB browse',
+        stringFlags: [{ flag: '--prefix', key: 'prefix' }],
+        integerFlags: [{ flag: '--levels', key: 'levels', min: 0 }],
+        positionalFolder: true,
+      });
+    case 'db-scan':
+      return handleSyncthingMutation(rest, io, toolRuntime, mode, {
+        command: 'db-scan',
+        toolName: 'flux_syncthing_db_scan',
+        title: 'Syncthing DB scan',
+        stringFlags: [{ flag: '--sub', key: 'sub' }],
+        positionalFolder: true,
+      });
+    case 'restart':
+      return handleSyncthingMutation(rest, io, toolRuntime, mode, {
+        command: 'restart',
+        toolName: 'flux_syncthing_restart',
+        title: 'Syncthing restart',
+      });
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown syncthing subcommand: ${subcommand}`, io, parsed.outputMode);
     }
   }
 }
@@ -10011,6 +10310,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'fluxdrive':
         return await handleFluxDriveCommand(
+          argv.slice(1),
+          io,
+          await getCommandToolRuntime(options.toolRuntime),
+          effectivePersistedStateMode
+        );
+      case 'syncthing':
+        return await handleSyncthingCommand(
           argv.slice(1),
           io,
           await getCommandToolRuntime(options.toolRuntime),
