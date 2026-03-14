@@ -373,6 +373,18 @@ Commands:
                                  Read daemon getconnectioncount through the first-class CLI surface
   daemon difficulty [--json|--pretty|--raw]
                                  Read daemon getdifficulty through the first-class CLI surface
+  files list --appname <name> --component <name> [--folder <path>] [--json|--pretty|--raw]
+                                 List an app volume folder through the first-class CLI surface
+  files download --appname <name> --component <name> --file <path> [--max-bytes <n>] [--confirm] [--json|--pretty|--raw]
+                                 Download one app volume file as a resource-backed artifact
+  files download-folder --appname <name> --component <name> --folder <path> [--max-bytes <n>] --confirm [--json|--pretty|--raw]
+                                 Download an app volume folder as a zipped resource-backed artifact
+  files mkdir --appname <name> --component <name> --folder <path> --confirm [--json|--pretty|--raw]
+                                 Create an app volume folder with explicit confirmation
+  files rename --appname <name> --component <name> --oldpath <path> --newname <name> --confirm [--json|--pretty|--raw]
+                                 Rename an app volume object with explicit confirmation
+  files remove --appname <name> --component <name> --object <path> --confirm [--json|--pretty|--raw]
+                                 Remove an app volume object with explicit confirmation
   apps list-running [--json|--pretty|--raw]
                                  List running apps on the active node
   apps list-all [--json|--pretty|--raw]
@@ -635,6 +647,23 @@ Notes:
   - \`raw-mempool --verbose\` maps to the shared verbose getrawmempool behavior.
 `;
 
+const FILES_HELP_TEXT = `FluxOS CLI - files
+
+Usage:
+  flux files list --appname <name> --component <name> [--folder <path>] [--json|--pretty|--raw]
+  flux files download --appname <name> --component <name> --file <path> [--max-bytes <n>] [--confirm] [--json|--pretty|--raw]
+  flux files download-folder --appname <name> --component <name> --folder <path> [--max-bytes <n>] --confirm [--json|--pretty|--raw]
+  flux files mkdir --appname <name> --component <name> --folder <path> --confirm [--json|--pretty|--raw]
+  flux files rename --appname <name> --component <name> --oldpath <path> --newname <name> --confirm [--json|--pretty|--raw]
+  flux files remove --appname <name> --component <name> --object <path> --confirm [--json|--pretty|--raw]
+
+Notes:
+  - These commands preserve the shared app-volume auto-resolution logic from flux-mcp.
+  - Download commands emit reusable resource URIs instead of dumping large base64 payloads to stdout.
+  - Sensitive file downloads still require \`--confirm\` when the shared tool marks the path as sensitive.
+  - Mutation commands keep \`--confirm\` explicit and surface resolved node context when the shared tool had to relocate the request.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -807,6 +836,10 @@ function renderExplorerHelp(): string {
 
 function renderDaemonHelp(): string {
   return DAEMON_HELP_TEXT;
+}
+
+function renderFilesHelp(): string {
+  return FILES_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -4248,6 +4281,14 @@ type DaemonReadParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type FilesParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -4381,6 +4422,42 @@ function parseDaemonReadArgs(
       outputMode: parsed.outputMode,
       error: `Unexpected arguments for \`flux daemon ${options?.command ?? 'command'}\`: ${parsed.positional.join(' ')}`,
     };
+  }
+
+  return parsed;
+}
+
+function parseFilesArgs(
+  args: string[],
+  options: {
+    command: 'list' | 'download' | 'download-folder' | 'mkdir' | 'rename' | 'remove';
+    stringFlags: Array<{ flag: string; key: string }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): FilesParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: options.stringFlags,
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux files ${options.command}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  for (const flag of options.stringFlags) {
+    const value = typeof parsed.rawArgs[flag.key] === 'string' ? String(parsed.rawArgs[flag.key]).trim() : '';
+    if (!value) {
+      return {
+        outputMode: parsed.outputMode,
+        error: `Missing required ${flag.flag} for \`flux files ${options.command}\`.`,
+      };
+    }
   }
 
   return parsed;
@@ -4606,6 +4683,72 @@ function renderDaemonPretty(payload: Record<string, unknown>, title?: string): s
     ...(typeof payload.count === 'number' ? [`Count: ${String(payload.count)}`] : []),
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
     `${dataLabel}: ${typeof dataValue === 'string' ? dataValue : JSON.stringify(dataValue, null, 2)}`,
+  ].join('\n');
+}
+
+function normalizeFileItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => {
+    const isDirectory = entry.isDirectory === true;
+    const isFile = entry.isFile === true;
+    const isSymbolicLink = entry.isSymbolicLink === true;
+
+    return {
+      name: asOptionalStringValue(entry.name),
+      type: isDirectory ? 'dir' : isFile ? 'file' : isSymbolicLink ? 'link' : null,
+      sizeBytes: asOptionalNumberValue(entry.size),
+      modifiedAt: asOptionalStringValue(entry.modifiedAt),
+    };
+  });
+}
+
+function extractResourceResponse(resourcePayload: unknown): unknown {
+  const record = asRecord(resourcePayload);
+  return record && Object.prototype.hasOwnProperty.call(record, 'response') ? record.response : resourcePayload;
+}
+
+function renderFilesListPretty(payload: Record<string, unknown>): string {
+  const items = asObjectArray(payload.items);
+  if (items.length === 0) {
+    return [
+      `Files ${asOptionalStringValue(payload.appname) ?? '<unknown>'}/${asOptionalStringValue(payload.component) ?? '<unknown>'}`,
+      `Folder: ${asOptionalStringValue(payload.folder) ?? ''}`,
+      'No entries returned.',
+    ].join('\n');
+  }
+
+  return [
+    `Files ${asOptionalStringValue(payload.appname) ?? '<unknown>'}/${asOptionalStringValue(payload.component) ?? '<unknown>'}`,
+    `Folder: ${asOptionalStringValue(payload.folder) ?? ''}`,
+    `Count: ${String(payload.count ?? items.length)}`,
+    ...items.map((item) => {
+      const size = asOptionalNumberValue(item.sizeBytes);
+      return `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · ${asOptionalStringValue(item.type) ?? '-'} · ${size ?? '-'} bytes`;
+    }),
+  ].join('\n');
+}
+
+function renderFilesArtifactPretty(payload: Record<string, unknown>, label: string): string {
+  return [
+    `${label} ${asOptionalStringValue(payload.appname) ?? '<unknown>'}/${asOptionalStringValue(payload.component) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    ...(asOptionalStringValue(payload.file) ? [`File: ${asOptionalStringValue(payload.file)}`] : []),
+    ...(asOptionalStringValue(payload.folder) ? [`Folder: ${asOptionalStringValue(payload.folder)}`] : []),
+    `Bytes: ${String(payload.bytes ?? '-')}`,
+    `MIME type: ${asOptionalStringValue(payload.mimeType) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderFilesMutationPretty(payload: Record<string, unknown>, label: string): string {
+  return [
+    `${label} ${asOptionalStringValue(payload.appname) ?? '<unknown>'}/${asOptionalStringValue(payload.component) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    ...(asOptionalStringValue(payload.folder) ? [`Folder: ${asOptionalStringValue(payload.folder)}`] : []),
+    ...(asOptionalStringValue(payload.oldpath) ? [`Old path: ${asOptionalStringValue(payload.oldpath)}`] : []),
+    ...(asOptionalStringValue(payload.newname) ? [`New name: ${asOptionalStringValue(payload.newname)}`] : []),
+    ...(asOptionalStringValue(payload.object) ? [`Object: ${asOptionalStringValue(payload.object)}`] : []),
+    `Message: ${asOptionalStringValue(payload.message) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
   ].join('\n');
 }
 
@@ -5131,6 +5274,245 @@ async function handleDaemonCommand(
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown daemon subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleFilesList(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseFilesArgs(args, {
+    command: 'list',
+    stringFlags: [
+      { flag: '--appname', key: 'appname' },
+      { flag: '--component', key: 'component' },
+    ],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_apps_list_folder', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const responsePayload = unwrapFluxPayloadFromValue(extractResourceResponse(resourcePayload));
+  const items = normalizeFileItems(responsePayload);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    component: asOptionalStringValue(summary.component) ?? asOptionalStringValue(parsed.rawArgs.component),
+    folder: asOptionalStringValue(summary.folder) ?? asOptionalStringValue(parsed.rawArgs.folder) ?? '',
+    count: items.length,
+    items,
+    nextActions: normalizeNextActionItems(summary.nextActions ?? normalized.envelope.nextActions),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFilesListPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFilesArtifact(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: 'download' | 'download-folder';
+    toolName: 'flux_apps_download_file' | 'flux_apps_download_folder';
+    label: string;
+    stringFlags: Array<{ flag: string; key: string }>;
+  }
+): Promise<number> {
+  const parsed = parseFilesArgs(args, {
+    command: options.command,
+    stringFlags: options.stringFlags,
+    integerFlags: [{ flag: '--max-bytes', key: 'maxBytes', min: 1 }],
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    component: asOptionalStringValue(summary.component) ?? asOptionalStringValue(parsed.rawArgs.component),
+    file: asOptionalStringValue(summary.file) ?? asOptionalStringValue(parsed.rawArgs.file),
+    folder: asOptionalStringValue(summary.folder) ?? asOptionalStringValue(parsed.rawArgs.folder),
+    bytes: asOptionalNumberValue(summary.bytes),
+    mimeType: asOptionalStringValue(summary.mimeType),
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFilesArtifactPretty(payload, options.label));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFilesMutation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: 'mkdir' | 'rename' | 'remove';
+    toolName: 'flux_apps_create_folder' | 'flux_apps_rename_object' | 'flux_apps_remove_object';
+    label: string;
+    stringFlags: Array<{ flag: string; key: string }>;
+  }
+): Promise<number> {
+  const parsed = parseFilesArgs(args, {
+    command: options.command,
+    stringFlags: options.stringFlags,
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'success' : normalizeRuntimeCommandStatus(normalized, 'success'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    component: asOptionalStringValue(summary.component) ?? asOptionalStringValue(parsed.rawArgs.component),
+    folder: asOptionalStringValue(summary.folder) ?? asOptionalStringValue(parsed.rawArgs.folder),
+    oldpath: asOptionalStringValue(summary.oldpath) ?? asOptionalStringValue(parsed.rawArgs.oldpath),
+    newname: asOptionalStringValue(summary.newname) ?? asOptionalStringValue(parsed.rawArgs.newname),
+    object: asOptionalStringValue(summary.object) ?? asOptionalStringValue(parsed.rawArgs.object),
+    message: unwrapFluxStringValue(extractResourceResponse(resourcePayload)),
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFilesMutationPretty(payload, options.label));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFilesCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderFilesHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'list':
+      return handleFilesList(rest, io, toolRuntime, mode);
+    case 'download':
+      return handleFilesArtifact(rest, io, toolRuntime, mode, {
+        command: 'download',
+        toolName: 'flux_apps_download_file',
+        label: 'Download file',
+        stringFlags: [
+          { flag: '--appname', key: 'appname' },
+          { flag: '--component', key: 'component' },
+          { flag: '--file', key: 'file' },
+        ],
+      });
+    case 'download-folder':
+      return handleFilesArtifact(rest, io, toolRuntime, mode, {
+        command: 'download-folder',
+        toolName: 'flux_apps_download_folder',
+        label: 'Download folder',
+        stringFlags: [
+          { flag: '--appname', key: 'appname' },
+          { flag: '--component', key: 'component' },
+          { flag: '--folder', key: 'folder' },
+        ],
+      });
+    case 'mkdir':
+      return handleFilesMutation(rest, io, toolRuntime, mode, {
+        command: 'mkdir',
+        toolName: 'flux_apps_create_folder',
+        label: 'Create folder',
+        stringFlags: [
+          { flag: '--appname', key: 'appname' },
+          { flag: '--component', key: 'component' },
+          { flag: '--folder', key: 'folder' },
+        ],
+      });
+    case 'rename':
+      return handleFilesMutation(rest, io, toolRuntime, mode, {
+        command: 'rename',
+        toolName: 'flux_apps_rename_object',
+        label: 'Rename object',
+        stringFlags: [
+          { flag: '--appname', key: 'appname' },
+          { flag: '--component', key: 'component' },
+          { flag: '--oldpath', key: 'oldpath' },
+          { flag: '--newname', key: 'newname' },
+        ],
+      });
+    case 'remove':
+      return handleFilesMutation(rest, io, toolRuntime, mode, {
+        command: 'remove',
+        toolName: 'flux_apps_remove_object',
+        label: 'Remove object',
+        stringFlags: [
+          { flag: '--appname', key: 'appname' },
+          { flag: '--component', key: 'component' },
+          { flag: '--object', key: 'object' },
+        ],
+      });
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown files subcommand: ${subcommand}`, io, parsed.outputMode);
     }
   }
 }
@@ -8850,6 +9232,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'daemon':
         return await handleDaemonCommand(
+          argv.slice(1),
+          io,
+          await getCommandToolRuntime(options.toolRuntime),
+          effectivePersistedStateMode
+        );
+      case 'files':
+        return await handleFilesCommand(
           argv.slice(1),
           io,
           await getCommandToolRuntime(options.toolRuntime),
