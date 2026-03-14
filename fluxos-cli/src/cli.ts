@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import {
   clearCliResources,
@@ -94,6 +95,13 @@ export type RunCliOptions = {
   persistedStateMode?: 'auto' | 'on' | 'off';
 };
 
+type GlobalCliOptions = {
+  profileName: string | null;
+  baseUrl: string | null;
+  noState: boolean;
+  outputFile: string | null;
+};
+
 type ToolCatalogEntry = {
   name: string;
   description: string | null;
@@ -135,6 +143,9 @@ const LAUNCHER_KEEP_ALIVE_PRETTY_ONLY_TOOL_NAMES = new Set([
   'flux_apps_plan_update',
   'flux_git_deploy_plan_registration',
 ]);
+
+const CLI_PROFILE_OVERRIDE_ENV = 'FLUXOS_CLI_PROFILE_OVERRIDE';
+const CLI_BASE_URL_OVERRIDE_ENV = 'FLUXOS_CLI_BASE_URL_OVERRIDE';
 
 type AppsDiscoveryParseResult =
   | {
@@ -300,7 +311,13 @@ type GitDeploySubmissionParseResult =
 const HELP_TEXT = `FluxOS CLI
 
 Usage:
-  flux [command]
+  flux [global-options] <command>
+
+Global options:
+  --profile <name>            Run the command against one persisted profile without switching the saved active profile
+  --base-url <url>            Override the effective Flux node base URL for this invocation only
+  --no-state                  Skip persisted session hydration and persistence for this invocation
+  --output-file <path>        Mirror stdout into a file after the command completes
 
 Commands:
   help                           Show this help output
@@ -956,6 +973,65 @@ function isHelpFlag(value: string | undefined): boolean {
   return value === 'help' || value === '--help' || value === '-h';
 }
 
+function parseGlobalOptions(argv: string[]): { options: GlobalCliOptions; argv: string[] } | { error: string } {
+  const options: GlobalCliOptions = {
+    profileName: null,
+    baseUrl: null,
+    noState: false,
+    outputFile: null,
+  };
+
+  let index = 0;
+  while (index < argv.length) {
+    const arg = argv[index];
+    if (!arg.startsWith('-')) break;
+    if (arg === '--') {
+      index += 1;
+      break;
+    }
+
+    if (arg === '--profile' || arg.startsWith('--profile=')) {
+      const value = arg === '--profile' ? argv[index + 1] : arg.slice('--profile='.length);
+      if (arg === '--profile') index += 1;
+      if (!value || value.startsWith('-')) return { error: 'Missing value for --profile.' };
+      if (options.profileName !== null) return { error: 'Provide --profile only once per invocation.' };
+      options.profileName = value.trim();
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--base-url' || arg.startsWith('--base-url=')) {
+      const value = arg === '--base-url' ? argv[index + 1] : arg.slice('--base-url='.length);
+      if (arg === '--base-url') index += 1;
+      if (!value || value.startsWith('-')) return { error: 'Missing value for --base-url.' };
+      if (options.baseUrl !== null) return { error: 'Provide --base-url only once per invocation.' };
+      options.baseUrl = value.trim();
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--output-file' || arg.startsWith('--output-file=')) {
+      const value = arg === '--output-file' ? argv[index + 1] : arg.slice('--output-file='.length);
+      if (arg === '--output-file') index += 1;
+      if (!value || value.startsWith('-')) return { error: 'Missing value for --output-file.' };
+      if (options.outputFile !== null) return { error: 'Provide --output-file only once per invocation.' };
+      options.outputFile = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--no-state') {
+      options.noState = true;
+      index += 1;
+      continue;
+    }
+
+    break;
+  }
+
+  return { options, argv: argv.slice(index) };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   return value as Record<string, unknown>;
@@ -1594,6 +1670,34 @@ function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+function readCliBaseUrlOverride(): string | null {
+  const rawValue = process.env[CLI_BASE_URL_OVERRIDE_ENV]?.trim();
+  return rawValue ? normalizeBaseUrl(rawValue) : null;
+}
+
+function restoreProfileBaseUrl(current: PersistedProfileState, originalBaseUrl: string | null): PersistedProfileState {
+  if (originalBaseUrl) return switchPersistedProfileBaseUrl(current, originalBaseUrl);
+
+  return {
+    ...current,
+    baseUrl: null,
+    zelidauth: null,
+    enterpriseKey: null,
+  };
+}
+
+function withEphemeralBaseUrlForCredentialUpdate(
+  current: PersistedProfileState,
+  update: (scoped: PersistedProfileState) => PersistedProfileState
+): PersistedProfileState {
+  const baseUrlOverride = readCliBaseUrlOverride();
+  if (!baseUrlOverride || current.baseUrl === baseUrlOverride) return update(current);
+
+  const originalBaseUrl = current.baseUrl;
+  const updated = update(switchPersistedProfileBaseUrl(current, baseUrlOverride));
+  return restoreProfileBaseUrl(updated, originalBaseUrl);
+}
+
 async function executeToolCall(
   toolName: string,
   rawArgs: Record<string, unknown>,
@@ -1693,12 +1797,16 @@ async function persistMutatedSessionState(
       if (typeof rawValue !== 'string' && (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue))) return;
       const serialized = typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue);
 
-      await updatePersistedProfileState((current) => setPersistedProfileZelidauth(current, serialized));
+      await updatePersistedProfileState((current) =>
+        withEphemeralBaseUrlForCredentialUpdate(current, (scoped) => setPersistedProfileZelidauth(scoped, serialized))
+      );
       return;
     }
 
     case 'flux_clear_zelidauth': {
-      await updatePersistedProfileState((current) => setPersistedProfileZelidauth(current, null));
+      await updatePersistedProfileState((current) =>
+        withEphemeralBaseUrlForCredentialUpdate(current, (scoped) => setPersistedProfileZelidauth(scoped, null))
+      );
       return;
     }
 
@@ -1715,13 +1823,15 @@ async function persistMutatedSessionState(
       const signature = typeof rawArgs.signature === 'string' ? rawArgs.signature.trim() : '';
       const loginPhrase = typeof rawArgs.loginPhrase === 'string' ? rawArgs.loginPhrase.trim() : '';
 
-      await updatePersistedProfileState((current) => {
-        const next = baseUrl ? switchPersistedProfileBaseUrl(current, baseUrl) : current;
+      await updatePersistedProfileState((current) =>
+        withEphemeralBaseUrlForCredentialUpdate(current, (scoped) => {
+          const next = baseUrl ? switchPersistedProfileBaseUrl(scoped, baseUrl) : scoped;
 
-        return zelidauthSet && zelid && signature && loginPhrase
-          ? setPersistedProfileZelidauth(next, JSON.stringify({ zelid, signature, loginPhrase }))
-          : next;
-      });
+          return zelidauthSet && zelid && signature && loginPhrase
+            ? setPersistedProfileZelidauth(next, JSON.stringify({ zelid, signature, loginPhrase }))
+            : next;
+        })
+      );
       return;
     }
 
@@ -1729,12 +1839,16 @@ async function persistMutatedSessionState(
       const enterpriseKey = typeof rawArgs.enterpriseKey === 'string' ? rawArgs.enterpriseKey.trim() : '';
       if (!enterpriseKey) return;
 
-      await updatePersistedProfileState((current) => setPersistedProfileEnterpriseKey(current, enterpriseKey));
+      await updatePersistedProfileState((current) =>
+        withEphemeralBaseUrlForCredentialUpdate(current, (scoped) => setPersistedProfileEnterpriseKey(scoped, enterpriseKey))
+      );
       return;
     }
 
     case 'flux_clear_enterprise_key': {
-      await updatePersistedProfileState((current) => setPersistedProfileEnterpriseKey(current, null));
+      await updatePersistedProfileState((current) =>
+        withEphemeralBaseUrlForCredentialUpdate(current, (scoped) => setPersistedProfileEnterpriseKey(scoped, null))
+      );
       return;
     }
 
@@ -10229,110 +10343,177 @@ async function handleToolCommand(
   }
 }
 
+function setOptionalEnv(name: string, value: string | null | undefined): string | undefined {
+  const previous = process.env[name];
+  if (value === null || value === undefined || value === '') delete process.env[name];
+  else process.env[name] = value;
+  return previous;
+}
+
+async function flushOutputFile(filePath: string, text: string): Promise<void> {
+  const resolvedPath = path.resolve(filePath);
+  await mkdir(path.dirname(resolvedPath), { recursive: true, mode: 0o700 });
+  await writeFile(resolvedPath, text, { encoding: 'utf8', mode: 0o600 });
+}
+
 export async function runCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
   const io = options.io ?? { stdout: process.stdout, stderr: process.stderr };
-  const effectivePersistedStateMode = options.persistedStateMode ?? (options.toolRuntime ? 'off' : 'auto');
-
-  if (argv.length === 0 || isHelpFlag(argv[0])) {
-    writeLine(io.stdout, renderHelp());
-    return EXIT_CODE_SUCCESS;
+  const parsedGlobals = parseGlobalOptions(argv);
+  if ('error' in parsedGlobals) {
+    writeLine(io.stderr, parsedGlobals.error);
+    writeLine(io.stderr, '');
+    writeLine(io.stderr, renderHelp());
+    return EXIT_CODE_VALIDATION;
   }
 
-  const [command] = argv;
+  const invocationArgv = parsedGlobals.argv;
+  const globalOptions = parsedGlobals.options;
+  const effectivePersistedStateMode =
+    globalOptions.noState ? 'off' : (options.persistedStateMode ?? (options.toolRuntime ? 'off' : 'auto'));
+  const stdoutChunks: string[] = [];
+  const effectiveIo: CliIo = globalOptions.outputFile
+    ? {
+        stdout: {
+          write(chunk: string) {
+            stdoutChunks.push(chunk);
+            io.stdout.write(chunk);
+          },
+        },
+        stderr: io.stderr,
+      }
+    : io;
+  const previousProfileOverride = setOptionalEnv(CLI_PROFILE_OVERRIDE_ENV, globalOptions.profileName);
+  const previousBaseUrlOverride = setOptionalEnv(CLI_BASE_URL_OVERRIDE_ENV, globalOptions.baseUrl);
 
   try {
+    if (invocationArgv.length === 0 || isHelpFlag(invocationArgv[0])) {
+      writeLine(effectiveIo.stdout, renderHelp());
+      if (globalOptions.outputFile) {
+        await flushOutputFile(globalOptions.outputFile, stdoutChunks.join(''));
+      }
+      return EXIT_CODE_SUCCESS;
+    }
+
+    const [command] = invocationArgv;
+    let exitCode = EXIT_CODE_SUCCESS;
+
     switch (command) {
       case 'tool': {
         const toolRuntime = await getCommandToolRuntime(options.toolRuntime);
-        return await handleToolCommand(argv.slice(1), io, toolRuntime, effectivePersistedStateMode);
+        exitCode = await handleToolCommand(invocationArgv.slice(1), effectiveIo, toolRuntime, effectivePersistedStateMode);
+        break;
       }
       case 'resource':
-        return await handleResourceCommand(argv.slice(1), io);
+        exitCode = await handleResourceCommand(invocationArgv.slice(1), effectiveIo);
+        break;
       case 'state':
-        return await handleStateCommand(argv.slice(1), io);
+        exitCode = await handleStateCommand(invocationArgv.slice(1), effectiveIo);
+        break;
       case 'profile':
-        return await handleProfileCommand(argv.slice(1), io);
+        exitCode = await handleProfileCommand(invocationArgv.slice(1), effectiveIo);
+        break;
       case 'auth':
-        return await handleAuthCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleAuthCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'apps':
-        return await handleAppsCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleAppsCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'git':
-        return await handleGitCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleGitCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'node':
-        return await handleNodeCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleNodeCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'explorer':
-        return await handleExplorerCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleExplorerCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'daemon':
-        return await handleDaemonCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleDaemonCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'files':
-        return await handleFilesCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleFilesCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'backup':
-        return await handleBackupCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleBackupCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'fluxdrive':
-        return await handleFluxDriveCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleFluxDriveCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'syncthing':
-        return await handleSyncthingCommand(
-          argv.slice(1),
-          io,
+        exitCode = await handleSyncthingCommand(
+          invocationArgv.slice(1),
+          effectiveIo,
           await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
+        break;
       case 'enterprise-key':
-        return await handleEnterpriseKeyCommand(argv.slice(1), io);
+        exitCode = await handleEnterpriseKeyCommand(invocationArgv.slice(1), effectiveIo);
+        break;
       default:
-        writeLine(io.stderr, `Unknown command: ${command}`);
-        writeLine(io.stderr, '');
-        writeLine(io.stderr, renderHelp());
-        return EXIT_CODE_VALIDATION;
+        writeLine(effectiveIo.stderr, `Unknown command: ${command}`);
+        writeLine(effectiveIo.stderr, '');
+        writeLine(effectiveIo.stderr, renderHelp());
+        exitCode = EXIT_CODE_VALIDATION;
+        break;
     }
+
+    if (globalOptions.outputFile) {
+      await flushOutputFile(globalOptions.outputFile, stdoutChunks.join(''));
+    }
+
+    return exitCode;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     writeLine(io.stderr, `flux failed: ${message}`);
     return EXIT_CODE_FLUX_FAILURE;
+  } finally {
+    setOptionalEnv(CLI_PROFILE_OVERRIDE_ENV, previousProfileOverride);
+    setOptionalEnv(CLI_BASE_URL_OVERRIDE_ENV, previousBaseUrlOverride);
   }
 }

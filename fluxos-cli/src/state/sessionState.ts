@@ -82,6 +82,8 @@ export type StateVisibilitySummary = {
 const STATE_FILE_VERSION = 1;
 const DEFAULT_ACTIVE_PROFILE = 'default';
 const DEFAULT_FLUX_API_BASE_URL = 'https://api.runonflux.io';
+const PROFILE_OVERRIDE_ENV = 'FLUXOS_CLI_PROFILE_OVERRIDE';
+const BASE_URL_OVERRIDE_ENV = 'FLUXOS_CLI_BASE_URL_OVERRIDE';
 const DEFAULT_HTTP_DEFAULTS: PersistedHttpDefaults = {
   timeoutMs: 30000,
   retryCount: 2,
@@ -138,6 +140,16 @@ function initialEffectiveProfileState(): PersistedProfileState {
     zelidauthByBaseUrl: {},
     enterpriseKeyByBaseUrl: {},
   };
+}
+
+function readProfileOverride(): string | null {
+  const override = asNonEmptyString(process.env[PROFILE_OVERRIDE_ENV]);
+  return override ? normalizeProfileName(override) : null;
+}
+
+function readBaseUrlOverride(): string | null {
+  const override = asNonEmptyString(process.env[BASE_URL_OVERRIDE_ENV]);
+  return override ? normalizeBaseUrl(override) : null;
 }
 
 function normalizeProfileName(name: string): string {
@@ -359,12 +371,22 @@ function getProfileState(store: StateFileShape, profileName = store.activeProfil
   return asPersistedProfileState(store.profiles[profileName]);
 }
 
+function resolveSelectedProfileName(store: StateFileShape): string {
+  return readProfileOverride() ?? store.activeProfile ?? DEFAULT_ACTIVE_PROFILE;
+}
+
 function getEffectiveProfileState(store: StateFileShape, profileName = store.activeProfile): PersistedProfileState {
   if (profileName in store.profiles) {
     return asPersistedProfileState(store.profiles[profileName]);
   }
 
   return initialEffectiveProfileState();
+}
+
+function getInvocationProfileState(store: StateFileShape, profileName = resolveSelectedProfileName(store)): PersistedProfileState {
+  const profile = getEffectiveProfileState(store, profileName);
+  const baseUrlOverride = readBaseUrlOverride();
+  return baseUrlOverride ? switchPersistedProfileBaseUrl(profile, baseUrlOverride) : profile;
 }
 
 function collectProfileNames(store: StateFileShape): string[] {
@@ -378,12 +400,12 @@ function hasProfile(store: StateFileShape, profileName: string): boolean {
   return collectProfileNames(store).includes(profileName);
 }
 
-function summarizeProfile(store: StateFileShape, profileName: string): PersistedProfileSummary {
-  const profile = getEffectiveProfileState(store, profileName);
+function summarizeProfile(store: StateFileShape, profileName: string, selectedProfileName = store.activeProfile): PersistedProfileSummary {
+  const profile = profileName === selectedProfileName ? getInvocationProfileState(store, profileName) : getEffectiveProfileState(store, profileName);
 
   return {
     name: profileName,
-    active: store.activeProfile === profileName,
+    active: selectedProfileName === profileName,
     baseUrl: profile.baseUrl,
     auth: summarizeAuth(profile.zelidauth),
     enterpriseKey: { present: Boolean(profile.enterpriseKey) },
@@ -414,18 +436,20 @@ export function defaultPersistedProfileState(): PersistedProfileState {
 
 export async function loadPersistedStateSnapshot(): Promise<PersistedStateSnapshot> {
   const store = await loadStateFile();
+  const selectedProfile = resolveSelectedProfileName(store);
   return {
-    activeProfile: store.activeProfile,
-    profile: getEffectiveProfileState(store),
+    activeProfile: selectedProfile,
+    profile: getInvocationProfileState(store, selectedProfile),
   };
 }
 
 export async function listPersistedProfiles(): Promise<PersistedProfilesSummary> {
   const store = await loadStateFile();
+  const selectedProfile = resolveSelectedProfileName(store);
 
   return {
-    activeProfile: store.activeProfile,
-    profiles: collectProfileNames(store).map((profileName) => summarizeProfile(store, profileName)),
+    activeProfile: selectedProfile,
+    profiles: collectProfileNames(store).map((profileName) => summarizeProfile(store, profileName, selectedProfile)),
   };
 }
 
@@ -501,10 +525,9 @@ export async function updatePersistedProfileState(
   update: (current: PersistedProfileState, context: { activeProfile: string }) => PersistedProfileState
 ): Promise<PersistedStateSnapshot> {
   const store = await loadStateFile();
-  const activeProfile = store.activeProfile || DEFAULT_ACTIVE_PROFILE;
+  const activeProfile = resolveSelectedProfileName(store);
   const nextProfileState = update(getEffectiveProfileState(store, activeProfile), { activeProfile });
 
-  store.activeProfile = activeProfile;
   store.profiles[activeProfile] = nextProfileState;
 
   await saveStateFile(store);
