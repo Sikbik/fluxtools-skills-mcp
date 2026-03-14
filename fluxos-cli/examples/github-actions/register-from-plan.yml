@@ -1,0 +1,56 @@
+name: Flux CLI Register From Plan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-and-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            fluxos-cli/package-lock.json
+            flux-mcp/package-lock.json
+
+      - name: Install CLI dependencies
+        run: |
+          npm --prefix flux-mcp ci
+          npm --prefix fluxos-cli ci
+
+      - name: Build CLI
+        run: npm --prefix fluxos-cli run build
+
+      - name: Verify registration spec
+        env:
+          FLUX_NODE_URL: ${{ secrets.FLUX_NODE_URL }}
+        run: |
+          node fluxos-cli/dist/index.js --base-url "$FLUX_NODE_URL" \
+            apps verify-registration --spec-file app-spec.json --json > verify.json
+          jq -e '.ok == true' verify.json > /dev/null
+
+      - name: Build registration plan
+        env:
+          FLUX_NODE_URL: ${{ secrets.FLUX_NODE_URL }}
+        run: |
+          node fluxos-cli/dist/index.js --base-url "$FLUX_NODE_URL" \
+            apps plan-registration --spec-file app-spec.json --json > plan.json
+          jq -e '.ok == true' plan.json > /dev/null
+
+      - name: Capture reusable plan URI
+        run: |
+          echo "PLAN_URI=$(jq -r '.resourceUri' plan.json)" >> "$GITHUB_ENV"
+
+      - name: Submit from plan
+        if: ${{ false }}
+        env:
+          FLUX_NODE_URL: ${{ secrets.FLUX_NODE_URL }}
+          FLUX_SIGNATURE: ${{ secrets.FLUX_SIGNATURE }}
+        run: |
+          node fluxos-cli/dist/index.js --base-url "$FLUX_NODE_URL" \
+            apps register --from-resource-uri "$PLAN_URI" --signature "$FLUX_SIGNATURE" --json > register.json
+          jq . register.json
