@@ -511,9 +511,9 @@ Done when:
 - full app delivery lifecycle is available from CLI without MCP
 
 ### 5.5 Add Git deploy commands
-- [ ] `flux git generate-spec`
-- [ ] `flux git plan-registration`
-- [ ] `flux git register-and-verify`
+- [x] `flux git generate-spec`
+- [x] `flux git plan-registration`
+- [x] `flux git register-and-verify`
 
 Done when:
 
