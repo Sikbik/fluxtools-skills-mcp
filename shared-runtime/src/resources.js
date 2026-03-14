@@ -1,4 +1,9 @@
 const redactedValue = '<REDACTED>';
+const assignmentRedactedValue = '<redacted>';
+
+function normalizeSensitiveStringKey(key) {
+  return String(key ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 export function isSensitiveResourceKey(key) {
   const normalized = String(key ?? '').trim().toLowerCase();
@@ -19,14 +24,79 @@ export function isSensitiveResourceKey(key) {
     'seed',
     'passphrase',
     'password',
+    'repotoken',
+    'repo_token',
+    'repoauth',
+    'git_repo_url',
+    'gitrepourl',
   ]);
 
   return exact.has(normalized);
 }
 
+function isSensitiveAssignmentKey(key) {
+  const normalized = normalizeSensitiveStringKey(key);
+  if (!normalized) return false;
+
+  if (
+    normalized === 'gitrepourl' ||
+    normalized === 'repoauth' ||
+    normalized === 'repotoken' ||
+    normalized === 'loginphrase'
+  ) {
+    return true;
+  }
+
+  return (
+    normalized.endsWith('token') ||
+    normalized.endsWith('secret') ||
+    normalized.includes('password') ||
+    normalized.includes('passphrase') ||
+    normalized.includes('privatekey') ||
+    normalized.includes('privkey')
+  );
+}
+
+function redactedValueForKey(key) {
+  const normalized = normalizeSensitiveStringKey(key);
+  if (normalized === 'repoauth') return assignmentRedactedValue;
+  return redactedValue;
+}
+
+function redactCredentialedUrl(text) {
+  try {
+    const url = new URL(text.trim());
+    if (!url.password) return null;
+    url.password = assignmentRedactedValue;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeString(value) {
+  const assignmentIndex = value.indexOf('=');
+  if (assignmentIndex > 0) {
+    const key = value.slice(0, assignmentIndex);
+    const rawValue = value.slice(assignmentIndex + 1);
+
+    if (isSensitiveAssignmentKey(key)) {
+      return `${key}=${assignmentRedactedValue}`;
+    }
+
+    const redactedAssignmentValue = redactCredentialedUrl(rawValue);
+    if (redactedAssignmentValue) {
+      return `${key}=${redactedAssignmentValue}`;
+    }
+  }
+
+  return redactCredentialedUrl(value) ?? value;
+}
+
 function sanitize(value, seen) {
   if (value === null || value === undefined) return value;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') return sanitizeString(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
 
   if (Array.isArray(value)) {
     const out = [];
@@ -40,7 +110,7 @@ function sanitize(value, seen) {
 
     const out = {};
     for (const [key, nestedValue] of Object.entries(value)) {
-      out[key] = isSensitiveResourceKey(key) ? redactedValue : sanitize(nestedValue, seen);
+      out[key] = isSensitiveResourceKey(key) ? redactedValueForKey(key) : sanitize(nestedValue, seen);
     }
 
     return out;
