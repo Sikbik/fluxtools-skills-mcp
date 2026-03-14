@@ -1,11 +1,26 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { callTool, tools } from 'flux-mcp';
-import { runCli } from '../src/cli.js';
+import { runCli, type ToolRuntime } from '../src/cli.js';
+
+function readBody(req: IncomingMessage) {
+  return new Promise<string>((resolve) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+}
+
+function json(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status;
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify(body));
+}
 
 function createCapture() {
   let stdout = '';
@@ -49,7 +64,79 @@ async function withTempStateDir<T>(run: (stateDir: string) => Promise<T>) {
   }
 }
 
+async function createSourceFluxMcpRuntime(): Promise<ToolRuntime> {
+  const module = await import('../../flux-mcp/src/index.ts');
+
+  return {
+    async listTools() {
+      return module.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      }));
+    },
+    async callTool(name, rawArgs) {
+      const result = await module.callTool(name, rawArgs);
+      return {
+        isError: result.isError,
+        structuredContent: result.structuredContent,
+        content: result.content.map((item) => ({ ...item })),
+      };
+    },
+    async hydrateResource(resource) {
+      await module.hydrateResource(resource);
+    },
+    async setLauncherKeepAlive(keepAlive) {
+      module.setLocalLauncherKeepAlive(keepAlive);
+    },
+    async getLauncherDebugState() {
+      return module.__getLocalLauncherDebugState();
+    },
+    async closeLocalLaunchersForTests() {
+      await module.__closeLocalLaunchersForTests();
+    },
+  };
+}
+
 describe('tool runner integration', () => {
+  let serverPort = 0;
+
+  const server = createServer(async (req, res) => {
+    const url = req.url ?? '';
+
+    if (url === '/apps/verifyappregistrationspecifications') {
+      const bodyRaw = await readBody(req);
+      const body = bodyRaw ? (JSON.parse(bodyRaw) as Record<string, unknown>) : {};
+      return json(res, 200, { status: 'success', data: body });
+    }
+
+    if (url === '/apps/calculateprice') {
+      await readBody(req);
+      return json(res, 200, { status: 'success', data: { flux: 1.23 } });
+    }
+
+    if (url === '/apps/registrationinformation') {
+      return json(res, 200, { status: 'success', data: { blocksLasting: 100, daemonPONFork: 1 } });
+    }
+
+    if (url === '/apps/deploymentinformation') {
+      return json(res, 200, { status: 'success', data: { address: 't1pay' } });
+    }
+
+    return json(res, 404, { status: 'error', data: `Unhandled path: ${url}` });
+  });
+
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to bind tool runner test server');
+    serverPort = address.port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  });
+
   it('lists the callable tool catalog in JSON mode', async () => {
     const capture = createCapture();
 
@@ -122,5 +209,54 @@ describe('tool runner integration', () => {
     expect(payload.tool).toBe('flux_maintenance_checklist');
     expect(payload.result).toEqual(directStructured);
     expect(payload.nextActions).toEqual(directStructured.nextActions);
+  });
+
+  it('keeps one-shot JSON tool calls from holding the local launcher open for git planning flows', async () => {
+    await withTempStateDir(async () => {
+      const previousLocalLauncherEnv = process.env.FLUX_MCP_LOCAL_LAUNCHER;
+      process.env.FLUX_MCP_LOCAL_LAUNCHER = '1';
+
+      const runtime = await createSourceFluxMcpRuntime();
+
+      try {
+        await runtime.closeLocalLaunchersForTests?.();
+        await runtime.callTool('flux_set_base_url', { baseUrl: `http://127.0.0.1:${serverPort}` });
+
+        const capture = createCapture();
+        const exitCode = await runCli(
+          [
+            'tool',
+            'call',
+            'flux_git_deploy_plan_registration',
+            '--json',
+            '--arg', 'name=mygitapp',
+            '--arg', 'owner=t1owner',
+            '--arg', 'repoUrl=https://github.com/test/repo',
+            '--arg', 'exposedPort=20001',
+            '--arg', 'managementPort=20002',
+            '--arg', 'appPort=3000',
+          ],
+          { io: capture.io, toolRuntime: runtime }
+        );
+
+        expect(exitCode).toBe(0);
+        expect(capture.getStderr()).toBe('');
+
+        const payload = JSON.parse(capture.getStdout()) as Record<string, unknown>;
+        expect(payload.ok).toBe(true);
+        expect(payload.tool).toBe('flux_git_deploy_plan_registration');
+
+        const state = await runtime.getLauncherDebugState?.();
+        expect(state?.keepAlive).toBe(false);
+        expect(typeof state?.localLauncherPort).toBe('number');
+        expect(state?.localLauncherRefed).toBe(false);
+        expect(state?.zelcoreLauncherPort).toBe(state?.localLauncherPort ?? null);
+        expect(state?.zelcoreLauncherRefed).toBe(false);
+      } finally {
+        await runtime.closeLocalLaunchersForTests?.();
+        if (previousLocalLauncherEnv === undefined) delete process.env.FLUX_MCP_LOCAL_LAUNCHER;
+        else process.env.FLUX_MCP_LOCAL_LAUNCHER = previousLocalLauncherEnv;
+      }
+    });
   });
 });

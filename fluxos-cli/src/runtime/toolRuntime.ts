@@ -17,9 +17,20 @@ type ToolResult = {
 };
 
 type FluxMcpModule = {
+  __closeLocalLaunchersForTests?(): Promise<void>;
+  __getLocalLauncherDebugState?(): {
+    keepAlive: boolean;
+    localLauncherPort: number | null;
+    localLauncherRefed: boolean | null;
+    localLauncherRouteCount: number;
+    zelcoreLauncherPort: number | null;
+    zelcoreLauncherRefed: boolean | null;
+    zelcoreLauncherRouteCount: number;
+  };
   tools: FluxMcpTool[];
   callTool(name: string, rawArgs: unknown): Promise<ToolResult>;
   hydrateResource(resource: { uri: string; name: string; description?: string; mimeType?: string; text: string }): Promise<unknown>;
+  setLocalLauncherKeepAlive?(keepAlive: boolean): void;
 };
 
 const require = createRequire(import.meta.url);
@@ -147,6 +158,29 @@ export function createDefaultToolRuntime(): ToolRuntime {
     async hydrateResource(resource) {
       const module = await loadFluxMcpModule();
       await module.hydrateResource(resource);
+    },
+
+    async setLauncherKeepAlive(keepAlive) {
+      const module = await loadFluxMcpModule();
+      module.setLocalLauncherKeepAlive?.(keepAlive);
+    },
+
+    async getLauncherDebugState() {
+      const module = await loadFluxMcpModule();
+      return module.__getLocalLauncherDebugState?.() ?? {
+        keepAlive: true,
+        localLauncherPort: null,
+        localLauncherRefed: null,
+        localLauncherRouteCount: 0,
+        zelcoreLauncherPort: null,
+        zelcoreLauncherRefed: null,
+        zelcoreLauncherRouteCount: 0,
+      };
+    },
+
+    async closeLocalLaunchersForTests() {
+      const module = await loadFluxMcpModule();
+      await module.__closeLocalLaunchersForTests?.();
     },
   };
 }

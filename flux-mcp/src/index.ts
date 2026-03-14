@@ -2,6 +2,7 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { AddressInfo } from 'node:net';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { createPublicKey, publicEncrypt, randomBytes, constants, createHash, createDecipheriv, createCipheriv } from 'node:crypto';
@@ -1074,13 +1075,102 @@ type LocalLauncher = {
 };
 
 let localLauncher: LocalLauncher | null = null;
+let localLauncherKeepAlive = true;
 
 // Keep old name as alias for backward compatibility within the file
 type ZelcoreLocalLauncher = LocalLauncher;
 let zelcoreLocalLauncher: ZelcoreLocalLauncher | null = null;
 
+function readLocalLauncherRefState(launcher: LocalLauncher | null): boolean | null {
+  if (!launcher) return null;
+
+  const handle = (launcher.server as http.Server & { _handle?: { hasRef?: () => boolean } })._handle;
+  return typeof handle?.hasRef === 'function' ? handle.hasRef() : null;
+}
+
+function applyLocalLauncherKeepAlive(launcher: LocalLauncher | null): void {
+  if (!launcher) return;
+
+  if (localLauncherKeepAlive) {
+    launcher.server.ref();
+    return;
+  }
+
+  launcher.server.unref();
+}
+
+function syncLocalLauncherKeepAliveState(): void {
+  applyLocalLauncherKeepAlive(localLauncher);
+  if (zelcoreLocalLauncher && zelcoreLocalLauncher !== localLauncher) {
+    applyLocalLauncherKeepAlive(zelcoreLocalLauncher);
+  }
+}
+
+export function setLocalLauncherKeepAlive(keepAlive: boolean): void {
+  localLauncherKeepAlive = keepAlive;
+  syncLocalLauncherKeepAliveState();
+}
+
+function addressInfoFromServer(server: http.Server): AddressInfo {
+  const addr = server.address();
+  if (!addr || typeof addr === 'string') throw new Error('Could not determine localhost launcher port.');
+  return addr;
+}
+
+async function closeLocalLauncherServer(server: http.Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    try {
+      server.close((error) => {
+        if (!error || (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') {
+          resolve();
+          return;
+        }
+
+        reject(error);
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') {
+        resolve();
+        return;
+      }
+
+      reject(error);
+    }
+  });
+}
+
+export function __getLocalLauncherDebugState() {
+  return {
+    keepAlive: localLauncherKeepAlive,
+    localLauncherPort: localLauncher?.port ?? null,
+    localLauncherRefed: readLocalLauncherRefState(localLauncher),
+    localLauncherRouteCount: localLauncher?.routes.size ?? 0,
+    zelcoreLauncherPort: zelcoreLocalLauncher?.port ?? null,
+    zelcoreLauncherRefed: readLocalLauncherRefState(zelcoreLocalLauncher),
+    zelcoreLauncherRouteCount: zelcoreLocalLauncher?.routes.size ?? 0,
+  };
+}
+
+export async function __closeLocalLaunchersForTests(): Promise<void> {
+  const launchers = new Set<LocalLauncher>();
+  if (localLauncher) launchers.add(localLauncher);
+  if (zelcoreLocalLauncher) launchers.add(zelcoreLocalLauncher);
+
+  localLauncher = null;
+  zelcoreLocalLauncher = null;
+  localLauncherKeepAlive = true;
+
+  for (const launcher of launchers) {
+    launcher.routes.clear();
+    await closeLocalLauncherServer(launcher.server);
+  }
+}
+
 async function ensureLocalLauncher(): Promise<LocalLauncher> {
-  if (localLauncher) return localLauncher;
+  if (localLauncher) {
+    applyLocalLauncherKeepAlive(localLauncher);
+    return localLauncher;
+  }
 
   const routes = new Map<string, string>();
 
@@ -1110,12 +1200,11 @@ async function ensureLocalLauncher(): Promise<LocalLauncher> {
     server.listen(0, '127.0.0.1', () => resolve());
   });
 
-  const addr = server.address();
-  if (!addr || typeof addr === 'string') throw new Error('Could not determine localhost launcher port.');
-  const port = addr.port;
+  const port = addressInfoFromServer(server).port;
 
   localLauncher = { server, port, routes };
   zelcoreLocalLauncher = localLauncher;
+  applyLocalLauncherKeepAlive(localLauncher);
   return localLauncher;
 }
 

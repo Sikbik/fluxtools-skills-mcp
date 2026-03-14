@@ -75,6 +75,17 @@ export type ToolRuntime = {
   callTool(name: string, rawArgs: unknown): Promise<ToolCallResult>;
   readResource?(uri: string): Promise<{ uri: string; mimeType?: string; text: string } | null>;
   hydrateResource?(resource: { uri: string; name: string; description?: string; mimeType?: string; text: string }): Promise<void>;
+  setLauncherKeepAlive?(keepAlive: boolean): Promise<void> | void;
+  getLauncherDebugState?(): Promise<{
+    keepAlive: boolean;
+    localLauncherPort: number | null;
+    localLauncherRefed: boolean | null;
+    localLauncherRouteCount: number;
+    zelcoreLauncherPort: number | null;
+    zelcoreLauncherRefed: boolean | null;
+    zelcoreLauncherRouteCount: number;
+  }>;
+  closeLocalLaunchersForTests?(): Promise<void>;
 };
 
 export type RunCliOptions = {
@@ -104,6 +115,25 @@ type ToolCallNormalization = {
   failureKind?: FailureKind;
   rawResult: ToolCallResult;
 };
+
+const LAUNCHER_KEEP_ALIVE_ALWAYS_TOOL_NAMES = new Set([
+  'flux_auth_login',
+  'flux_build_zelcore_sign_link',
+  'flux_write_sign_launcher',
+  'flux_build_payment_launcher',
+  'flux_apps_signing_playbook',
+  'flux_apps_register',
+  'flux_apps_update',
+  'flux_apps_register_and_verify',
+  'flux_apps_update_and_verify',
+  'flux_git_deploy_register_and_verify',
+]);
+
+const LAUNCHER_KEEP_ALIVE_PRETTY_ONLY_TOOL_NAMES = new Set([
+  'flux_apps_plan_registration',
+  'flux_apps_plan_update',
+  'flux_git_deploy_plan_registration',
+]);
 
 type AppsDiscoveryParseResult =
   | {
@@ -1294,6 +1324,33 @@ async function getDefaultToolRuntime(): Promise<ToolRuntime> {
   return module.createDefaultToolRuntime();
 }
 
+async function setToolRuntimeLauncherKeepAlive(toolRuntime: ToolRuntime, keepAlive: boolean): Promise<void> {
+  await toolRuntime.setLauncherKeepAlive?.(keepAlive);
+}
+
+async function getCommandToolRuntime(toolRuntime?: ToolRuntime): Promise<ToolRuntime> {
+  const runtime = toolRuntime ?? (await getDefaultToolRuntime());
+  await setToolRuntimeLauncherKeepAlive(runtime, false);
+  return runtime;
+}
+
+function shouldKeepToolCallLauncherAlive(
+  toolName: string,
+  outputMode: OutputMode,
+  rawArgs: Record<string, unknown>
+): boolean {
+  if (LAUNCHER_KEEP_ALIVE_ALWAYS_TOOL_NAMES.has(toolName)) {
+    if (toolName === 'flux_auth_login') {
+      const signature = typeof rawArgs.signature === 'string' ? rawArgs.signature.trim() : '';
+      return signature.length === 0;
+    }
+
+    return true;
+  }
+
+  return outputMode === 'pretty' && LAUNCHER_KEEP_ALIVE_PRETTY_ONLY_TOOL_NAMES.has(toolName);
+}
+
 function normalizeBaseUrl(url: string): string {
   const parsed = new URL(url);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
@@ -1556,6 +1613,8 @@ async function handleToolCall(
   if (parsed.positional.length > 0) {
     return emitFailure('validation', `Unexpected arguments for \`flux tool call\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode, toolName);
   }
+
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, shouldKeepToolCallLauncherAlive(toolName, parsed.outputMode, parsed.rawArgs));
 
   let normalized: ToolCallNormalization;
   try {
@@ -3700,6 +3759,9 @@ async function handleAuthLogin(
     return emitFailure('validation', `Unexpected arguments for \`flux auth login\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
   }
 
+  const signature = typeof parsed.rawArgs.signature === 'string' ? parsed.rawArgs.signature.trim() : '';
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty' && signature.length === 0);
+
   let normalized: ToolCallNormalization;
   try {
     normalized = await executeToolCall('flux_auth_login', parsed.rawArgs, toolRuntime, mode);
@@ -3781,6 +3843,7 @@ async function handleAuthPhrase(
   const snapshot = await loadPersistedStateSnapshot();
   const phrasePath = parsed.rawArgs.useEmergencyPhrase === true ? 'emergency' : 'normal';
   const useAuthLogin = typeof parsed.rawArgs.zelid === 'string' && parsed.rawArgs.zelid.trim().length > 0;
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty');
 
   let payload: Record<string, unknown>;
 
@@ -6639,6 +6702,8 @@ async function handleAppsVerifySpec(
     return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
 
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty');
+
   let spec: Record<string, unknown>;
   try {
     spec = await loadSpecFromSource(parsed.specSource);
@@ -6898,6 +6963,8 @@ async function handleAppsSubmissionCommand(
     return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
 
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty');
+
   let submission;
   try {
     submission = await loadSubmissionMaterial(parsed.submissionSource);
@@ -7017,6 +7084,8 @@ async function handleAppsVerifyFlowCommand(
     return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
 
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty');
+
   let submission;
   try {
     submission = await loadSubmissionMaterial(parsed.submissionSource);
@@ -7130,6 +7199,8 @@ async function handleAppsWaitPropagation(
   if ('error' in parsed) {
     return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
+
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty');
 
   let normalized: ToolCallNormalization;
   try {
@@ -7428,6 +7499,8 @@ async function handleGitRegisterAndVerify(
   if ('error' in parsed) {
     return emitFailure('validation', parsed.error, io, parsed.outputMode);
   }
+
+  await setToolRuntimeLauncherKeepAlive(toolRuntime, parsed.outputMode === 'pretty');
 
   const planResourceValue = await readPersistedResourceValue(parsed.planResourceUri);
   if (planResourceValue === null) {
@@ -7903,7 +7976,7 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
   try {
     switch (command) {
       case 'tool': {
-        const toolRuntime = options.toolRuntime ?? (await getDefaultToolRuntime());
+        const toolRuntime = await getCommandToolRuntime(options.toolRuntime);
         return await handleToolCommand(argv.slice(1), io, toolRuntime, effectivePersistedStateMode);
       }
       case 'resource':
@@ -7916,28 +7989,28 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         return await handleAuthCommand(
           argv.slice(1),
           io,
-          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
       case 'apps':
         return await handleAppsCommand(
           argv.slice(1),
           io,
-          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
       case 'git':
         return await handleGitCommand(
           argv.slice(1),
           io,
-          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
       case 'node':
         return await handleNodeCommand(
           argv.slice(1),
           io,
-          options.toolRuntime ?? (await getDefaultToolRuntime()),
+          await getCommandToolRuntime(options.toolRuntime),
           effectivePersistedStateMode
         );
       case 'enterprise-key':
