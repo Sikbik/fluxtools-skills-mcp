@@ -339,6 +339,20 @@ Commands:
                                  Remove persisted auth material for the active profile
   auth clear [--json|--pretty]
                                  Remove persisted auth material for the active profile
+  explorer status [--seconds-per-block <n>] [--json|--pretty|--raw]
+                                 Summarize explorer sync state and persisted raw responses
+  explorer height [--seconds-per-block <n>] [--json|--pretty|--raw]
+                                 Summarize explorer scanned height and block cadence assumptions
+  explorer balance <address> [--json|--pretty|--raw]
+                                 Summarize confirmed, unconfirmed, and total balance for one address
+  explorer restart [--confirm] [--json|--pretty|--raw]
+                                 Restart explorer with explicit confirmation
+  explorer stop [--confirm] [--json|--pretty|--raw]
+                                 Stop explorer with explicit confirmation
+  explorer reindex [--reindex-apps] [--confirm] [--json|--pretty|--raw]
+                                 Reindex explorer and optionally include explorer app state
+  explorer rescan [--block-height <n>] [--rescan-apps] [--confirm] [--json|--pretty|--raw]
+                                 Rescan explorer from an optional block height with explicit confirmation
   apps list-running [--json|--pretty|--raw]
                                  List running apps on the active node
   apps list-all [--json|--pretty|--raw]
@@ -562,6 +576,24 @@ Notes:
   - \`use-base-url\` normalizes explicit URLs and adopts matching cached credentials when available.
 `;
 
+const EXPLORER_HELP_TEXT = `FluxOS CLI - explorer
+
+Usage:
+  flux explorer status [--seconds-per-block <n>] [--json|--pretty|--raw]
+  flux explorer height [--seconds-per-block <n>] [--json|--pretty|--raw]
+  flux explorer balance <address> [--json|--pretty|--raw]
+  flux explorer restart [--confirm] [--json|--pretty|--raw]
+  flux explorer stop [--confirm] [--json|--pretty|--raw]
+  flux explorer reindex [--reindex-apps] [--confirm] [--json|--pretty|--raw]
+  flux explorer rescan [--block-height <n>] [--rescan-apps] [--confirm] [--json|--pretty|--raw]
+
+Notes:
+  - \`status\` and \`height\` preserve MCP explorer analytics semantics while exposing stable JSON.
+  - \`balance\` summarizes confirmed, unconfirmed, and total balance for one address.
+  - Mutation commands keep \`--confirm\` explicit and return resource-backed raw responses.
+  - \`reindex\` and \`rescan\` expose the explorer app-specific flags as CLI-friendly kebab-case options.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -726,6 +758,10 @@ function renderAuthHelp(): string {
 
 function renderNodeHelp(): string {
   return NODE_HELP_TEXT;
+}
+
+function renderExplorerHelp(): string {
+  return EXPLORER_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -4134,6 +4170,22 @@ type NodeBaseUrlParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type ExplorerReadParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
+type ExplorerBalanceParseResult =
+  | {
+      outputMode: OutputMode;
+      address: string;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -4172,6 +4224,51 @@ function parseNodeBaseUrlArgs(args: string[]): NodeBaseUrlParseResult {
   return {
     outputMode: parsed.outputMode,
     baseUrl,
+    positional: rest,
+  };
+}
+
+function parseExplorerReadArgs(
+  args: string[],
+  options: {
+    command: 'status' | 'height' | 'restart' | 'stop' | 'reindex' | 'rescan';
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): ExplorerReadParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux explorer ${options.command}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  return parsed;
+}
+
+function parseExplorerBalanceArgs(args: string[]): ExplorerBalanceParseResult {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  const [address, ...rest] = parsed.positional;
+  if (!address || address.startsWith('-')) {
+    return {
+      outputMode: parsed.outputMode,
+      error: 'Usage: flux explorer balance <address> [--json|--pretty|--raw]',
+    };
+  }
+
+  return {
+    outputMode: parsed.outputMode,
+    address: address.trim(),
     positional: rest,
   };
 }
@@ -4255,6 +4352,101 @@ function renderNodeUseBaseUrlPretty(payload: Record<string, unknown>): string {
     `Requested base URL: ${typeof payload.requestedBaseUrl === 'string' ? payload.requestedBaseUrl : '<unset>'}`,
     `Normalized base URL: ${typeof payload.baseUrl === 'string' ? payload.baseUrl : '<unset>'}`,
     `Auth: ${auth?.present === true ? `present${typeof auth.zelid === 'string' ? ` (zelid: ${auth.zelid})` : ''}` : 'not set'}`,
+  ].join('\n');
+}
+
+function normalizeExplorerHeightPayload(result: unknown): Record<string, unknown> {
+  const record = asRecord(result) ?? {};
+
+  return {
+    ok: true,
+    status: 'ok',
+    httpStatus: asOptionalNumberValue(record.status),
+    currentHeight: asOptionalNumberValue(record.currentHeight),
+    secondsPerBlock: asOptionalNumberValue(record.secondsPerBlock),
+    approxBlocksPerHour: asOptionalNumberValue(record.approxBlocksPerHour),
+    approxBlocksPerDay: asOptionalNumberValue(record.approxBlocksPerDay),
+  };
+}
+
+function renderExplorerHeightPretty(payload: Record<string, unknown>): string {
+  return [
+    'Explorer height',
+    `Status: ${String(payload.status ?? 'unknown')}`,
+    `HTTP status: ${String(payload.httpStatus ?? '-')}`,
+    `Current height: ${String(payload.currentHeight ?? '-')}`,
+    `Seconds per block: ${String(payload.secondsPerBlock ?? '-')}`,
+    `Approx blocks per hour: ${String(payload.approxBlocksPerHour ?? '-')}`,
+    `Approx blocks per day: ${String(payload.approxBlocksPerDay ?? '-')}`,
+  ].join('\n');
+}
+
+function normalizeExplorerStatusPayload(result: unknown): Record<string, unknown> {
+  const record = asRecord(result) ?? {};
+
+  return {
+    ok: true,
+    status: typeof record.status === 'string' || typeof record.status === 'number' ? record.status : 'ok',
+    currentHeight: asOptionalNumberValue(record.currentHeight),
+    isSynced: asOptionalBooleanValue(record.isSynced),
+    approxSecondsBehind: asOptionalNumberValue(record.approxSecondsBehind),
+    secondsPerBlock: asOptionalNumberValue(record.secondsPerBlock),
+    approxBlocksPerHour: asOptionalNumberValue(record.approxBlocksPerHour),
+    approxBlocksPerDay: asOptionalNumberValue(record.approxBlocksPerDay),
+    resourceUri: asOptionalStringValue(record.resourceUri),
+  };
+}
+
+function renderExplorerStatusPretty(payload: Record<string, unknown>): string {
+  return [
+    'Explorer status',
+    `Status: ${String(payload.status ?? 'unknown')}`,
+    `Synced: ${String(payload.isSynced === true)}`,
+    `Current height: ${String(payload.currentHeight ?? '-')}`,
+    `Approx seconds behind: ${String(payload.approxSecondsBehind ?? '-')}`,
+    `Seconds per block: ${String(payload.secondsPerBlock ?? '-')}`,
+    `Approx blocks per hour: ${String(payload.approxBlocksPerHour ?? '-')}`,
+    `Approx blocks per day: ${String(payload.approxBlocksPerDay ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function normalizeExplorerBalancePayload(result: unknown): Record<string, unknown> {
+  const record = asRecord(result) ?? {};
+
+  return {
+    ok: true,
+    status: 'ok',
+    httpStatus: asOptionalNumberValue(record.httpStatus) ?? asOptionalNumberValue(record.status),
+    address: asOptionalStringValue(record.address),
+    confirmed: asOptionalNumberValue(record.confirmed),
+    unconfirmed: asOptionalNumberValue(record.unconfirmed),
+    balance: asOptionalNumberValue(record.balance),
+    resourceUri: asOptionalStringValue(record.resourceUri),
+  };
+}
+
+function renderExplorerBalancePretty(payload: Record<string, unknown>): string {
+  return [
+    `Explorer balance ${asOptionalStringValue(payload.address) ?? '<unknown>'}`,
+    `Status: ${String(payload.status ?? 'unknown')}`,
+    `Confirmed: ${String(payload.confirmed ?? '-')}`,
+    `Unconfirmed: ${String(payload.unconfirmed ?? '-')}`,
+    `Balance: ${String(payload.balance ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderExplorerMutationPretty(payload: Record<string, unknown>): string {
+  return [
+    `${formatOperationLabel(asOptionalStringValue(payload.operation))} explorer`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `HTTP status: ${String(payload.httpStatus ?? '-')}`,
+    ...(Object.prototype.hasOwnProperty.call(payload, 'reindexApps') ? [`Reindex apps: ${String(payload.reindexApps === true)}`] : []),
+    ...(Object.prototype.hasOwnProperty.call(payload, 'rescanApps') ? [`Rescan apps: ${String(payload.rescanApps === true)}`] : []),
+    ...(Object.prototype.hasOwnProperty.call(payload, 'blockHeight') ? [`Block height: ${String(payload.blockHeight ?? '-')}`] : []),
+    `Message: ${asOptionalStringValue(payload.message) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
   ].join('\n');
 }
 
@@ -4377,6 +4569,227 @@ async function handleNodeUseBaseUrl(args: string[], io: CliIo): Promise<number> 
   }
 
   return EXIT_CODE_SUCCESS;
+}
+
+async function handleExplorerStatus(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseExplorerReadArgs(args, {
+    command: 'status',
+    integerFlags: [{ flag: '--seconds-per-block', key: 'secondsPerBlock', min: 1 }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_explorer_status', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read explorer status.', io, parsed.outputMode);
+  }
+
+  const payload = normalizeExplorerStatusPayload(normalized.envelope.result);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderExplorerStatusPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleExplorerHeight(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseExplorerReadArgs(args, {
+    command: 'height',
+    integerFlags: [{ flag: '--seconds-per-block', key: 'secondsPerBlock', min: 1 }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_explorer_height_info', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read explorer height.', io, parsed.outputMode);
+  }
+
+  const payload = normalizeExplorerHeightPayload(normalized.envelope.result);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderExplorerHeightPretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleExplorerBalance(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseExplorerBalanceArgs(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  if (parsed.positional.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux explorer balance\`: ${parsed.positional.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_explorer_balance_summary', { address: parsed.address }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not read explorer balance.', io, parsed.outputMode);
+  }
+
+  const payload = normalizeExplorerBalancePayload(normalized.envelope.result);
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderExplorerBalancePretty(payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleExplorerMutation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: 'restart' | 'stop' | 'reindex' | 'rescan';
+    toolName: 'flux_explorer_restart' | 'flux_explorer_stop' | 'flux_explorer_reindex' | 'flux_explorer_rescan';
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): Promise<number> {
+  const parsed = parseExplorerReadArgs(args, {
+    command: options.command,
+    integerFlags: options.integerFlags,
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }, ...(options.booleanFlags ?? [])],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const result = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(result.resourceUri) ?? normalized.envelope.resourceUri);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'success' : normalizeRuntimeCommandStatus(normalized, 'success'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    operation: options.command,
+    httpStatus: asOptionalNumberValue(result.status) ?? asOptionalNumberValue(normalized.envelope.status),
+    message: unwrapFluxStringValue(resourcePayload),
+    resourceUri: asOptionalStringValue(result.resourceUri) ?? normalized.envelope.resourceUri,
+    ...(options.command === 'reindex' ? { reindexApps: parsed.rawArgs.reindexapps === true } : {}),
+    ...(options.command === 'rescan'
+      ? {
+          rescanApps: parsed.rawArgs.rescanapps === true,
+          ...(Object.prototype.hasOwnProperty.call(parsed.rawArgs, 'blockheight')
+            ? { blockHeight: asOptionalNumberValue(parsed.rawArgs.blockheight) }
+            : {}),
+        }
+      : {}),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderExplorerMutationPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleExplorerCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderExplorerHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'status':
+      return handleExplorerStatus(rest, io, toolRuntime, mode);
+    case 'height':
+      return handleExplorerHeight(rest, io, toolRuntime, mode);
+    case 'balance':
+      return handleExplorerBalance(rest, io, toolRuntime, mode);
+    case 'restart':
+      return handleExplorerMutation(rest, io, toolRuntime, mode, {
+        command: 'restart',
+        toolName: 'flux_explorer_restart',
+      });
+    case 'stop':
+      return handleExplorerMutation(rest, io, toolRuntime, mode, {
+        command: 'stop',
+        toolName: 'flux_explorer_stop',
+      });
+    case 'reindex':
+      return handleExplorerMutation(rest, io, toolRuntime, mode, {
+        command: 'reindex',
+        toolName: 'flux_explorer_reindex',
+        booleanFlags: [{ flag: '--reindex-apps', key: 'reindexapps' }],
+      });
+    case 'rescan':
+      return handleExplorerMutation(rest, io, toolRuntime, mode, {
+        command: 'rescan',
+        toolName: 'flux_explorer_rescan',
+        integerFlags: [{ flag: '--block-height', key: 'blockheight', min: 0 }],
+        booleanFlags: [{ flag: '--rescan-apps', key: 'rescanapps' }],
+      });
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown explorer subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
 }
 
 async function handleNodeCommand(
@@ -8080,6 +8493,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'node':
         return await handleNodeCommand(
+          argv.slice(1),
+          io,
+          await getCommandToolRuntime(options.toolRuntime),
+          effectivePersistedStateMode
+        );
+      case 'explorer':
+        return await handleExplorerCommand(
           argv.slice(1),
           io,
           await getCommandToolRuntime(options.toolRuntime),
