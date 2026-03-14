@@ -22,6 +22,40 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  build-fluxos-cli:
+    name: Build + test (fluxos-cli)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            flux-mcp/package-lock.json
+            fluxos-cli/package-lock.json
+      - name: Build shared flux-mcp dependency
+        working-directory: flux-mcp
+        run: |
+          npm ci
+          npm run build
+      - name: Build + test fluxos-cli
+        working-directory: fluxos-cli
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Pack fluxos-cli artifact
+        working-directory: fluxos-cli
+        run: |
+          mkdir -p ../dist
+          npm pack --pack-destination ../dist
+          mv ../dist/fluxos-cli-*.tgz ../dist/fluxos-cli.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fluxos-cli.tgz
+          path: dist/fluxos-cli.tgz
+
   package-flux-cloud-skill:
     name: Package (skill artifacts)
     runs-on: ubuntu-latest

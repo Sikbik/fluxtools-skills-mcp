@@ -27,6 +27,19 @@ jobs:
           npm run build
           npm test
 
+      - name: Build + test fluxos-cli
+        run: |
+          npm --prefix fluxos-cli ci
+          npm --prefix fluxos-cli run build
+          npm --prefix fluxos-cli test
+
+      - name: Pack fluxos-cli artifact
+        working-directory: fluxos-cli
+        run: |
+          mkdir -p ../dist
+          npm pack --pack-destination ../dist
+          mv ../dist/fluxos-cli-*.tgz ../dist/fluxos-cli.tgz
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -42,6 +55,7 @@ jobs:
         with:
           generate_release_notes: true
           files: |
+            dist/fluxos-cli.tgz
             dist/flux-cloud-codex.skill
             dist/flux-cloud-claude.skill
           fail_on_unmatched_files: true
