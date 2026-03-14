@@ -1,0 +1,33 @@
+{
+  "featureId": "m4-fix-local-launcher-exit-for-one-shot-cli",
+  "reviewedAt": "2026-03-14T11:24:20Z",
+  "commitId": "9895d2c62786583a2b122cbd96e8515e2094ac36",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking regression. The commit adds shared launcher ref/unref control, wires the CLI through it, and covers the one-shot Git deploy planning path with focused MCP and CLI tests. But the CLI keep-alive routing still misses one interactive signing helper, so the feature does not fully preserve launcher behavior for signing flows.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 119,
+        "severity": "blocking",
+        "description": "`getCommandToolRuntime()` now defaults each command to `setLauncherKeepAlive(false)` (`fluxos-cli/src/cli.ts:1331-1334`), and `handleToolCall()` only re-enables keep-alive for tool names in the hard-coded allowlists (`fluxos-cli/src/cli.ts:119-135`, `1337-1351`, `1617`). `flux_build_message_to_sign` is missing from those allowlists even though the MCP tool still returns `signLauncherHttpUrl` and `zelcoreLauncherHttpUrl` (`flux-mcp/src/index.ts:5156-5165`) and pretty `flux tool call` output prints that result verbatim (`fluxos-cli/src/cli.ts:1288-1307`). As a result, `flux tool call flux_build_message_to_sign --pretty ...` exits with an unref'ed localhost launcher, so the interactive signing page dies immediately instead of preserving existing launcher behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The shared-runtime worker skill still overstates the 'write failing tests first' rule for cases where tiny test-only observability seams are required before a meaningful failing test can exist.",
+      "evidence": "`.factory/skills/shared-runtime-worker/SKILL.md` step 3 says to write failing tests first; the reviewed handoff records `skillFeedback.followedProcedure: false` and explains that small exported launcher hooks had to be added before the lifecycle regression could observe ref state."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The mission shared library does not document the new launcher keep-alive classification rule or inventory of launcher-producing tools, which makes omissions in the CLI allowlists easy to miss.",
+      "evidence": "`.factory/library/shared-runtime.md` has no launcher-lifecycle guidance, while `fluxos-cli/src/cli.ts:119-135` now relies on tool-name allowlists and the reviewed bug shows `flux_build_message_to_sign` was omitted even though `flux-mcp/src/index.ts:5156-5165` emits launcher URLs."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "I reviewed the feature record, required handoff, transcript skeleton, skill file, shared-state docs, and commit `9895d2c62786583a2b122cbd96e8515e2094ac36`. The one-shot Git deploy planning hang is covered, but the CLI keep-alive allowlists still break pretty generic `flux_build_message_to_sign` launcher usage, so this feature should not pass yet."
+}

@@ -43,6 +43,14 @@ Extraction guidance:
 - MCP `resource_link` transport behavior stays MCP-only; only sanitizer/prune logic should move later.
 - There is not yet a shared helper/source of truth for CLI failure classification (for example auth/confirm/network/Flux exit-code mapping). Current classification work still needs to inspect real MCP tool result envelopes and message strings in `flux-mcp/src/index.ts` and related runtime code.
 
+## Adapter gotchas discovered during M4 scrutiny
+
+- Some MCP resource-backed summaries persist the full computed dataset rather than the user-visible filtered rows. When the CLI rebuilds JSON from stored resources, it must reapply effective filters such as `includeExpired=false` instead of assuming persisted arrays are already filtered.
+- Flux v8 app specs accept fractional CPU values in `0.1` increments. CLI parser/validator layers for app or Git spec generation should treat CPU as a positive number, not an integer-only field.
+- Private-repo Git deploy planning with `repoToken` + enterprise mode keeps compose/contacts enterprise-encrypted in the reusable plan artifact. Canonical plan resources expose empty `compose`/`contacts` arrays plus an `enterprise` blob rather than a redacted-but-plaintext spec.
+- CLI adapters should test both structured failure payloads and thrown-tool error paths. Otherwise tool-specific business statuses (for example verify-flow `error` states or registry-unreachable troubleshooting signals) can be flattened into generic `flux_error` results.
+- When the CLI uses launcher keep-alive allowlists, every launcher-producing tool must be inventoried explicitly. `flux_build_message_to_sign` emits local signing launcher URLs alongside the auth/login helpers and needs interactive keep-alive behavior just like the other launcher tools.
+
 ### Intentionally CLI-only
 
 - Command parser wiring

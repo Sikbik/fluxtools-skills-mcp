@@ -1,0 +1,28 @@
+{
+  "featureId": "m4-app-runtime-debug-and-execution-commands",
+  "reviewedAt": "2026-03-14T08:02:32Z",
+  "commitId": "b1acc9f4736e7abe66da7c940021388e1aadadd1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking issue. The feature adds first-class `flux apps health|logs|inspect|stats|top|monitor|exec|test-install` routing, produces structured summaries with resource-backed large outputs, and gives `exec`/`test-install` explicit status fields. However, the semantic reducer used by `test-install` still prefers the last parsed JSON object's `status: success` over later plain-text error events, so a mixed progress stream can be reported as successful even after the install has actually failed. That breaks VAL-APPS-006's requirement to determine success from meaningful operation results rather than HTTP status alone.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 4971,
+        "severity": "blocking",
+        "description": "`deriveProgressSemantic` returns success immediately when the last parsed JSON object has `status: success` (`fluxos-cli/src/cli.ts:4971-4980`) before it checks whether later plain-text events report an error (`fluxos-cli/src/cli.ts:4995-5009`). `parseProgressOutput` preserves later trailing text as ordered events in MCP (`flux-mcp/src/index.ts:355-418`), and `handleAppsTestInstall` trusts that semantic result for top-level `ok`/`status` and exit code (`fluxos-cli/src/cli.ts:6592-6626`). As a result, a stream like a success JSON object followed by `error: ...` would still exit as success even though the meaningful final progress state is failure. The new tests only cover pure-success and pure-failure cases (`fluxos-cli/test/apps-runtime-debug-exec.test.ts:544-568`), so this mixed-stream regression is not covered."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `cli-command-worker` skill's 'write failing tests first' rule is still hard to audit from transcript skeletons. In this run, the first targeted `apps-runtime-debug exec test-install` test invocation appears after multiple `ApplyPatch` steps, but the handoff still reports `followedProcedure: true`. Either the skill should say how same-patch test additions count as test-first work, or workers should explicitly record the pre-implementation failing test run.",
+      "evidence": "`.factory/skills/cli-command-worker/SKILL.md` step 3 says 'Write failing tests first'. In worker session `2e11d9e9-011e-4426-a9c1-c8fc3d13151a`, the transcript skeleton shows the first `## Tool: ApplyPatch` entry before the first targeted `npm --prefix \"/home/stache/projects/flux-skills/fluxos-cli\" test -- --maxWorkers=12 apps-runtime-debug exec test-install` command."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the mission feature record, handoff, transcript skeleton, `cli-command-worker` guidance, commit diff, and the relevant CLI/MCP runtime-debug code for `m4-app-runtime-debug-and-execution-commands`. The command surface and resource-backed summaries are present, but `flux apps test-install` can still report success when later progress events indicate failure, so VAL-APPS-006 is not fully satisfied."
+}

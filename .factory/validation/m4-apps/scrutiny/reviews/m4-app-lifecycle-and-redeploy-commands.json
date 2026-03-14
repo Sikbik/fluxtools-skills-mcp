@@ -1,0 +1,28 @@
+{
+  "featureId": "m4-app-lifecycle-and-redeploy-commands",
+  "reviewedAt": "2026-03-14T07:06:08Z",
+  "commitId": "eebebe57ea375f79a8a0a9efc2fd3200435e91bc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking issue. The feature adds first-class `flux apps start|stop|restart|redeploy|redeploy-component` routing, keeps confirm-gated lifecycle mutations explicit, preserves the expected lifecycle flags, and surfaces parsed redeploy progress summaries from the persisted resource payloads. However, the semantic-progress reducer gives any final JSON `status: success` precedence over later plain-text events, so a mixed progress stream can still be reported as a successful redeploy even when the last parsed event is an error. That breaks the feature's requirement to return meaningful parsed progress/event summaries for VAL-APPS-005.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 4971,
+        "severity": "blocking",
+        "description": "`deriveProgressSemantic` returns success as soon as the last parsed JSON object has `status: success` (`fluxos-cli/src/cli.ts:4971-4980`), before it considers whether later plain-text events report an error (`fluxos-cli/src/cli.ts:4995-5005`). `parseProgressOutput` in MCP preserves later trailing text as ordered events (`flux-mcp/src/index.ts:374-404`), so a stream like `{\"status\":\"success\",...}` followed by `error: ...` will leave `lastEvent` as the error but still produce `semantic.ok === true`. Both `handleAppsRedeploy` and `handleAppsRedeployComponent` trust that semantic result for their top-level `ok`/`status` and exit code (`fluxos-cli/src/cli.ts:6488-6514` and `6542-6568`), which means a failed redeploy can be surfaced as success instead of error. The new tests only cover pure-JSON success and pure-event failure, so this mixed-stream regression is not caught."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `cli-command-worker` skill's 'write failing tests first' rule is stricter than what the transcript skeleton makes auditable. In this run, the first targeted lifecycle test execution appears after the initial implementation patch, so either the skill should say how same-patch test additions count as test-first work or workers should explicitly record the pre-implementation failing-test run when claiming the procedure was followed.",
+      "evidence": "`cli-command-worker/SKILL.md` step 3 says 'Write failing tests first'. In the transcript skeleton for worker session `781af680-20b6-4cdd-a969-04115d1defaf`, the first targeted `npm --prefix ... fluxos-cli test -- --maxWorkers=12 apps-lifecycle-redeploy` invocation appears after the first `ApplyPatch` block, while the handoff reports `skillFeedback.followedProcedure: true`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the mission feature record, handoff, transcript skeleton, CLI skill guidance, commit diff, and the relevant CLI/MCP lifecycle code for `m4-app-lifecycle-and-redeploy-commands`. The feature largely satisfies the command-surface and confirmation requirements, but its redeploy semantic reducer can still report success when later progress events indicate failure, so VAL-APPS-005 is not fully met."
+}

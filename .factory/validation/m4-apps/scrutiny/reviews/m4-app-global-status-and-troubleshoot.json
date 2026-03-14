@@ -1,0 +1,28 @@
+{
+  "featureId": "m4-app-global-status-and-troubleshoot",
+  "reviewedAt": "2026-03-14T07:25:35Z",
+  "commitId": "8eee972c287aab2cac2a8c40eb4bd5b31a102f95",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking issue. The feature adds first-class `flux apps troubleshoot` routing, enriches `flux apps global-status` with correlation fields and follow-up actions, and adds focused happy-path contract coverage. However, the troubleshoot failure path does not preserve upstream registry-failure semantics, so the correlated summary can misreport what went wrong and does not fully satisfy VAL-APPS-003.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 4765,
+        "severity": "blocking",
+        "description": "`buildTroubleshootCorrelation` treats anything other than `summary.globalExists === true` as `globalExists: false` (`fluxos-cli/src/cli.ts:4764-4791`), so when the MCP tool reports `global_registry_unreachable` the CLI correlation degrades that into `runtimeState: \"not_in_global_registry\"` and `deploymentState: \"not_registered\"` even though the registry query actually failed. `handleAppsTroubleshoot` then overwrites the MCP tool's explicit suspect status with generic `flux_error` whenever the tool call is non-ok (`fluxos-cli/src/cli.ts:5695-5712`). Upstream already preserves the suspect code in the summary (`flux-mcp/src/index.ts:7189-7202` and `7285-7298`), so the CLI is discarding meaningful correlation instead of surfacing it. The new tests only exercise successful troubleshoot responses (`fluxos-cli/test/apps-status-troubleshoot.test.ts:258-293`, `fluxos-cli/test/apps-discovery-specs.test.ts:689-759`), so this failure-mode regression is not covered."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `cli-command-worker` skill's 'write failing tests first' rule is still hard to audit from transcript skeletons. In this run, the first targeted `apps-status troubleshoot` test invocation appears after the first `ApplyPatch`, but the handoff still says the worker followed the procedure. Either the skill should say how same-patch test additions count as test-first work, or workers should explicitly record the pre-implementation failing test run.",
+      "evidence": "`.factory/skills/cli-command-worker/SKILL.md` step 3 says 'Write failing tests first'. In worker session `c298f489-997a-4115-ad52-34d499e59d5f`, the transcript skeleton shows the first `## Tool: ApplyPatch` entry before the first targeted `npm --prefix \"/home/stache/projects/flux-skills/fluxos-cli\" test -- --maxWorkers=12 apps-status troubleshoot` command."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the feature record, handoff, transcript skeleton, `cli-command-worker` guidance, commit diff, and the relevant CLI/MCP status-troubleshooting code for `m4-app-global-status-and-troubleshoot`. The happy-path command surface is present, but troubleshoot failure handling currently flattens an unreachable global registry into `not_in_global_registry`/`flux_error`, so the CLI's correlated summaries are not reliable for all VAL-APPS-003 scenarios."
+}

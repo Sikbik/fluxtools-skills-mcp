@@ -1,0 +1,33 @@
+{
+  "featureId": "m4-app-planning-pricing-and-spec-generation",
+  "reviewedAt": "2026-03-14T08:45:24Z",
+  "commitId": "6dfbf5f1442883e81aa608a329fed56a995de0b4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking issue. The feature adds first-class `flux apps generate-spec`, `verify-registration`, `verify-update`, `calculate-price`, `plan-registration`, `plan-update`, and `plan-renew` flows, persists reusable artifact resources, and surfaces registration/update/renew planning metadata in JSON. However, `apps generate-spec` parses `--cpu` as an integer >=1, which rejects valid Flux app-spec CPU values such as `0.5`; that means the CLI does not fully preserve v8 spec-generation behavior required by VAL-APPS-007.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 2476,
+        "severity": "blocking",
+        "description": "`parseAppsGenerateSpecArgs` registers `--cpu` as an integer flag with `min: 1`, so values like `--cpu 0.5` fail before the command reaches MCP (`fluxos-cli/src/cli.ts:2472-2478`, `readIntegerFlagValue` at `fluxos-cli/src/cli.ts:1941-1944`). Flux v8 app specs explicitly allow CPU in 0.1 increments (`codex/flux-cloud/references/app-spec-v8.md:116`), and the MCP-side generator already accepts fractional CPU values (`flux-mcp/src/index.ts:879-880`). This makes `flux apps generate-spec` reject valid spec-generation inputs and leaves VAL-APPS-007 incompletely implemented."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `cli-command-worker` skill still has a procedure mismatch for partial-diff slices: step 3 says to write failing tests first, while steps 4-5 say to audit and finalize an existing partial diff. This feature's handoff explicitly records the deviation and asks for the skill text to be clarified.",
+      "evidence": "`.factory/skills/cli-command-worker/SKILL.md` steps 3-5; handoff `/home/stache/.factory/missions/ba1a1372-48d2-4039-badd-1467e9108d17/handoffs/2026-03-13T21-46-29-065Z__m4-app-planning-pricing-and-spec-generation__505607c9-f874-4695-9700-4ffb6b02dc2c.json` has `skillFeedback.followedProcedure: false` with a suggested clarification for partial-diff slices."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The mission shared library used by CLI workers does not capture app-spec resource constraints, so important rules such as fractional CPU support are easy to miss when implementing spec-generation parsers.",
+      "evidence": "The worker-read shared-state docs under `.factory/library/` (`architecture.md`, `shared-runtime.md`, etc.) do not mention v8 resource constraints, while `codex/flux-cloud/references/app-spec-v8.md:116` documents that CPU values may use 0.1 increments. The reviewed bug in `fluxos-cli/src/cli.ts:2476` aligns with that missing shared knowledge."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the feature record, handoff, transcript skeleton, skill instructions, shared-state docs, and commit `6dfbf5f1442883e81aa608a329fed56a995de0b4`. The new CLI planning/spec/pricing command family and tests are present, but `flux apps generate-spec` still rejects valid fractional CPU values, so VAL-APPS-007 is not fully satisfied."
+}

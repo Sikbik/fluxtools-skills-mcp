@@ -1,0 +1,28 @@
+{
+  "featureId": "m4-finalize-git-deploy-cli-runtime-diff",
+  "reviewedAt": "2026-03-14T11:20:44Z",
+  "commitId": "4a6d6d95f1ede7974f9855b798d60d70f3be4c2d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail with one blocking issue. The commit adds first-class `flux git generate-spec`, `plan-registration`, and `register-and-verify` handlers, parses the expected flags, and surfaces reusable resource-backed payloads. But the runtime wiring still leaves launcher keep-alive enabled for one-shot Git deploy planning flows, so JSON automation can hang instead of exiting cleanly.",
+    "issues": [
+      {
+        "file": "fluxos-cli/src/cli.ts",
+        "line": 7365,
+        "severity": "blocking",
+        "description": "In commit `4a6d6d95`, `handleGitPlanRegistration` calls `flux_git_deploy_plan_registration` without disabling MCP launcher keep-alive for non-pretty output, and the `git` command path still constructs a raw default runtime instead of a one-shot-safe wrapper. The worker's own smoke evidence says `node fluxos-cli/dist/index.js git plan-registration --json ...` printed valid JSON but stayed alive until timeout unless `FLUX_MCP_LOCAL_LAUNCHER=0`, so this finalized slice did not yet satisfy the intended automation-safe CLI contract. Commit `9895d2c6` later adds `setLauncherKeepAlive` / `getCommandToolRuntime` to fix exactly this gap."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The mission shared library does not document the launcher keep-alive caveat for one-shot CLI commands, so workers have to rediscover that launcher-producing plan flows can hang unless keep-alive is explicitly disabled.",
+      "evidence": "The `0b94b549-344b-4532-a74c-7cd56cd7c2b8` transcript shows repeated investigation of launcher state, `FLUX_MCP_LOCAL_LAUNCHER`, and `unref()` after the Git plan smoke hung; the handoff's `discoveredIssues[0]` records the same timeout behavior. `rg -n \"FLUX_MCP_LOCAL_LAUNCHER|launcher\" /home/stache/projects/flux-skills/.factory/library` returned no matches."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the feature record, handoff, transcript skeleton, `cli-finalize-worker` skill, shared-state docs, and commit `4a6d6d95f1ede7974f9855b798d60d70f3be4c2d`. The Git deploy CLI wiring is mostly present, but `flux git plan-registration --json` could still hang after printing JSON, so this finalize-only runtime slice did not fully satisfy the intended one-shot automation contract."
+}
