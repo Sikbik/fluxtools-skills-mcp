@@ -395,6 +395,16 @@ Commands:
                                  Remove one local backup file with explicit confirmation
   backup download-local --filepath <path> --appname <name> [--max-bytes <n>] --confirm [--json|--pretty|--raw]
                                  Download one local backup file as a resource-backed artifact
+  fluxdrive set-base-url <base-url> [--json|--pretty|--raw]
+                                 Normalize and persist the FluxDrive base URL
+  fluxdrive register-backup-file --appname <name> --component <name> --filename <name> --filesize <bytes> --host <host> --timestamp <ms>
+                                 Register a backup file with the FluxDrive MWS backend
+  fluxdrive task-status <task-id> [--json|--pretty|--raw]
+                                 Read FluxDrive task status for one task id
+  fluxdrive backup-list <appname> [--json|--pretty|--raw]
+                                 Read the FluxDrive backup list for one app
+  fluxdrive remove-checkpoint --appname <name> --timestamp <ms> [--json|--pretty|--raw]
+                                 Remove one FluxDrive checkpoint
   apps list-running [--json|--pretty|--raw]
                                  List running apps on the active node
   apps list-all [--json|--pretty|--raw]
@@ -690,6 +700,22 @@ Notes:
   - Multiplier, decimal, and number flags map directly to the shared backup tool options.
 `;
 
+const FLUXDRIVE_HELP_TEXT = `FluxOS CLI - fluxdrive
+
+Usage:
+  flux fluxdrive set-base-url <base-url> [--json|--pretty|--raw]
+  flux fluxdrive register-backup-file --appname <name> --component <name> --filename <name> --filesize <bytes> --host <host> --timestamp <ms>
+                                      [--json|--pretty|--raw]
+  flux fluxdrive task-status <task-id> [--json|--pretty|--raw]
+  flux fluxdrive backup-list <appname> [--json|--pretty|--raw]
+  flux fluxdrive remove-checkpoint --appname <name> --timestamp <ms> [--json|--pretty|--raw]
+
+Notes:
+  - \`set-base-url\` persists the FluxDrive MWS URL for the active profile.
+  - The request commands reuse the shared FluxDrive client and preserve its JSON response semantics.
+  - These commands are transport/state wrappers only; they do not introduce new FluxDrive behavior.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -870,6 +896,10 @@ function renderFilesHelp(): string {
 
 function renderBackupHelp(): string {
   return BACKUP_HELP_TEXT;
+}
+
+function renderFluxDriveHelp(): string {
+  return FLUXDRIVE_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -4327,6 +4357,14 @@ type BackupParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type FluxDriveCommandParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -4530,6 +4568,40 @@ function parseBackupArgs(
       return {
         outputMode: parsed.outputMode,
         error: `Missing required ${flag.flag} for \`flux backup ${options.command}\`.`,
+      };
+    }
+  }
+
+  return parsed;
+}
+
+function parseFluxDriveArgs(
+  args: string[],
+  options: {
+    command: 'register-backup-file' | 'remove-checkpoint';
+    stringFlags: Array<{ flag: string; key: string }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+  }
+): FluxDriveCommandParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: options.stringFlags,
+    integerFlags: options.integerFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux fluxdrive ${options.command}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  for (const flag of options.stringFlags) {
+    const value = typeof parsed.rawArgs[flag.key] === 'string' ? String(parsed.rawArgs[flag.key]).trim() : '';
+    if (!value) {
+      return {
+        outputMode: parsed.outputMode,
+        error: `Missing required ${flag.flag} for \`flux fluxdrive ${options.command}\`.`,
       };
     }
   }
@@ -4891,6 +4963,21 @@ function renderBackupArtifactPretty(payload: Record<string, unknown>): string {
     `Bytes: ${String(payload.bytes ?? '-')}`,
     `MIME type: ${asOptionalStringValue(payload.mimeType) ?? '-'}`,
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderFluxDrivePretty(title: string, payload: Record<string, unknown>): string {
+  const dataValue = Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload.value;
+
+  return [
+    title,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    ...(asOptionalStringValue(payload.fluxDriveMwsBaseUrl) ? [`FluxDrive base URL: ${asOptionalStringValue(payload.fluxDriveMwsBaseUrl)}`] : []),
+    ...(asOptionalStringValue(payload.appname) ? [`App: ${asOptionalStringValue(payload.appname)}`] : []),
+    ...(asOptionalStringValue(payload.component) ? [`Component: ${asOptionalStringValue(payload.component)}`] : []),
+    ...(asOptionalStringValue(payload.filename) ? [`Filename: ${asOptionalStringValue(payload.filename)}`] : []),
+    ...(typeof payload.taskId === 'number' ? [`Task ID: ${String(payload.taskId)}`] : []),
+    `Data: ${typeof dataValue === 'string' ? dataValue : JSON.stringify(dataValue, null, 2)}`,
   ].join('\n');
 }
 
@@ -5916,6 +6003,274 @@ async function handleBackupCommand(
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown backup subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleFluxDriveSetBaseUrl(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const [baseUrl, ...rest] = parsed.positional;
+  if (!baseUrl || baseUrl.startsWith('-')) {
+    return emitFailure('validation', 'Usage: flux fluxdrive set-base-url <base-url> [--json|--pretty|--raw]', io, parsed.outputMode);
+  }
+
+  if (rest.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux fluxdrive set-base-url\`: ${rest.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_fluxdrive_set_base_url', { baseUrl }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  if (!normalized.envelope.ok) {
+    return emitFailure(normalized.failureKind ?? 'flux', normalized.envelope.error ?? 'Could not set FluxDrive base URL.', io, parsed.outputMode);
+  }
+
+  const result = asRecord(normalized.envelope.result) ?? {};
+  const payload = {
+    ok: true,
+    status: 'ok',
+    fluxDriveMwsBaseUrl: asOptionalStringValue(result.fluxDriveMwsBaseUrl),
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFluxDrivePretty('FluxDrive set base URL', payload));
+  }
+
+  return EXIT_CODE_SUCCESS;
+}
+
+async function handleFluxDriveRegisterBackupFile(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseFluxDriveArgs(args, {
+    command: 'register-backup-file',
+    stringFlags: [
+      { flag: '--appname', key: 'appname' },
+      { flag: '--component', key: 'component' },
+      { flag: '--filename', key: 'filename' },
+      { flag: '--host', key: 'host' },
+    ],
+    integerFlags: [
+      { flag: '--filesize', key: 'filesize', min: 0 },
+      { flag: '--timestamp', key: 'timestamp', min: 0 },
+    ],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_fluxdrive_register_backup_file', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const data = unwrapFluxPayloadFromValue(normalized.envelope.result);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: asOptionalStringValue(parsed.rawArgs.appname),
+    component: asOptionalStringValue(parsed.rawArgs.component),
+    filename: asOptionalStringValue(parsed.rawArgs.filename),
+    data,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFluxDrivePretty('FluxDrive register backup file', payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFluxDriveTaskStatus(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const [taskIdRaw, ...rest] = parsed.positional;
+  if (!taskIdRaw || taskIdRaw.startsWith('-')) {
+    return emitFailure('validation', 'Usage: flux fluxdrive task-status <task-id> [--json|--pretty|--raw]', io, parsed.outputMode);
+  }
+
+  if (rest.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux fluxdrive task-status\`: ${rest.join(' ')}`, io, parsed.outputMode);
+  }
+
+  const taskId = Number(taskIdRaw);
+  if (!Number.isFinite(taskId) || !Number.isInteger(taskId) || taskId < 0) {
+    return emitFailure('validation', 'task-id must be a non-negative integer.', io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_fluxdrive_get_task_status', { taskId }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const data = unwrapFluxPayloadFromValue(normalized.envelope.result);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    taskId,
+    data,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFluxDrivePretty('FluxDrive task status', payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFluxDriveBackupList(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseOutputMode(args);
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  const [appname, ...rest] = parsed.positional;
+  if (!appname || appname.startsWith('-')) {
+    return emitFailure('validation', 'Usage: flux fluxdrive backup-list <appname> [--json|--pretty|--raw]', io, parsed.outputMode);
+  }
+
+  if (rest.length > 0) {
+    return emitFailure('validation', `Unexpected arguments for \`flux fluxdrive backup-list\`: ${rest.join(' ')}`, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_fluxdrive_get_backup_list', { appname }, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const data = unwrapFluxPayloadFromValue(normalized.envelope.result);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname,
+    data,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFluxDrivePretty('FluxDrive backup list', payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFluxDriveRemoveCheckpoint(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseFluxDriveArgs(args, {
+    command: 'remove-checkpoint',
+    stringFlags: [{ flag: '--appname', key: 'appname' }],
+    integerFlags: [{ flag: '--timestamp', key: 'timestamp', min: 0 }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_fluxdrive_remove_checkpoint', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const data = unwrapFluxPayloadFromValue(normalized.envelope.result);
+  const payload = {
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: asOptionalStringValue(parsed.rawArgs.appname),
+    data,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderFluxDrivePretty('FluxDrive remove checkpoint', payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleFluxDriveCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderFluxDriveHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'set-base-url':
+      return handleFluxDriveSetBaseUrl(rest, io, toolRuntime, mode);
+    case 'register-backup-file':
+      return handleFluxDriveRegisterBackupFile(rest, io, toolRuntime, mode);
+    case 'task-status':
+      return handleFluxDriveTaskStatus(rest, io, toolRuntime, mode);
+    case 'backup-list':
+      return handleFluxDriveBackupList(rest, io, toolRuntime, mode);
+    case 'remove-checkpoint':
+      return handleFluxDriveRemoveCheckpoint(rest, io, toolRuntime, mode);
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown fluxdrive subcommand: ${subcommand}`, io, parsed.outputMode);
     }
   }
 }
@@ -9649,6 +10004,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'backup':
         return await handleBackupCommand(
+          argv.slice(1),
+          io,
+          await getCommandToolRuntime(options.toolRuntime),
+          effectivePersistedStateMode
+        );
+      case 'fluxdrive':
+        return await handleFluxDriveCommand(
           argv.slice(1),
           io,
           await getCommandToolRuntime(options.toolRuntime),
