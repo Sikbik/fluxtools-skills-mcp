@@ -385,6 +385,16 @@ Commands:
                                  Rename an app volume object with explicit confirmation
   files remove --appname <name> --component <name> --object <path> --confirm [--json|--pretty|--raw]
                                  Remove an app volume object with explicit confirmation
+  backup volume-data --appname <name> --component <name> [--multiplier <unit>] [--decimal <n>] [--fields <csv>]
+                                 Read backup volume data for one app component
+  backup remote-size --fileurl <url> --appname <name> [--multiplier <unit>] [--decimal <n>] [--number] [--json|--pretty|--raw]
+                                 Read the remote backup file size summary for one app
+  backup list-local --path <path> --appname <name> [--multiplier <unit>] [--decimal <n>] [--number] [--json|--pretty|--raw]
+                                 List locally stored backup files for one app
+  backup remove-file --filepath <path> --appname <name> --confirm [--json|--pretty|--raw]
+                                 Remove one local backup file with explicit confirmation
+  backup download-local --filepath <path> --appname <name> [--max-bytes <n>] --confirm [--json|--pretty|--raw]
+                                 Download one local backup file as a resource-backed artifact
   apps list-running [--json|--pretty|--raw]
                                  List running apps on the active node
   apps list-all [--json|--pretty|--raw]
@@ -664,6 +674,22 @@ Notes:
   - Mutation commands keep \`--confirm\` explicit and surface resolved node context when the shared tool had to relocate the request.
 `;
 
+const BACKUP_HELP_TEXT = `FluxOS CLI - backup
+
+Usage:
+  flux backup volume-data --appname <name> --component <name> [--multiplier <unit>] [--decimal <n>] [--fields <csv>] [--json|--pretty|--raw]
+  flux backup remote-size --fileurl <url> --appname <name> [--multiplier <unit>] [--decimal <n>] [--number] [--json|--pretty|--raw]
+  flux backup list-local --path <path> --appname <name> [--multiplier <unit>] [--decimal <n>] [--number] [--json|--pretty|--raw]
+  flux backup remove-file --filepath <path> --appname <name> --confirm [--json|--pretty|--raw]
+  flux backup download-local --filepath <path> --appname <name> [--max-bytes <n>] --confirm [--json|--pretty|--raw]
+
+Notes:
+  - The CLI preserves the shared frontend-shaped backup path semantics from flux-mcp.
+  - \`list-local\` and \`download-local\` return resource-backed data so automation can reuse the artifact.
+  - Mutation and download commands keep \`--confirm\` explicit.
+  - Multiplier, decimal, and number flags map directly to the shared backup tool options.
+`;
+
 const ENTERPRISE_KEY_HELP_TEXT = `FluxOS CLI - enterprise-key
 
 Usage:
@@ -840,6 +866,10 @@ function renderDaemonHelp(): string {
 
 function renderFilesHelp(): string {
   return FILES_HELP_TEXT;
+}
+
+function renderBackupHelp(): string {
+  return BACKUP_HELP_TEXT;
 }
 
 function renderEnterpriseKeyHelp(): string {
@@ -4289,6 +4319,14 @@ type FilesParseResult =
     }
   | { outputMode: OutputMode; error: string };
 
+type BackupParseResult =
+  | {
+      outputMode: OutputMode;
+      rawArgs: Record<string, unknown>;
+      positional: string[];
+    }
+  | { outputMode: OutputMode; error: string };
+
 function parseNodeGatewayArgs(args: string[]): NodeGatewayParseResult {
   const parsed = parseOutputMode(args);
   if ('error' in parsed) {
@@ -4456,6 +4494,42 @@ function parseFilesArgs(
       return {
         outputMode: parsed.outputMode,
         error: `Missing required ${flag.flag} for \`flux files ${options.command}\`.`,
+      };
+    }
+  }
+
+  return parsed;
+}
+
+function parseBackupArgs(
+  args: string[],
+  options: {
+    command: 'volume-data' | 'remote-size' | 'list-local' | 'remove-file' | 'download-local';
+    stringFlags: Array<{ flag: string; key: string }>;
+    integerFlags?: Array<{ flag: string; key: string; min?: number }>;
+    booleanFlags?: Array<{ flag: string; key: string; value?: boolean }>;
+  }
+): BackupParseResult {
+  const parsed = parseAppsFlagArgs(args, {
+    stringFlags: options.stringFlags,
+    integerFlags: options.integerFlags,
+    booleanFlags: options.booleanFlags,
+  });
+
+  if ('error' in parsed) return parsed;
+  if (parsed.positional.length > 0) {
+    return {
+      outputMode: parsed.outputMode,
+      error: `Unexpected arguments for \`flux backup ${options.command}\`: ${parsed.positional.join(' ')}`,
+    };
+  }
+
+  for (const flag of options.stringFlags) {
+    const value = typeof parsed.rawArgs[flag.key] === 'string' ? String(parsed.rawArgs[flag.key]).trim() : '';
+    if (!value) {
+      return {
+        outputMode: parsed.outputMode,
+        error: `Missing required ${flag.flag} for \`flux backup ${options.command}\`.`,
       };
     }
   }
@@ -4748,6 +4822,74 @@ function renderFilesMutationPretty(payload: Record<string, unknown>, label: stri
     ...(asOptionalStringValue(payload.newname) ? [`New name: ${asOptionalStringValue(payload.newname)}`] : []),
     ...(asOptionalStringValue(payload.object) ? [`Object: ${asOptionalStringValue(payload.object)}`] : []),
     `Message: ${asOptionalStringValue(payload.message) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function normalizeBackupListItems(value: unknown): Array<Record<string, unknown>> {
+  return asObjectArray(value).map((entry) => ({
+    name: asOptionalStringValue(entry.name),
+    size: asOptionalStringValue(entry.size) ?? asOptionalNumberValue(entry.size),
+    createdAt: asOptionalNumberValue(entry.create),
+  }));
+}
+
+function renderBackupVolumePretty(payload: Record<string, unknown>): string {
+  return [
+    `Backup volume data ${asOptionalStringValue(payload.appname) ?? '<unknown>'}/${asOptionalStringValue(payload.component) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `Mount: ${asOptionalStringValue(payload.mount) ?? '-'}`,
+    `Multiplier: ${asOptionalStringValue(payload.multiplier) ?? '-'}`,
+    `Decimal: ${String(payload.decimal ?? '-')}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderBackupSizePretty(payload: Record<string, unknown>): string {
+  return [
+    `Backup remote size ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `File URL: ${asOptionalStringValue(payload.fileurl) ?? '-'}`,
+    `Size: ${typeof payload.size === 'string' ? payload.size : JSON.stringify(payload.size)}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderBackupListPretty(payload: Record<string, unknown>): string {
+  const items = asObjectArray(payload.items);
+  if (items.length === 0) {
+    return [
+      `Backup list ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+      `Path: ${asOptionalStringValue(payload.path) ?? '-'}`,
+      'No backup files returned.',
+    ].join('\n');
+  }
+
+  return [
+    `Backup list ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Path: ${asOptionalStringValue(payload.path) ?? '-'}`,
+    `Count: ${String(payload.count ?? items.length)}`,
+    ...items.map((item) => `- ${asOptionalStringValue(item.name) ?? '<unknown>'} · ${String(item.size ?? '-')} · ${String(item.createdAt ?? '-')}`),
+  ].join('\n');
+}
+
+function renderBackupMutationPretty(payload: Record<string, unknown>, label: string): string {
+  return [
+    `${label} ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `File path: ${asOptionalStringValue(payload.filepath) ?? '-'}`,
+    `Message: ${asOptionalStringValue(payload.message) ?? '-'}`,
+    `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
+  ].join('\n');
+}
+
+function renderBackupArtifactPretty(payload: Record<string, unknown>): string {
+  return [
+    `Download local backup ${asOptionalStringValue(payload.appname) ?? '<unknown>'}`,
+    `Status: ${asOptionalStringValue(payload.status) ?? 'unknown'}`,
+    `File path: ${asOptionalStringValue(payload.filepath) ?? '-'}`,
+    `Bytes: ${String(payload.bytes ?? '-')}`,
+    `MIME type: ${asOptionalStringValue(payload.mimeType) ?? '-'}`,
     `Resource URI: ${asOptionalStringValue(payload.resourceUri) ?? '<none>'}`,
   ].join('\n');
 }
@@ -5513,6 +5655,267 @@ async function handleFilesCommand(
     default: {
       const parsed = parseOutputMode(rest);
       return emitFailure('validation', `Unknown files subcommand: ${subcommand}`, io, parsed.outputMode);
+    }
+  }
+}
+
+async function handleBackupVolumeData(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseBackupArgs(args, {
+    command: 'volume-data',
+    stringFlags: [
+      { flag: '--appname', key: 'appname' },
+      { flag: '--component', key: 'component' },
+    ],
+    integerFlags: [{ flag: '--decimal', key: 'decimal', min: 0 }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_backup_get_volume_data', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    component: asOptionalStringValue(summary.component) ?? asOptionalStringValue(parsed.rawArgs.component),
+    multiplier: asOptionalStringValue(summary.multiplier) ?? asOptionalStringValue(parsed.rawArgs.multiplier),
+    decimal: asOptionalNumberValue(summary.decimal) ?? asOptionalNumberValue(parsed.rawArgs.decimal),
+    mount: asOptionalStringValue(summary.mount),
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderBackupVolumePretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleBackupRemoteSize(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseBackupArgs(args, {
+    command: 'remote-size',
+    stringFlags: [
+      { flag: '--fileurl', key: 'fileurl' },
+      { flag: '--appname', key: 'appname' },
+    ],
+    integerFlags: [{ flag: '--decimal', key: 'decimal', min: 0 }],
+    booleanFlags: [{ flag: '--number', key: 'number' }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_backup_get_remote_file_size', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    fileurl: asOptionalStringValue(summary.fileurl) ?? asOptionalStringValue(parsed.rawArgs.fileurl),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    size: summary.size ?? null,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderBackupSizePretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleBackupListLocal(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  const parsed = parseBackupArgs(args, {
+    command: 'list-local',
+    stringFlags: [
+      { flag: '--path', key: 'path' },
+      { flag: '--appname', key: 'appname' },
+    ],
+    integerFlags: [{ flag: '--decimal', key: 'decimal', min: 0 }],
+    booleanFlags: [{ flag: '--number', key: 'number' }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall('flux_backup_list_local', parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const resourcePayload = await readPersistedResourceValue(asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri);
+  const responsePayload = unwrapFluxPayloadFromValue(asRecord(resourcePayload)?.response);
+  const items = normalizeBackupListItems(responsePayload);
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok ? 'ok' : failureStatus(normalized.failureKind ?? 'flux'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    path: asOptionalStringValue(summary.path) ?? asOptionalStringValue(parsed.rawArgs.path),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    count: items.length,
+    items,
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderBackupListPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleBackupMutation(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode'],
+  options: {
+    command: 'remove-file' | 'download-local';
+    toolName: 'flux_backup_remove_file' | 'flux_backup_download_local_file';
+  }
+): Promise<number> {
+  const parsed = parseBackupArgs(args, {
+    command: options.command,
+    stringFlags: [
+      { flag: '--filepath', key: 'filepath' },
+      { flag: '--appname', key: 'appname' },
+    ],
+    integerFlags: options.command === 'download-local' ? [{ flag: '--max-bytes', key: 'maxBytes', min: 1 }] : undefined,
+    booleanFlags: [{ flag: '--confirm', key: 'confirm' }],
+  });
+  if ('error' in parsed) {
+    return emitFailure('validation', parsed.error, io, parsed.outputMode);
+  }
+
+  let normalized: ToolCallNormalization;
+  try {
+    normalized = await executeToolCall(options.toolName, parsed.rawArgs, toolRuntime, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return emitFailure(classifyFailureKind(message), message, io, parsed.outputMode);
+  }
+
+  const summary = asRecord(normalized.envelope.result) ?? {};
+  const payload = {
+    ...summary,
+    ok: normalized.envelope.ok,
+    status: normalized.envelope.ok
+      ? options.command === 'download-local'
+        ? 'ok'
+        : 'success'
+      : options.command === 'download-local'
+        ? failureStatus(normalized.failureKind ?? 'flux')
+        : normalizeRuntimeCommandStatus(normalized, 'success'),
+    ...(normalized.envelope.error ? { error: normalized.envelope.error } : {}),
+    filepath: asOptionalStringValue(summary.filepath) ?? asOptionalStringValue(parsed.rawArgs.filepath),
+    appname: asOptionalStringValue(summary.appname) ?? asOptionalStringValue(parsed.rawArgs.appname),
+    bytes: asOptionalNumberValue(summary.bytes),
+    mimeType: asOptionalStringValue(summary.mimeType),
+    resourceUri: asOptionalStringValue(summary.resourceUri) ?? normalized.envelope.resourceUri,
+  };
+
+  if (options.command === 'remove-file') {
+    const resourcePayload = await readPersistedResourceValue(payload.resourceUri);
+    const nextPayload = {
+      ...payload,
+      message: unwrapFluxStringValue(asRecord(resourcePayload)?.response),
+    };
+
+    if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+      renderJson(io.stdout, nextPayload);
+    } else {
+      writeLine(io.stdout, renderBackupMutationPretty(nextPayload, 'Remove backup file'));
+    }
+
+    return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+  }
+
+  if (parsed.outputMode === 'json' || parsed.outputMode === 'raw') {
+    renderJson(io.stdout, payload);
+  } else {
+    writeLine(io.stdout, renderBackupArtifactPretty(payload));
+  }
+
+  return normalized.envelope.ok ? EXIT_CODE_SUCCESS : exitCodeForFailureKind(normalized.failureKind ?? 'flux');
+}
+
+async function handleBackupCommand(
+  args: string[],
+  io: CliIo,
+  toolRuntime: ToolRuntime,
+  mode: RunCliOptions['persistedStateMode']
+): Promise<number> {
+  if (args.length === 0 || isHelpFlag(args[0])) {
+    writeLine(io.stdout, renderBackupHelp());
+    return EXIT_CODE_SUCCESS;
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch (subcommand) {
+    case 'volume-data':
+      return handleBackupVolumeData(rest, io, toolRuntime, mode);
+    case 'remote-size':
+      return handleBackupRemoteSize(rest, io, toolRuntime, mode);
+    case 'list-local':
+      return handleBackupListLocal(rest, io, toolRuntime, mode);
+    case 'remove-file':
+      return handleBackupMutation(rest, io, toolRuntime, mode, {
+        command: 'remove-file',
+        toolName: 'flux_backup_remove_file',
+      });
+    case 'download-local':
+      return handleBackupMutation(rest, io, toolRuntime, mode, {
+        command: 'download-local',
+        toolName: 'flux_backup_download_local_file',
+      });
+    default: {
+      const parsed = parseOutputMode(rest);
+      return emitFailure('validation', `Unknown backup subcommand: ${subcommand}`, io, parsed.outputMode);
     }
   }
 }
@@ -9239,6 +9642,13 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
         );
       case 'files':
         return await handleFilesCommand(
+          argv.slice(1),
+          io,
+          await getCommandToolRuntime(options.toolRuntime),
+          effectivePersistedStateMode
+        );
+      case 'backup':
+        return await handleBackupCommand(
           argv.slice(1),
           io,
           await getCommandToolRuntime(options.toolRuntime),
