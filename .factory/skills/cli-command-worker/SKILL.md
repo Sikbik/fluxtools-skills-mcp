@@ -25,8 +25,8 @@ Use this skill for features that add or extend first-class command families such
 
 1. Read `mission.md`, mission `AGENTS.md`, `.factory/library/architecture.md`, `.factory/library/environment.md`, `.factory/library/shared-runtime.md`, and `.factory/library/user-testing.md`.
 2. Identify the existing MCP tool behavior for the command family and the JSON/safety contract the CLI must preserve.
-3. Write failing tests first for command parsing, JSON output, confirmation/auth gates, and representative happy-path behavior.
-4. If the branch already contains in-scope partial implementation for the feature, audit the existing diff first, add focused regression tests around the gap, and explicitly note the deviation from the clean-slate test-first path in your handoff.
+3. Write and run a failing targeted test first for command parsing, JSON output, confirmation/auth gates, and representative happy-path behavior whenever the slice starts from a clean slate. In transcript-auditable runs, the first targeted test command should appear before the main implementation patch when feasible.
+4. If the branch already contains in-scope partial implementation for the feature, audit the existing diff first, add focused regression tests around the gap, and explicitly note the deviation from the clean-slate test-first path in your handoff. If a follow-up or observability-hook-first slice cannot show a meaningful failing test before the minimal patch, keep the patch as small as possible and explain the exception clearly.
 5. When that partial diff already passes the feature's targeted validators and the repo-wide validators, switch into finalize-and-verify mode: avoid broad refactors, run only the feature-specific smoke checks needed by the verification steps, and commit the slice once the existing diff satisfies the contract.
 6. Implement a thin first-class CLI adapter on top of the shared or extracted behavior. Do not fork Flux business rules into CLI-only code.
 7. Preserve `--json` purity, stderr behavior, exit-code mapping, and confirmation/mutation gating.

@@ -20,7 +20,7 @@ Use this skill for features that:
 
 1. Read `mission.md`, mission `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/shared-runtime.md`.
 2. Identify the exact MCP behavior to preserve and the smallest extractable helper or module needed for the feature.
-3. Write failing tests first. Favor parity/contract tests that prove both surfaces preserve the same behavior.
+3. Write failing tests first when the behavior is externally observable at the start of the slice. Favor parity/contract tests that prove both surfaces preserve the same behavior. For finalize-only audits or tiny observability-hook-first fixes, you may add the minimal hook needed to observe the behavior first, but document the exception explicitly in the handoff.
 4. Extract the smallest safe shared helper; do not rewrite large parts of `flux-mcp/src/index.ts` unless the feature explicitly requires it.
 5. Wire `flux-mcp` and/or `fluxos-cli` to the shared helper without weakening safety checks.
 6. Run targeted tests for the changed helper first, then package-level build/test commands from `.factory/services.yaml`.

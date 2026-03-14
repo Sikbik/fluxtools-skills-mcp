@@ -22,9 +22,10 @@ Do not use this skill for fresh implementation work.
 1. Read `mission.md`, mission `AGENTS.md`, the feature description, `.factory/library/architecture.md`, and `.factory/library/environment.md`.
 2. Confirm the feature is finalize-only and identify the exact in-scope dirty files from the feature description plus `git status`.
 3. Audit only that existing diff. Do not broaden scope, refactor widely, or restart from a clean slate.
-4. If the feature description says targeted and repo-wide validators already pass for the current diff, preserve that assumption and avoid rewriting tests or code unless a smoke check proves a real gap.
-5. Run the feature-specific smoke checks and capture clear evidence. If a live submit smoke is auth-blocked or otherwise blocked by mission boundaries, record that explicitly and rely on the existing automated coverage instead of expanding scope.
-6. If the existing diff still satisfies the feature contract, commit exactly the in-scope files and return the handoff immediately.
+4. When the finalize-only diff is primarily tests, contract fixtures, or roadmap notes, compare it against the canonical shipped runtime behavior and any existing MCP/runtime contract tests already on the branch before approving it.
+5. If the feature description says targeted and repo-wide validators already pass for the current diff, preserve that assumption and avoid rewriting tests or code unless a smoke check proves a real gap.
+6. Run the feature-specific smoke checks and capture clear evidence. If a live submit smoke is auth-blocked or otherwise blocked by mission boundaries, record that explicitly and rely on the existing automated coverage instead of expanding scope.
+7. If the existing diff still satisfies the feature contract, commit exactly the in-scope files and return the handoff immediately.
 
 ## Example Handoff
 
