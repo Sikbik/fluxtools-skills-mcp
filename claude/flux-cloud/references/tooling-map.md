@@ -10,7 +10,7 @@ These tools encode Flux-specific workflow rules and safety checks:
 - Node health: `flux_node_health`
 - Register/update flow: `flux_apps_plan_registration`, `flux_apps_register`, `flux_apps_plan_update`, `flux_apps_update`, `flux_apps_get_messages`
 - Lifecycle: `flux_apps_start/stop/restart/redeploy*` (require `confirm=true`)
-- Observability: `flux_logs_tail`, `flux_app_health_report`, `flux_apps_logs/inspect/stats/top/monitor`
+- Observability: `flux_logs_tail`, `flux_app_health_report`, `flux_fluxos_log_search`, `flux_apps_logs/inspect/stats/top/monitor`
 - Exec: `flux_apps_exec` (requires `confirm=true`)
 - Files: `flux_apps_list_folder`, `flux_apps_download_*` (mutations require `confirm=true`)
 

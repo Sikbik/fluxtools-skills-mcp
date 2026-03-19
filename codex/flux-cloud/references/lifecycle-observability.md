@@ -40,7 +40,9 @@ Redeploy:
 MCP-first (recommended):
 - Use `flux_logs_tail` instead of `flux_apps_logs` for safe tailing.
 - Use `flux_app_health_report` to get a compact summary across inspect/stats/top/monitor/logs.
+- Use `flux_fluxos_log_search` to search FluxOS node logs (debug/error/warn/info) by pattern. Requires node owner or Flux team auth.
 
+Note: `flux_apps_logs`, `flux_logs_tail`, and `flux_apps_inspect` work on **stopped containers** too — useful for debugging crashed or G-app containers that haven't started yet.
 
 ```bash
 curl -sS -H "zelidauth: $ZELIDAUTH" "$API/apps/applog/<app-or-component>/200"

@@ -2311,7 +2311,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'flux_fluxos_log_search',
-    description: 'Search FluxOS node logs (debug/error/warn/info) by pattern. Fetches the log, filters lines matching pattern, and returns matches. Requires adminandfluxteam auth.',
+    description: 'Search FluxOS node logs (debug/error/warn/info) by pattern. Fetches the log, filters lines matching pattern, and returns matches. Requires node owner or Flux team auth.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -4601,7 +4601,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 
          const z = client.getZelidauthSummary();
          if (!z.present) {
-           throw new Error('zelidauth not set — login first with flux_auth_login (requires admin or fluxteam privilege)');
+           throw new Error('zelidauth not set — login first with flux_auth_login (requires node owner or Flux team privilege)');
          }
 
          // Build the regex from pattern — support /regex/ syntax or plain substring

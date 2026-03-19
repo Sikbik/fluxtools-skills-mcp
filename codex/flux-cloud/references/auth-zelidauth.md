@@ -30,10 +30,12 @@ Tip: Most docs show querystring-style `zelidauth` (e.g. `zelid=<ZELID>&signature
 
 These endpoints are useful for debugging auth:
 
-- `POST /id/verifylogin` (returns session + privilege details)
-- `POST /id/checkprivilege` (returns whether the provided auth is acceptable)
+- `POST /id/verifylogin` — returns session + privilege level (e.g. `admin`, `fluxteam`, `user`) directly in the response data as `privilage` (note: FluxOS spelling).
+- `POST /id/checkprivilege` — returns privilege as `{status: "success", data: {message: "<level>"}}`.
 
 Important: these POST endpoints are typically expected as `application/x-www-form-urlencoded` with fields `zelid`, `signature`, and `loginPhrase`.
+
+When using `flux_auth_login`, the privilege is automatically extracted from the `verifylogin` response — no separate `checkprivilege` call needed.
 
 Deprecated equivalents exist under `/zelid/*`.
 
