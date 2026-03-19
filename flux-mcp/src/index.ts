@@ -660,7 +660,22 @@ async function resolveRuntimeTarget(opts: {
       .map((x) => containerNameFromRunningEntry(x))
       .filter((x): x is string => typeof x === 'string');
 
-    const matching = containerNames.filter((n) => isContainerForApp(n, opts.appname));
+    let matching = containerNames.filter((n) => isContainerForApp(n, opts.appname));
+
+    // For non-running lookups (logs/inspect on stopped containers), also check listallapps
+    if (!opts.requireRunning && matching.length === 0) {
+      const allRes = await tmp.request('/apps/listallapps');
+      if (allRes.ok) {
+        const allRaw = unwrapFluxEnvelope<unknown>(allRes.data);
+        const allContainers = Array.isArray(allRaw)
+          ? allRaw.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+          : [];
+        const allNames = allContainers
+          .map((x) => containerNameFromRunningEntry(x))
+          .filter((x): x is string => typeof x === 'string');
+        matching = allNames.filter((n) => isContainerForApp(n, opts.appname));
+      }
+    }
 
     checks.push({
       baseUrl: c.baseUrl,
@@ -2292,6 +2307,25 @@ export const tools: Tool[] = [
         maxBytes: { type: 'number', description: 'Max bytes of returned logs (default 65536).', minimum: 1024, maximum: 1048576, default: 65536 },
       },
       required: ['appname'],
+    },
+  },
+  {
+    name: 'flux_fluxos_log_search',
+    description: 'Search FluxOS node logs (debug/error/warn/info) by pattern. Fetches the log, filters lines matching pattern, and returns matches. Requires adminandfluxteam auth.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Search pattern (case-insensitive substring match or /regex/).' },
+        logLevel: {
+          type: 'string',
+          description: 'Which FluxOS log to search (default: debug).',
+          enum: ['debug', 'error', 'warn', 'info'],
+          default: 'debug',
+        },
+        maxLines: { type: 'number', description: 'Max matching lines to return (default 200, max 1000).', minimum: 1, maximum: 1000, default: 200 },
+        tailOnly: { type: 'boolean', description: 'If true, only search the last 100 lines (via /flux/tail*log). If false (default), search the full log file.', default: false },
+      },
+      required: ['pattern'],
     },
   },
   {
@@ -4251,14 +4285,20 @@ export async function callTool(name: string, rawArgs: unknown) {
           throw new Error(extractFluxErrorMessage(verifyRes.data) ?? 'verifylogin failed');
         }
 
+        // verifylogin already returns the privilege level (spelled "privilage" in FluxOS)
+        const verifyData = verifyRes ? unwrapFluxEnvelope<Record<string, unknown>>(verifyRes.data) : null;
+        const verifyPrivilege: string | null = typeof verifyData?.privilage === 'string' ? verifyData.privilage : null;
+
         if (setZelidauth) client.setZelidauth({ zelid, signature, loginPhrase });
 
-        const privilegeRes = checkPrivilege
+        // Only call checkprivilege if verifylogin didn't already give us the privilege
+        const privilegeRes = (checkPrivilege && !verifyPrivilege)
           ? await client.request('/id/checkprivilege', { method: 'POST', bodyType: 'form', body: { zelid, signature, loginPhrase } })
           : null;
 
-        const privilegeOk = privilegeRes ? privilegeRes.ok && isFluxSuccess(privilegeRes.data) : null;
-        const privilege = privilegeOk ? unwrapFluxEnvelope<unknown>(privilegeRes!.data) : null;
+        // checkprivilege returns {status: "success", data: {message: "fluxteam"}}, not {data: "fluxteam"}
+        const rawPrivilege = privilegeRes?.ok && isFluxSuccess(privilegeRes.data) ? unwrapFluxEnvelope<unknown>(privilegeRes.data) : null;
+        const checkPrivilegeResult: string | null = typeof rawPrivilege === 'string' ? rawPrivilege : (rawPrivilege as Record<string, unknown>)?.message as string ?? null;
 
 	        const out = {
 	          ok: true,
@@ -4270,7 +4310,7 @@ export async function callTool(name: string, rawArgs: unknown) {
 	          zelidauthSet: setZelidauth,
 	          verifyCalled: verify,
 	          privilegeCalled: checkPrivilege,
-	          privilege: typeof privilege === 'string' ? privilege : null,
+	          privilege: verifyPrivilege ?? checkPrivilegeResult ?? null,
 	        };
 
         return jsonResult(out, { structuredContent: out });
@@ -4388,7 +4428,8 @@ export async function callTool(name: string, rawArgs: unknown) {
 	          (!res.ok && res.status === 503) ||
 	          (res.ok && !fluxOk && looksLikeWrongContainer)
 	        ) {
-	          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+	          // Use requireRunning: false since logs work on stopped containers too
+	          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: false });
 	          if (resolved) {
 	            const attempt = await attemptOnCandidates(
 	              resolved.candidates.map((c) => ({ baseUrl: c.baseUrl, host: c.host, apiPort: c.apiPort })),
@@ -4547,6 +4588,104 @@ export async function callTool(name: string, rawArgs: unknown) {
            isError: false,
          };
       }
+
+       case 'flux_fluxos_log_search': {
+         const pattern = mustBeString(args['pattern'], 'pattern');
+         const logLevel = asOptionalString(args['logLevel']) ?? 'debug';
+         const maxLines = asOptionalNumber(args['maxLines']) ?? 200;
+         const tailOnly = (args['tailOnly'] === true);
+
+         if (!['debug', 'error', 'warn', 'info'].includes(logLevel)) {
+           throw new Error(`Invalid logLevel: ${logLevel}. Must be one of: debug, error, warn, info`);
+         }
+
+         const z = client.getZelidauthSummary();
+         if (!z.present) {
+           throw new Error('zelidauth not set — login first with flux_auth_login (requires admin or fluxteam privilege)');
+         }
+
+         // Build the regex from pattern — support /regex/ syntax or plain substring
+         let regex: RegExp;
+         const regexMatch = pattern.match(/^\/(.+)\/([gimsuy]*)$/);
+         if (regexMatch) {
+           regex = new RegExp(regexMatch[1], regexMatch[2].includes('i') ? regexMatch[2] : regexMatch[2] + 'i');
+         } else {
+           regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+         }
+
+         // Fetch the log
+         const endpoint = tailOnly ? `/flux/tail${logLevel}log` : `/flux/${logLevel}log`;
+         const logRes = await client.request(endpoint, {
+           responseType: 'text',
+           useStoredZelidauth: true,
+           timeoutMs: 60000,
+         });
+
+         if (!logRes.ok) {
+           throw new Error(`Failed to fetch ${endpoint}: HTTP ${logRes.status}`);
+         }
+
+         // For full log endpoints, response is raw text (file download).
+         // For tail endpoints, response is JSON {status, data}.
+         let logText: string;
+         if (tailOnly) {
+           const parsed = typeof logRes.data === 'string' ? JSON.parse(logRes.data) : logRes.data;
+           if (parsed?.status === 'error') {
+             throw new Error(parsed.data?.message ?? 'Log fetch failed (unauthorized?)');
+           }
+           logText = typeof parsed?.data === 'string' ? parsed.data : String(logRes.data);
+         } else {
+           logText = typeof logRes.data === 'string' ? logRes.data : String(logRes.data);
+         }
+
+         // Filter lines
+         const allLines = logText.split('\n');
+         const matches: string[] = [];
+         for (const line of allLines) {
+           if (regex.test(line)) {
+             matches.push(line);
+             if (matches.length >= maxLines) break;
+           }
+         }
+
+         const summary = {
+           ok: true,
+           logLevel,
+           endpoint,
+           pattern,
+           totalLines: allLines.length,
+           matchCount: matches.length,
+           truncated: matches.length >= maxLines,
+         };
+
+         if (matches.length === 0) {
+           return jsonResult({ ...summary, matches: [] }, { structuredContent: summary });
+         }
+
+         // Store matches in resource for large results
+         const matchText = matches.join('\n');
+         const link = resourceStore.putText({
+           kind: 'flux/log_search',
+           text: matchText,
+           name: `${logLevel} log search: ${pattern}`,
+           description: `${matches.length} matching lines from ${logLevel}.log`,
+         });
+
+         return {
+           content: [
+             { type: 'text' as const, text: JSON.stringify({ ...summary, preview: matches.slice(0, 20).join('\n'), resourceUri: link.uri }, null, 2) },
+             {
+               type: 'resource_link' as const,
+               uri: link.uri,
+               name: link.name,
+               description: link.description,
+               mimeType: link.mimeType,
+             },
+           ],
+           structuredContent: { ...summary, resourceUri: link.uri },
+           isError: false,
+         };
+       }
 
        case 'flux_app_health_report': {
          const appname = mustBeString(args['appname'], 'appname');
@@ -9845,7 +9984,8 @@ export async function callTool(name: string, rawArgs: unknown) {
         const appname = mustBeString(args['appname'], 'appname');
         const lines = asOptionalString(args['lines']) ?? 'all';
 
-        const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+        // Use requireRunning: false so we can also get logs from stopped containers
+        const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: false });
         const attemptedBaseUrl = client.getBaseUrl() ?? null;
 
         const targets = resolved
@@ -9952,7 +10092,8 @@ export async function callTool(name: string, rawArgs: unknown) {
         } | null = null;
 
         if (knownError && knownError.startsWith('Container not found on this node.')) {
-          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: true });
+          // Use requireRunning: false since inspect works on stopped containers too
+          const resolved = await resolveContainerOnCorrectNode({ client, appname, requireRunning: false });
           if (resolved) {
             client.setBaseUrl(resolved.baseUrl);
             target = resolved.containerName;
