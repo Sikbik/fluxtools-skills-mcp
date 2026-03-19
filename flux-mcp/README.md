@@ -1,8 +1,12 @@
 # Flux MCP
 
-Flux MCP is the execution layer behind the skills in this repo. It exposes Flux Cloud / FluxOS workflows as MCP tools with safer defaults, higher-level planning helpers, signing support, endpoint discovery, and resource-backed outputs for large payloads.
+Flux MCP is the interactive MCP surface in this repo's broader Flux tooling stack. It exposes Flux Cloud / FluxOS workflows as MCP tools with safer defaults, higher-level planning helpers, signing support, endpoint discovery, and resource-backed outputs for large payloads.
 
 It is designed for day-to-day operations, not just toy demos. You can use it to deploy apps, renew apps, inspect live containers, browse volumes, manage backups, query daemon and explorer data, operate Syncthing, and work through enterprise app flows from one MCP server. Signing and payment helpers support both Zelcore and SSP Wallet.
+
+In the current repository model, `fluxos-cli` is the default surface for agentic shell workflows, while `flux-mcp` remains the supported option for interactive MCP clients, `resource_link`-heavy sessions, and recovery paths when the CLI is unavailable or needs help.
+
+See [docs/execution-surface-policy.md](/home/stache/projects/flux-skills/docs/execution-surface-policy.md) for the shared routing policy.
 
 ## Capability Surface
 
@@ -38,6 +42,18 @@ Common gotcha:
 - `https://cloud.runonflux.com/` is the Flux UI, not the node API base URL.
 
 ## One-Command Setup
+
+Packaged Codex install:
+
+```bash
+npm i -g fluxtools
+fluxtools install codex
+fluxtools install claude
+fluxtools install opencode
+fluxtools install gemini
+```
+
+Repo-local setup:
 
 From the repo root:
 
@@ -123,6 +139,8 @@ Or `~/.gemini/settings.json` / `.gemini/settings.json`:
 }
 ```
 
+If you use the packaged toolkit, `fluxtools install gemini` installs an extension bundle that already declares the bundled Flux MCP server.
+
 ### Codex
 
 CLI:
@@ -143,6 +161,28 @@ args = ["/absolute/path/to/flux-skills/flux-mcp/dist/index.js"]
 [mcp_servers.flux.env]
 FLUX_API_BASE_URL = "https://api.runonflux.io"
 ```
+
+### OpenCode
+
+Add this to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "flux": {
+      "type": "local",
+      "command": ["node", "/absolute/path/to/flux-skills/flux-mcp/dist/index.js"],
+      "enabled": true,
+      "environment": {
+        "FLUX_API_BASE_URL": "https://api.runonflux.io"
+      }
+    }
+  }
+}
+```
+
+If you use the packaged toolkit, `fluxtools install opencode` writes that OpenCode MCP configuration for you.
 
 ### Other stdio MCP clients
 

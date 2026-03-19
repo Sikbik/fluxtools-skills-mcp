@@ -1,13 +1,13 @@
 # FluxOS CLI
 
-`fluxos-cli` is the shell-native execution surface for Flux operations in this repository.
+`fluxos-cli` is the primary shell-native execution surface for Flux operations in this repository.
 
 It complements `flux-mcp` instead of replacing it:
 
-- use MCP when the client already supports tool calling cleanly
-- use the CLI when you want shell access, CI integration, scripts, cron, or agent workflows that do not speak MCP
+- use the CLI by default for agents, automation, CI, scripts, and shell workflows
+- use MCP when the client already supports tool calling cleanly and interactive MCP resources are a better fit
 
-Architecture guidance for how the CLI fits with MCP and skills lives in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+Architecture guidance for how the CLI fits with MCP and skills lives in [`ARCHITECTURE.md`](./ARCHITECTURE.md) and the shared routing policy in [`../docs/execution-surface-policy.md`](../docs/execution-surface-policy.md).
 
 ## What it does
 
@@ -34,7 +34,26 @@ The CLI is built around a few stable ideas:
 - command composition should not require hand-written raw API calls
 - CLI surface code can be CLI-specific, but Flux operational behavior stays aligned with the shared MCP runtime
 
+## Surface role
+
+For this repository's LLM adapters and skills, the expected order is:
+
+1. use `fluxos-cli` first
+2. use `flux-mcp` when the client or workflow benefits from MCP resources or tool calling
+3. use raw HTTP only when neither wrapped surface covers the task
+
+One workflow should stay on one primary surface unless there is a specific reason to switch.
+
 ## Build and run
+
+Packaged install:
+
+```bash
+npm i -g fluxtools
+flux --help
+```
+
+Repo-local build:
 
 ```bash
 npm --prefix fluxos-cli ci

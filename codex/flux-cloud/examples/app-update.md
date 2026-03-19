@@ -5,7 +5,9 @@
 > I need to update my Flux app `myapp` to image `ghcr.io/acme/myapp:1.2.4`.
 > Keep the ports and domains the same.
 
-## Expected tool calls (MCP-first)
+## Expected tool calls (MCP fallback)
+
+For normal agent execution, prefer the equivalent `flux` CLI workflow and keep this MCP sequence as the interactive fallback.
 
 1) Set base URL + authenticate
 

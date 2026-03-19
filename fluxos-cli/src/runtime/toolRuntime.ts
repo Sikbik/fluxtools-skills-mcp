@@ -34,7 +34,17 @@ type FluxMcpModule = {
 };
 
 const require = createRequire(import.meta.url);
-const fluxMcpEntryUrl = pathToFileURL(require.resolve('flux-mcp')).href;
+
+function resolveFluxMcpEntryUrl(): string {
+  try {
+    return pathToFileURL(require.resolve('flux-mcp')).href;
+  } catch {
+    // Fallback for the root fluxtools package, which bundles flux-mcp alongside fluxos-cli.
+    return new URL('../../../flux-mcp/dist/index.js', import.meta.url).href;
+  }
+}
+
+const fluxMcpEntryUrl = resolveFluxMcpEntryUrl();
 
 function createFluxMcpModuleLoader() {
   let cached: Promise<FluxMcpModule> | undefined;

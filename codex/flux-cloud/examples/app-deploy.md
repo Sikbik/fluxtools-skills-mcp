@@ -5,7 +5,9 @@
 > I want to deploy a new Flux app. I have a node base URL and the owner ZelID.
 > The image is `ghcr.io/acme/myapp:1.2.3` and it should expose port 8080.
 
-## Expected tool calls (MCP-first)
+## Expected tool calls (MCP fallback)
+
+For normal agent execution, prefer the equivalent `flux` CLI workflow and keep this MCP sequence as the interactive fallback.
 
 1) Set base URL
 

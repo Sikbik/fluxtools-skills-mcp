@@ -274,7 +274,10 @@ function main() {
   process.stdout.write(`[mcp_servers.${opts.serverName}.env]\n`);
   process.stdout.write(`FLUX_API_BASE_URL = ${quoteForShell(opts.baseUrl)}\n`);
 
-  process.stdout.write(`\nNext:\n- Restart your client and run: /mcp\n- First call: flux_get_state\n`);
+  process.stdout.write(`\nNext:\n`);
+  process.stdout.write(`- Restart your client and run: /mcp\n`);
+  process.stdout.write(`- First MCP call: flux_get_state\n`);
+  process.stdout.write(`- For shared native skills, see: .codex/INSTALL.md and .opencode/INSTALL.md\n`);
 }
 
 try {
@@ -282,4 +285,3 @@ try {
 } catch (err) {
   die(err instanceof Error ? err.message : String(err));
 }
-

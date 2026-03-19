@@ -1,0 +1,50 @@
+{
+  "name": "fluxtools",
+  "version": "0.1.0",
+  "description": "CLI-first Flux toolkit with Codex skills and MCP support",
+  "type": "module",
+  "bin": {
+    "fluxtools": "bin/fluxtools.js",
+    "flux": "fluxos-cli/dist/index.js",
+    "flux-mcp": "flux-mcp/dist/index.js"
+  },
+  "files": [
+    "bin",
+    "docs",
+    "skills",
+    "hooks",
+    "README.md",
+    "GEMINI.md",
+    "gemini-extension.json",
+    ".codex/INSTALL.md",
+    ".opencode",
+    ".claude-plugin",
+    ".cursor-plugin",
+    "fluxos-cli/dist",
+    "fluxos-cli/README.md",
+    "fluxos-cli/ARCHITECTURE.md",
+    "fluxos-cli/RELEASE.md",
+    "fluxos-cli/examples",
+    "flux-mcp/dist",
+    "flux-mcp/data",
+    "flux-mcp/README.md",
+    "shared-runtime/src"
+  ],
+  "scripts": {
+    "build": "npm --prefix flux-mcp run build && npm --prefix fluxos-cli run build",
+    "prepack": "npm --prefix flux-mcp ci && npm --prefix flux-mcp run build && npm --prefix fluxos-cli ci && npm --prefix fluxos-cli run build",
+    "test:codex-install": "bash tests/codex/test-fluxtools-package.sh",
+    "test:claude-install": "bash tests/claude/test-fluxtools-package.sh",
+    "test:cursor-install": "bash tests/cursor/test-fluxtools-package.sh",
+    "test:opencode-install": "bash tests/opencode/test-fluxtools-package.sh",
+    "test:gemini-install": "bash tests/gemini/test-fluxtools-package.sh",
+    "test:platform-installs": "bash tests/codex/test-fluxtools-package.sh && bash tests/claude/test-fluxtools-package.sh && bash tests/cursor/test-fluxtools-package.sh && bash tests/opencode/test-fluxtools-package.sh && bash tests/gemini/test-fluxtools-package.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2"
+  }
+}

@@ -37,7 +37,14 @@ Redeploy:
 
 ## Logs and inspection (require `zelidauth`)
 
-MCP-first (recommended):
+CLI-first for agents:
+- `flux apps logs <appname> --json`
+- `flux apps inspect <appname> --json`
+- `flux apps stats <appname> --json`
+- `flux apps top <appname> --json`
+- `flux apps monitor <appname> --json`
+
+MCP fallback:
 - Use `flux_logs_tail` instead of `flux_apps_logs` for safe tailing.
 - Use `flux_app_health_report` to get a compact summary across inspect/stats/top/monitor/logs.
 

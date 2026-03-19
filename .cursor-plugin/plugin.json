@@ -1,0 +1,12 @@
+{
+  "name": "fluxtools",
+  "description": "Flux Cloud and FluxOS workflow plugin with shared skills, CLI-first routing, and MCP fallback",
+  "version": "0.1.0",
+  "author": {
+    "name": "Sikbik"
+  },
+  "homepage": "https://github.com/Sikbik/fluxtools-skills-mcp",
+  "repository": "https://github.com/Sikbik/fluxtools-skills-mcp",
+  "license": "MIT",
+  "keywords": ["flux", "fluxos", "cli", "mcp", "skills", "automation"]
+}

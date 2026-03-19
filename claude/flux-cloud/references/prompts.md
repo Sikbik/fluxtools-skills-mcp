@@ -1,46 +1,57 @@
 # Example prompts (Claude Code)
 
-These prompts are designed to trigger the `flux-cloud` skill and encourage MCP-first workflows.
+These prompts are designed to trigger the `flux-cloud` skill and encourage CLI-first workflows, with MCP as a fallback when needed.
 
 ## Node health
 
 - “Check node health for `http://<ip>:16127` and tell me if it’s ArcaneOS.”
 - “Summarize `/flux/info` and `/flux/version` for `http://<ip>:16127`.”
+- “Use `flux` commands to check whether `http://<ip>:16127` looks healthy and summarize the result.”
 
 ## Auth + ownership
 
 - “Help me authenticate to `http://<ip>:16127` using ZelID. I’ll paste my signature after you give me a phrase to sign.”
 - “I’m the app owner of `<appname>`. Pull logs and container stats.”
+- “Use the Flux CLI to get me authenticated, then inspect `<appname>`.”
 
 ## Create a v8 spec
 
 - “Generate a v8 Flux app spec named `my-app` using image `nginx:alpine`, expose port 31111->80, mount `/data`, and set `NODE_ENV=production`.”
 - “Take this spec and canonicalize/validate it for registration, then tell me exactly what message I must sign.”
+- “Use the CLI planning flow to generate the spec, verify it, price it, and give me the exact signing payload.”
 
 ## Register / update flow
 
 - “Plan an app registration: verify spec, calculate price, and produce the message-to-sign + payload scaffold.”
 - “Here’s my signed message. Submit `appregister` and give me the hash, then show temporary/permanent message status.”
+- “Stay on the CLI for this whole deploy flow unless you need MCP as a fallback.”
 
 ## Lifecycle operations (explicit confirmation)
 
 - “Stop app `<appname>` now (I confirm).”
 - “Redeploy component `<component>_<appname>` (I confirm).”
+- “Use `flux` to restart `<appname>` and show me the JSON result.”
 
 ## Logs + inspect + exec
 
 - “Fetch the last 200 lines of logs for `<appname>`.”
 - “Inspect `<appname>` and summarize environment, ports, and mounts.”
 - “Run `sh -lc 'ls -la /data'` inside `<appname>` (I confirm).”
+- “Use the CLI runtime commands to troubleshoot why `<appname>` keeps restarting.”
 
 ## Working with resource links
 
-Some tools return `resource_link` blocks instead of dumping huge JSON/logs into chat.
+Some MCP tools return `resource_link` blocks instead of dumping huge JSON/logs into chat.
 
 - “If you return a `resource_link`, read it and summarize the key fields.”
 - “Use `flux_resource_read` for the provided URI and show me the contents.”
 - “For `<appname>`, run `flux_app_health_report`, then read the linked resources and summarize what’s unhealthy.”
 - “Run `flux_apps_inspect` for `<appname>`, then use `flux_resource_read` on `structuredContent.resourceUri`.”
+
+## CLI resources
+
+- “Use `flux resource read <uri> --json` and summarize the artifact.”
+- “If the CLI gives you a reusable resource URI, keep using it instead of rebuilding the payload inline.”
 
 ## Files
 

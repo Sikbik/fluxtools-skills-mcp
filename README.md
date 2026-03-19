@@ -1,10 +1,27 @@
-# Flux MCP, CLI, and Skills
+# Fluxtools: Flux CLI, MCP, and Skills
 
-> Production-focused MCP tooling and agent skills for Flux Cloud / FluxOS.
+> Production-focused Flux tooling for CLI-first agents, with MCP and skill adapters for Flux Cloud / FluxOS.
 
-This project turns the Flux node API into a safer operational surface for agents and operators. It combines a Node.js MCP server, a shell-native CLI, Codex and Claude skill wrappers, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
+This project turns the Flux node API into a safer operational surface for agents and operators. It combines a shell-native CLI, a Node.js MCP server, a shared skills library, thin platform adapters, generated endpoint inventories, and workflow helpers for app deployment, app maintenance, blockchain inspection, daemon and network APIs, storage, backups, enterprise flows, Syncthing administration, and signing and payment flows that support both Zelcore and SSP Wallet.
 
-This repo is built for people who want to do real work on Flux infrastructure from an MCP client or a shell-native automation surface instead of hand-assembling raw REST calls.
+This repo is built for people who want to do real work on Flux infrastructure from a shell-native automation surface or an MCP client instead of hand-assembling raw REST calls.
+
+For agent workflows, the intended execution order is:
+
+1. use `fluxos-cli`
+2. use `flux-mcp` when interactive MCP resources are a better fit or the CLI needs help
+3. use raw HTTP only as a last resort
+
+## Product Shape
+
+Fluxtools is now structured as one cross-client plugin with multiple adapters:
+
+- shared skills in `skills/`
+- primary execution surface in `fluxos-cli/`
+- MCP fallback surface in `flux-mcp/`
+- platform adapters in `.codex/`, `.opencode/`, `.claude-plugin/`, `.cursor-plugin/`, and `GEMINI.md`
+
+That keeps the project cohesive while letting the CLI, MCP server, and skills remain independently useful.
 
 ## What This Repo Gives You
 
@@ -107,7 +124,28 @@ This repo is built for people who want to do real work on Flux infrastructure fr
 
 ## Quick Start
 
-### Recommended setup
+### Install the packaged toolkit
+
+```bash
+npm i -g fluxtools
+fluxtools install codex
+fluxtools install claude
+fluxtools install cursor --project-dir /path/to/project
+fluxtools install opencode
+fluxtools install gemini
+fluxtools doctor codex
+```
+
+That gives you:
+
+- the `flux` CLI on `PATH`
+- shared Fluxtools skills and MCP in Codex
+- shared Fluxtools skills and user-scoped MCP in Claude
+- project-scoped Cursor rules and commands plus global Cursor MCP config
+- packaged OpenCode plugin bootstrap, shared skills, and global OpenCode MCP config
+- packaged Gemini extension bundle with bundled Flux MCP fallback
+
+### Repo-local setup
 
 From the repo root:
 
@@ -118,7 +156,7 @@ node scripts/setup.js
 This will:
 
 - build `flux-mcp` if needed
-- install the Codex and Claude skills in project scope
+- install the Codex and Claude compatibility adapters in project scope
 - print ready-to-paste MCP configuration snippets with absolute paths
 
 User-scoped install:
@@ -137,6 +175,61 @@ npm run build
 
 This produces `flux-mcp/dist/index.js`.
 
+### Use the CLI directly
+
+```bash
+npm --prefix fluxos-cli ci
+npm --prefix fluxos-cli run build
+node fluxos-cli/dist/index.js --help
+```
+
+CLI usage guidance and automation examples live in [fluxos-cli/README.md](fluxos-cli/README.md).
+
+### Install the shared skills library manually
+
+Codex:
+
+- follow [.codex/INSTALL.md](.codex/INSTALL.md)
+
+Claude:
+
+- `fluxtools install claude`
+- `fluxtools doctor claude`
+- installs standalone shared skills into `~/.claude/skills/fluxtools`
+- installs a user-scoped Claude MCP server entry
+- validates the repo as a Claude plugin package, but does not perform marketplace plugin installation
+- see [docs/README.claude.md](docs/README.claude.md)
+
+Cursor:
+
+- `fluxtools install cursor --project-dir /path/to/project`
+- `fluxtools doctor cursor --project-dir /path/to/project`
+- installs a project rule in `.cursor/rules/` and a helper command in `.cursor/commands/`
+- installs a user-global Cursor MCP config in `~/.cursor/mcp.json`
+
+OpenCode:
+
+- `fluxtools install opencode`
+- `fluxtools doctor opencode`
+- installs the OpenCode plugin bootstrap at `~/.config/opencode/plugins/fluxtools.js`
+- installs shared skills at `~/.config/opencode/skills/fluxtools`
+- installs a global OpenCode MCP server entry in `~/.config/opencode/opencode.json`
+- or follow [.opencode/INSTALL.md](.opencode/INSTALL.md)
+
+Gemini:
+
+- `fluxtools install gemini`
+- `fluxtools doctor gemini`
+- installs a Gemini extension bundle in `~/.gemini/extensions/fluxtools`
+- bundles `GEMINI.md`, shared skills, and a packaged Flux MCP server in the extension manifest
+- or install this repo as an extension and use [GEMINI.md](GEMINI.md) as the bootstrap context file
+- see [docs/README.gemini.md](docs/README.gemini.md)
+
+Claude and Cursor plugin scaffolding:
+
+- manifests live in [.claude-plugin/plugin.json](.claude-plugin/plugin.json) and [.cursor-plugin/plugin.json](.cursor-plugin/plugin.json)
+- hook bootstrap scaffolding lives in [hooks/hooks.json](hooks/hooks.json)
+
 ### Connect an MCP client
 
 Codex example:
@@ -149,16 +242,6 @@ codex mcp add flux \
 
 The same server works with Claude Code, Claude Desktop, Gemini CLI, and other stdio MCP clients. Full client-specific setup lives in [flux-mcp/README.md](flux-mcp/README.md).
 
-### Use the CLI directly
-
-```bash
-npm --prefix fluxos-cli ci
-npm --prefix fluxos-cli run build
-node fluxos-cli/dist/index.js --help
-```
-
-CLI usage guidance and automation examples live in [fluxos-cli/README.md](fluxos-cli/README.md).
-
 ### First calls worth trying
 
 - `flux_get_state`
@@ -167,49 +250,31 @@ CLI usage guidance and automation examples live in [fluxos-cli/README.md](fluxos
 - `flux_auth_flow { "gatewayBaseUrl": "https://api.runonflux.io" }`
 - `flux_apps_list_global_specs { "owner": "<zelid>" }`
 
-## Skill Installation
+## Shared Skills And Adapter Packaging
 
-### Codex skill
+### Shared skills library
 
-Repo scoped:
+The main skill source of truth now lives in:
 
-```bash
-mkdir -p .codex/skills
-cp -R codex/flux-cloud .codex/skills/flux-cloud
-```
+- [skills/using-fluxtools/SKILL.md](skills/using-fluxtools/SKILL.md)
+- [skills/flux-auth-session/SKILL.md](skills/flux-auth-session/SKILL.md)
+- [skills/flux-app-deployments/SKILL.md](skills/flux-app-deployments/SKILL.md)
+- [skills/flux-runtime-operations/SKILL.md](skills/flux-runtime-operations/SKILL.md)
+- [skills/flux-storage-backups/SKILL.md](skills/flux-storage-backups/SKILL.md)
+- [skills/flux-network-services/SKILL.md](skills/flux-network-services/SKILL.md)
+- [skills/flux-mcp-fallback/SKILL.md](skills/flux-mcp-fallback/SKILL.md)
 
-User scoped:
+### Compatibility adapters
 
-```bash
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R codex/flux-cloud "${CODEX_HOME:-$HOME/.codex}/skills/flux-cloud"
-```
+Compatibility wrappers remain in:
 
-Package a `.skill` artifact:
+- [codex/flux-cloud/SKILL.md](codex/flux-cloud/SKILL.md)
+- [claude/flux-cloud/SKILL.md](claude/flux-cloud/SKILL.md)
+
+Package `.skill` artifacts:
 
 ```bash
 python3 scripts/package_skill.py codex/flux-cloud dist --out-name flux-cloud-codex
-```
-
-### Claude skill wrapper
-
-User scoped:
-
-```bash
-mkdir -p ~/.claude/skills
-cp -R claude/flux-cloud ~/.claude/skills/flux-cloud
-```
-
-Project scoped:
-
-```bash
-mkdir -p .claude/skills
-cp -R claude/flux-cloud .claude/skills/flux-cloud
-```
-
-Package a `.skill` artifact:
-
-```bash
 python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-claude
 ```
 
@@ -217,10 +282,13 @@ python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-cl
 
 | Path | Role |
 | --- | --- |
+| `skills/` | Shared Fluxtools skills library and bootstrap skill. |
 | `flux-mcp/` | The main execution layer: MCP server, tool handlers, resources, and HTTP clients. |
 | `fluxos-cli/` | Shell-native Flux CLI for agent workflows, CI, scripts, and operators who want JSON-over-stdout contracts. |
-| `codex/flux-cloud/` | Codex skill wrapper, references, examples, and helper scripts. |
-| `claude/flux-cloud/` | Claude Code skill wrapper and references. |
+| `codex/flux-cloud/` | Codex compatibility adapter and references. |
+| `claude/flux-cloud/` | Claude compatibility adapter and references. |
+| `.codex/`, `.opencode/`, `.claude-plugin/`, `.cursor-plugin/` | Cross-client install and plugin adapter surfaces. |
+| `hooks/` | Session bootstrap hook scaffolding for plugin-capable clients. |
 | `scripts/` | Setup and skill packaging helpers. |
 | `dist/` | Generated `.skill` artifacts. |
 | `flux-mcp/data/endpoints.json` | Generated Flux endpoint inventory used by the MCP search tools. |
@@ -229,6 +297,14 @@ python3 scripts/package_skill.py claude/flux-cloud dist --out-name flux-cloud-cl
 
 | Document | Why you would open it |
 | --- | --- |
+| [docs/execution-surface-policy.md](docs/execution-surface-policy.md) | Shared CLI-first routing policy for skills, adapters, and fallback behavior. |
+| [docs/README.codex.md](docs/README.codex.md) | Codex-specific install and usage notes for the shared Fluxtools skills library. |
+| [docs/README.cursor.md](docs/README.cursor.md) | Cursor-specific install notes for project rules, commands, and MCP wiring. |
+| [docs/README.claude.md](docs/README.claude.md) | Claude-specific install notes for standalone skills, MCP, and plugin packaging. |
+| [docs/README.gemini.md](docs/README.gemini.md) | Gemini-specific extension install notes and bundled MCP behavior. |
+| [docs/README.opencode.md](docs/README.opencode.md) | OpenCode-specific install and plugin bootstrap notes. |
+| [.codex/INSTALL.md](.codex/INSTALL.md) | Install the shared Fluxtools skills into Codex native skill discovery. |
+| [.opencode/INSTALL.md](.opencode/INSTALL.md) | Install the OpenCode plugin bootstrap, shared Fluxtools skills, and MCP config. |
 | [flux-mcp/README.md](flux-mcp/README.md) | Full MCP setup, technical workflows, configuration, and categorized tool catalog. |
 | [fluxos-cli/README.md](fluxos-cli/README.md) | CLI usage, automation patterns, composition helpers, and examples. |
 | [fluxos-cli/ARCHITECTURE.md](fluxos-cli/ARCHITECTURE.md) | Long-term execution-surface guidance: MCP vs CLI, shared runtime direction, and fallback decisions. |

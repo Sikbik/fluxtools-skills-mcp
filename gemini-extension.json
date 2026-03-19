@@ -1,0 +1,16 @@
+{
+  "name": "fluxtools",
+  "description": "Flux Cloud and FluxOS workflow extension with shared skills, CLI-first routing, and MCP fallback",
+  "version": "0.1.0",
+  "mcpServers": {
+    "flux": {
+      "command": "node",
+      "args": ["${extensionPath}/flux-mcp/dist/index.js"],
+      "cwd": "${extensionPath}",
+      "env": {
+        "FLUX_API_BASE_URL": "https://api.runonflux.io"
+      }
+    }
+  },
+  "contextFileName": "GEMINI.md"
+}

@@ -18,7 +18,8 @@ For a complete, generated endpoint list (all 400+ routes), see:
   - API: `http://<node-ip>:16127/`
 
 Tip: prefer a direct node for auth and troubleshooting; gateways can time out or route to different nodes.
-MCP default: if `FLUX_API_BASE_URL` is not set, the MCP server uses the API gateway (`https://api.runonflux.io`).
+CLI-first skill policy: prefer `fluxos-cli` for normal agent execution, with MCP as a fallback surface.
+MCP server default: if `FLUX_API_BASE_URL` is not set, the MCP server uses the API gateway (`https://api.runonflux.io`).
 
 ## Response envelope + exceptions
 
@@ -127,7 +128,7 @@ curl -sS http://<node-ip>:16127/id/emergencyphrase
 
 4) Sign the phrase with your ZelID and verify login:
 
-- MCP-first:
+- Wrapped-tool fallback:
   - `flux_get_login_phrase` (or `flux_get_emergency_phrase`)
   - user signs phrase
   - `flux_verify_login`
@@ -152,7 +153,7 @@ Flux has two different sources of truth depending on the question:
 
 #### Global apps (owned by a ZelID)
 
-- MCP-first:
+- Wrapped-tool fallback:
   - `flux_apps_list_by_zelid_with_expiry { zelid?, includeExpired? }`
   - `flux_apps_global_status { zelid?, appname? }` (adds propagation + (optionally) location/runtime correlation)
 
@@ -170,7 +171,7 @@ If you care about propagation or deployment, start with:
 
 This answers “what containers are running on the node I’m talking to?”
 
-- MCP-first:
+- Wrapped-tool fallback:
   - `flux_apps_list_running`
 
 - curl:
@@ -197,7 +198,7 @@ This is about the network-level register/update flow (message propagation), not 
 - Confirm node health: `GET /flux/info`
 - Confirm you are signing the exact returned message string (from `messageToSignResourceUri`).
 
-#### MCP-first flow (recommended)
+#### Wrapped planning flow
 
 1) Generate a canonical spec + price + message-to-sign scaffold:
 
@@ -232,7 +233,7 @@ If you need manual polling by hash:
 
 This is about container runtime and node-local state.
 
-#### MCP-first triage flow
+#### Wrapped triage flow
 
 1) Get a single summary view:
 
@@ -266,7 +267,7 @@ This is about container runtime and node-local state.
 
 Syncthing is FluxOS’s replication layer for app volumes. Issues often show up as stale files, missing config, or a container behaving differently across nodes.
 
-#### MCP-first triage
+#### Wrapped Syncthing triage
 
 1) Check health and system status:
 

@@ -50,7 +50,8 @@ session-report.md
 /.factory/
 
 # Local (project-scoped) agent config / skill installs
-.codex/
+/.codex/*
+!/.codex/INSTALL.md
 .claude/
 .gemini/
 

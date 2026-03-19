@@ -1,4 +1,6 @@
-# Register / Update Flow (MCP-first)
+# Register / Update Flow (CLI-first, MCP fallback)
+
+Prefer the CLI workflow for normal agent execution. Use the MCP steps below when the task is intentionally MCP-based or the CLI needs fallback support.
 
 ## Two signatures (do not confuse)
 
